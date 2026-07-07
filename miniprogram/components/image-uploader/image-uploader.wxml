@@ -1,0 +1,19 @@
+<view class="img-upload-grid">
+  <view
+    wx:for="{{images}}"
+    wx:key="index"
+    class="img-upload-item"
+  >
+    <image src="{{item}}" mode="aspectFill" class="img-upload-img" />
+    <view class="img-delete" data-index="{{index}}" bindtap="onRemove" catchtap="onRemove">
+      <text>&#10005;</text>
+    </view>
+  </view>
+  <view
+    wx:if="{{images.length < max}}"
+    class="img-upload-item img-upload-add"
+    bindtap="onChoose"
+  >
+    <text class="img-upload-add-icon">+</text>
+  </view>
+</view>

@@ -1,0 +1,42 @@
+<view class="container">
+  <!-- Top Bar -->
+  <view class="top-bar">
+    <view class="top-info">
+      <view class="top-name">{{otherName}}</view>
+      <view class="top-room">{{roomInfo}}</view>
+    </view>
+    <view class="top-about" bindtap="onAboutTap" wx:if="{{aboutTitle}}">关于：{{aboutTitle}}</view>
+  </view>
+
+  <!-- Message List -->
+  <scroll-view class="msg-list" scroll-y scroll-into-view="{{scrollToView}}" scroll-with-animation>
+    <view class="msg-group" wx:for="{{messages}}" wx:key="id">
+      <!-- Time Divider -->
+      <view class="time-divider" wx:if="{{item.showTime}}">{{item.timeText}}</view>
+
+      <!-- Other's Message -->
+      <view class="msg-row msg-left" wx:if="{{!item.isMine}}">
+        <view class="avatar other-avatar">{{item.avatarText}}</view>
+        <view class="bubble bubble-other">{{item.content}}</view>
+      </view>
+
+      <!-- My Message -->
+      <view class="msg-row msg-right" wx:if="{{item.isMine}}">
+        <view class="bubble bubble-mine">{{item.content}}</view>
+        <view class="avatar my-avatar">{{item.avatarText}}</view>
+      </view>
+    </view>
+    <view id="msg-bottom"></view>
+  </scroll-view>
+
+  <!-- Quick Templates -->
+  <view class="templates">
+    <view class="template-chip" wx:for="{{templates}}" wx:key="*this" bindtap="onTemplateTap" data-text="{{item}}">{{item}}</view>
+  </view>
+
+  <!-- Input Bar -->
+  <view class="input-bar">
+    <input class="msg-input" placeholder="输入消息..." value="{{inputText}}" bindinput="onInputChange" confirm-type="send" bindconfirm="onSend" />
+    <button class="send-btn" bindtap="onSend">发送</button>
+  </view>
+</view>

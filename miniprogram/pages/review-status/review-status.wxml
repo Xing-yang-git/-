@@ -1,0 +1,78 @@
+<view class="review-page">
+  <!-- Loading -->
+  <view wx:if="{{loading}}" class="loading-wrap">
+    <text>加载中...</text>
+  </view>
+
+  <!-- Pending State -->
+  <view class="state-panel" wx:elif="{{status === 'pending'}}">
+    <view class="status-card">
+      <view class="status-icon pending">
+        <image class="status-icon-img" src="/images/clock-icon.svg" mode="aspectFit"></image>
+      </view>
+      <view class="status-title">审核中</view>
+      <view class="status-desc">
+        <view>你的住户认证资料已提交，</view>
+        <view>物业正在核验你的身份信息。</view>
+        <view style="margin-top:16rpx;">
+          <text style="font-weight:600;">通常需要 1-2 个工作日</text>，请耐心等待。
+        </view>
+      </view>
+      <button class="btn btn-secondary" bindtap="onRefresh">刷新状态</button>
+    </view>
+    <view class="footer-tip">如有疑问，请联系小区物业</view>
+  </view>
+
+  <!-- Rejected State -->
+  <view class="state-panel" wx:elif="{{status === 'rejected'}}">
+    <view class="status-card">
+      <view class="status-icon rejected">
+        <image class="status-icon-img" src="/images/x-circle-icon.svg" mode="aspectFit"></image>
+      </view>
+      <view class="status-title">审核未通过</view>
+      <view class="status-desc">
+        <view>你的认证资料未通过物业审核，</view>
+        <view>请根据以下原因修改后重新提交。</view>
+      </view>
+      <view class="callout callout-red">{{rejectReason || '证件照片模糊不清，无法辨认关键信息'}}</view>
+      <view class="btn-row">
+        <button class="btn btn-secondary" bindtap="onContactProperty">联系物业</button>
+        <button class="btn btn-primary" bindtap="onResubmit">修改重提</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- Banned State -->
+  <view class="state-panel" wx:elif="{{status === 'banned'}}">
+    <view class="status-card">
+      <view class="status-icon banned">
+        <image class="status-icon-img" src="/images/block-icon.svg" mode="aspectFit"></image>
+      </view>
+      <view class="status-title">账户已封禁</view>
+      <view class="status-desc">
+        <view>你的账户因违反社区规则已被封禁。</view>
+      </view>
+      <view class="callout callout-red">{{banReason || '多次发布不实信息，经物业核实后封禁'}}</view>
+      <button class="btn btn-secondary" bindtap="onAppeal">申诉</button>
+    </view>
+  </view>
+
+  <!-- Fallback: unknown status → same as pending -->
+  <view class="state-panel" wx:else>
+    <view class="status-card">
+      <view class="status-icon pending">
+        <image class="status-icon-img" src="/images/clock-icon.svg" mode="aspectFit"></image>
+      </view>
+      <view class="status-title">审核中</view>
+      <view class="status-desc">
+        <view>你的住户认证资料已提交，</view>
+        <view>物业正在核验你的身份信息。</view>
+        <view style="margin-top:16rpx;">
+          <text style="font-weight:600;">通常需要 1-2 个工作日</text>，请耐心等待。
+        </view>
+      </view>
+      <button class="btn btn-secondary" bindtap="onRefresh">刷新状态</button>
+    </view>
+    <view class="footer-tip">如有疑问，请联系小区物业</view>
+  </view>
+</view>

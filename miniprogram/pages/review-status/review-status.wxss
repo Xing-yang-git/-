@@ -1,0 +1,172 @@
+/* ============================================================
+   审核状态页 — 对齐原型 c-end/pages/review-status.html + ios-ui.css
+   单位: rpx (原型 px × 2)
+   ============================================================ */
+
+page {
+  background: var(--bg);
+}
+
+/* --- Page content (= prototype .page-content flex-center) --- */
+.review-page {
+  min-height: 100vh;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* --- Loading --- */
+.loading-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+  color: var(--text-secondary);
+}
+
+/* --- State Panel (= prototype .state-panel, display wrapper only, no padding) --- */
+.state-panel {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* --- Status Card (= prototype .status-card) --- */
+/* prototype: padding: 48px 32px; text-align: center; */
+.status-card {
+  text-align: center;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 96rpx 64rpx;
+  box-sizing: border-box;
+}
+
+/* --- Status Icon (= prototype .status-icon) --- */
+/* prototype: 72px × 72px; border-radius: 50%; margin-bottom: 20px; */
+.status-icon {
+  width: 144rpx;
+  height: 144rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 40rpx;
+}
+
+/* prototype: rgba(0,113,227,0.1) */
+.status-icon.pending {
+  background: rgba(0, 113, 227, 0.1);
+}
+
+/* prototype: rgba(255,59,48,0.1) */
+.status-icon.rejected {
+  background: rgba(255, 59, 48, 0.1);
+}
+
+/* prototype: var(--ios-fill-tertiary) */
+.status-icon.banned {
+  background: var(--fill-tertiary);
+}
+
+/* prototype SVG: 36px × 36px inside 72px container */
+.status-icon-img {
+  width: 72rpx;
+  height: 72rpx;
+}
+
+/* --- Status Title (= prototype .status-title) --- */
+/* prototype: font-size: var(--ios-text-xl)=22px; font-weight: 700; margin-bottom: 8px; */
+.status-title {
+  font-size: 44rpx;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 16rpx;
+}
+
+/* --- Status Desc (= prototype .status-desc) --- */
+/* prototype: font-size: var(--ios-text-base)=17px; color: var(--ios-text-secondary); line-height: 1.6; margin-bottom: 20px; */
+.status-desc {
+  font-size: 34rpx;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 40rpx;
+  text-align: center;
+}
+
+/* --- Callout (= prototype .callout) --- */
+/* prototype inline: margin:0 0 16px; (rejected/banned states) */
+.callout {
+  width: 100%;
+  padding: 28rpx 32rpx;
+  background: rgba(255, 149, 0, 0.08);
+  border-radius: var(--radius);
+  font-size: 26rpx;
+  color: var(--orange);
+  line-height: 1.5;
+  margin-bottom: 32rpx;
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.callout-red {
+  background: rgba(255, 59, 48, 0.08);
+  color: var(--red);
+}
+
+/* --- Button Row (= prototype inline style) --- */
+/* prototype: display:flex;gap:12px;justify-content:center; */
+.btn-row {
+  width: 100%;
+  display: flex;
+  gap: 24rpx;
+}
+
+.btn-row .btn {
+  flex: 1;
+}
+
+/* --- Buttons (= prototype .btn) --- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 88rpx;
+  padding: 0 40rpx;
+  border-radius: 16rpx;
+  font-size: 34rpx;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  border: none;
+}
+
+.btn::after {
+  border: none;
+}
+
+.btn:active {
+  transform: scale(0.97);
+  opacity: 0.85;
+}
+
+.btn-primary {
+  background: var(--blue);
+  color: var(--surface);
+}
+
+.btn-secondary {
+  background: var(--fill-tertiary);
+  color: var(--text);
+}
+
+/* --- Footer Tip (= prototype p outside .status-card) --- */
+/* prototype: font-size:12px; color:var(--ios-text-tertiary); no margin (reset) */
+.footer-tip {
+  text-align: center;
+  font-size: 24rpx;
+  color: var(--text-tertiary);
+}

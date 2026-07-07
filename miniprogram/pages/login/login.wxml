@@ -1,0 +1,23 @@
+<view class="login-page">
+  <view class="login-body">
+    <view class="login-header">
+      <view class="login-icon-area">
+        <view class="login-icon">
+          <image class="login-icon-img" src="/images/login-icon.svg" mode="aspectFit"></image>
+        </view>
+      </view>
+      <view class="login-title">欢迎来到邻里互助</view>
+    </view>
+
+    <view class="login-footer">
+      <button class="wx-btn" bindtap="onLoginTap">登录</button>
+
+      <view class="privacy-row">
+        <checkbox-group bindchange="onAgreeChange">
+          <checkbox value="agree" checked="{{agreed}}" color="#0071e3"/>
+        </checkbox-group>
+        <text class="privacy-text">登录即表示同意<text class="privacy-link">《用户服务协议》</text>和<text class="privacy-link">《隐私政策》</text></text>
+      </view>
+    </view>
+  </view>
+</view>

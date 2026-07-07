@@ -1,0 +1,314 @@
+const api = require('../../utils/api');
+
+Page({
+  data: {
+    postType: 'LEND',   // 'LEND' | 'WANTED' | 'HELP'
+    title: '',
+    category: '',
+    customType: '',
+    price: '',
+    description: '',
+    images: [],
+    // Duration (shared by LEND & WANTED)
+    durationUnit: 'day',
+    durationOptions: ['1 天', '3 天', '5 天', '7 天'],
+    durationIndex: 3,
+    // LEND fields
+    pickupMethod: 'self_pickup',
+    condition: 'normal',
+    // HELP fields
+    urgency: 'normal',
+    helpStartDate: '',
+    helpStartHour: 9,
+    helpEndDate: '',
+    helpEndHour: 18,
+    hourOptions: []
+  },
+
+  onLoad(options) {
+    // Accept postType from query params
+    if (options && options.type) {
+      const type = options.type;
+      if (type === 'WANTED' || type === 'BORROW') {
+        this.setData({ postType: 'WANTED' });
+      } else if (type === 'HELP') {
+        this.setData({ postType: 'HELP' });
+      }
+    }
+
+    // Generate hour options 00:00 ~ 23:00
+    const hours = [];
+    for (let i = 0; i < 24; i++) {
+      hours.push(i < 10 ? '0' + i + ':00' : i + ':00');
+    }
+    this.setData({ hourOptions: hours });
+
+    // Set default help time range (today ~ today+3 days for HELP form)
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = (now.getMonth() + 1).toString().padStart(2, '0');
+    const d = now.getDate().toString().padStart(2, '0');
+    this.setData({ helpStartDate: y + '-' + m + '-' + d });
+
+    const end = new Date(now.getTime() + 3 * 24 * 3600000);
+    const ey = end.getFullYear();
+    const em = (end.getMonth() + 1).toString().padStart(2, '0');
+    const ed = end.getDate().toString().padStart(2, '0');
+    this.setData({ helpEndDate: ey + '-' + em + '-' + ed });
+  },
+
+  onPostTypeTap(e) {
+    this.setData({ postType: e.currentTarget.dataset.value });
+  },
+
+  onInput(e) {
+    const field = e.currentTarget.dataset.field;
+    this.setData({ [field]: e.detail.value });
+  },
+
+  onCategoryTap(e) {
+    const value = e.currentTarget.dataset.value;
+    if (value === '其他') {
+      if (this.data.category === '其他') {
+        this.setData({ category: '', customType: '' });
+        return;
+      }
+      this.setData({ category: '其他' });
+    } else {
+      this.setData({ category: value, customType: '' });
+    }
+  },
+
+  onConditionTap(e) {
+    this.setData({ condition: e.currentTarget.dataset.value });
+  },
+
+  onUnitTap(e) {
+    const unit = e.currentTarget.dataset.value;
+    if (unit === 'hour') {
+      const hours = [];
+      for (let i = 1; i <= 23; i++) {
+        hours.push(i + ' 小时');
+      }
+      this.setData({
+        durationUnit: 'hour',
+        durationOptions: hours,
+        durationIndex: 2
+      });
+    } else {
+      const days = [];
+      for (let i = 1; i <= 7; i++) {
+        days.push(i + ' 天');
+      }
+      this.setData({
+        durationUnit: 'day',
+        durationOptions: days,
+        durationIndex: 6
+      });
+    }
+  },
+
+  onDurationChange(e) {
+    this.setData({ durationIndex: parseInt(e.detail.value) });
+  },
+
+  onPickupTap(e) {
+    this.setData({ pickupMethod: e.currentTarget.dataset.value });
+  },
+
+  onChooseImage() {
+    const remaining = 9 - this.data.images.length;
+    if (remaining <= 0) {
+      wx.showToast({ title: '最多 9 张', icon: 'none' });
+      return;
+    }
+    wx.chooseImage({
+      count: remaining,
+      sizeType: ['compressed'],
+      sourceType: ['album', 'camera'],
+      success: res => {
+        this.setData({ images: [...this.data.images, ...res.tempFilePaths] });
+      }
+    });
+  },
+
+  onRemoveImage(e) {
+    const idx = e.currentTarget.dataset.index;
+    const imgs = [...this.data.images];
+    imgs.splice(idx, 1);
+    this.setData({ images: imgs });
+  },
+
+  // HELP: urgency segment
+  onUrgencyTap(e) {
+    this.setData({ urgency: e.currentTarget.dataset.value });
+  },
+
+  // HELP: time range date/hour pickers
+  onHelpStartDateChange(e) {
+    this.setData({ helpStartDate: e.detail.value });
+  },
+
+  onHelpStartHourChange(e) {
+    this.setData({ helpStartHour: parseInt(e.detail.value) });
+  },
+
+  onHelpEndDateChange(e) {
+    this.setData({ helpEndDate: e.detail.value });
+  },
+
+  onHelpEndHourChange(e) {
+    this.setData({ helpEndHour: parseInt(e.detail.value) });
+  },
+
+  async onSubmit() {
+    const postType = this.data.postType;
+
+    // --- HELP: 技能求助 ---
+    if (postType === 'HELP') {
+      if (!this.data.title || !this.data.title.trim()) {
+        wx.showToast({ title: '请填写求助标题', icon: 'none' });
+        return;
+      }
+      if (!this.data.category) {
+        wx.showToast({ title: '请选择求助类型', icon: 'none' });
+        return;
+      }
+      if (this.data.category === '其他' && !this.data.customType.trim()) {
+        wx.showToast({ title: '请手动输入类型', icon: 'none' });
+        return;
+      }
+      if (!this.data.description || !this.data.description.trim()) {
+        wx.showToast({ title: '请填写详细描述', icon: 'none' });
+        return;
+      }
+
+      // Build time range strings (optional)
+      let timeStart = '';
+      let timeEnd = '';
+      if (this.data.helpStartDate && this.data.helpEndDate) {
+        timeStart = this.data.helpStartDate + ' ' + this.data.hourOptions[this.data.helpStartHour];
+        timeEnd = this.data.helpEndDate + ' ' + this.data.hourOptions[this.data.helpEndHour];
+      }
+
+      wx.showLoading({ title: '发布中' });
+      try {
+        // Upload images first
+        let imageUrls = [];
+        if (this.data.images.length > 0) {
+          const uploadTasks = this.data.images.map(filePath => api.upload('/api/common/upload', filePath));
+          imageUrls = await Promise.all(uploadTasks);
+        }
+        await api.post('/api/help', {
+          title: this.data.title.trim(),
+          category: this.data.category === '其他' ? this.data.customType.trim() : this.data.category,
+          description: this.data.description.trim(),
+          isUrgent: this.data.urgency === 'urgent',
+          timeStart: timeStart,
+          timeEnd: timeEnd,
+          images: JSON.stringify(imageUrls)
+        });
+        wx.hideLoading();
+        wx.showToast({ title: '发布成功' });
+        setTimeout(() => wx.navigateBack(), 1000);
+      } catch (e) {
+        wx.hideLoading();
+        wx.showToast({ title: e.message || '发布失败', icon: 'none' });
+      }
+      return;
+    }
+
+    // --- WANTED: 需求借入 ---
+    if (postType === 'WANTED') {
+      if (!this.data.title || !this.data.title.trim()) {
+        wx.showToast({ title: '请填写物品名称', icon: 'none' });
+        return;
+      }
+      if (!this.data.category) {
+        wx.showToast({ title: '请选择物品类型', icon: 'none' });
+        return;
+      }
+      if (this.data.category === '其他' && !this.data.customType.trim()) {
+        wx.showToast({ title: '请手动输入类型', icon: 'none' });
+        return;
+      }
+      if (!this.data.description || !this.data.description.trim()) {
+        wx.showToast({ title: '请填写用途说明', icon: 'none' });
+        return;
+      }
+
+      wx.showLoading({ title: '发布中' });
+      try {
+        // Upload images first (optional for WANTED)
+        let imageUrls = [];
+        if (this.data.images.length > 0) {
+          const uploadTasks = this.data.images.map(filePath => api.upload('/api/common/upload', filePath));
+          imageUrls = await Promise.all(uploadTasks);
+        }
+        await api.post('/api/idle', {
+          postType: 'WANTED',
+          title: this.data.title.trim(),
+          category: this.data.category === '其他' ? this.data.customType.trim() : this.data.category,
+          description: this.data.description.trim(),
+          images: JSON.stringify(imageUrls),
+          maxDuration: Number.parseInt(this.data.durationOptions[this.data.durationIndex]),
+          durationUnit: this.data.durationUnit
+        });
+        wx.hideLoading();
+        wx.showToast({ title: '发布成功' });
+        setTimeout(() => wx.navigateBack(), 1000);
+      } catch (e) {
+        wx.hideLoading();
+        wx.showToast({ title: e.message || '发布失败', icon: 'none' });
+      }
+      return;
+    }
+
+    // --- LEND: 闲置借出 ---
+    if (!this.data.title || !this.data.title.trim()) {
+      wx.showToast({ title: '请填写物品标题', icon: 'none' });
+      return;
+    }
+    if (!this.data.category) {
+      wx.showToast({ title: '请选择物品类型', icon: 'none' });
+      return;
+    }
+    if (this.data.category === '其他' && !this.data.customType.trim()) {
+      wx.showToast({ title: '请手动输入类型', icon: 'none' });
+      return;
+    }
+    if (!this.data.price || !this.data.price.trim()) {
+      wx.showToast({ title: '请填写参考价格', icon: 'none' });
+      return;
+    }
+    if (this.data.images.length === 0) {
+      wx.showToast({ title: '请至少上传 1 张图片', icon: 'none' });
+      return;
+    }
+
+    wx.showLoading({ title: '发布中' });
+    try {
+      // Upload images first (required for LEND)
+      const uploadTasks = this.data.images.map(filePath => api.upload('/api/common/upload', filePath));
+      const imageUrls = await Promise.all(uploadTasks);
+      await api.post('/api/idle', {
+        postType: this.data.postType,
+        title: this.data.title.trim(),
+        category: this.data.category === '其他' ? this.data.customType.trim() : this.data.category,
+        condition: this.data.condition,
+        description: this.data.description,
+        price: Number.parseFloat(this.data.price),
+        images: JSON.stringify(imageUrls),
+        maxDuration: Number.parseInt(this.data.durationOptions[this.data.durationIndex]),
+        durationUnit: this.data.durationUnit,
+        pickupMethod: this.data.pickupMethod
+      });
+      wx.hideLoading();
+      wx.showToast({ title: '发布成功' });
+      setTimeout(() => wx.navigateBack(), 1000);
+    } catch (e) {
+      wx.hideLoading();
+      wx.showToast({ title: e.message || '发布失败', icon: 'none' });
+    }
+  }
+});

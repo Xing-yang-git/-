@@ -1,0 +1,127 @@
+<!--
+  profile 个人主页 — 像素级对齐原型 profile.html
+  原型路径: c-end/pages/profile.html
+-->
+<view class="container">
+
+  <!-- Nav Bar -->
+  <view class="nav-wrap" style="padding-top: {{statusBarHeight}}px;">
+    <view class="nav-bar">
+      <view class="logout-icon" bindtap="onLogoutTap">
+        <text style="font-size:40rpx;color:var(--text-secondary);">↪</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="page-content">
+
+    <!-- Profile Card -->
+    <view class="profile-card">
+      <view class="avatar">
+        <image class="avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
+      </view>
+      <view class="info">
+        <view class="name">{{roomInfo}}</view>
+        <view class="meta">
+          <view class="auth-tag {{isAuth ? 'authed' : 'unauthed'}}">{{isAuth ? '已认证' : '未认证'}}</view>
+          <text>{{userTypeText}}</text>
+        </view>
+        <view class="rate">综合评分 {{score}} ★★★★★</view>
+      </view>
+    </view>
+
+    <view class="profile-sep"></view>
+
+    <!-- Record Tabs -->
+    <view class="record-header">
+      <view class="segment">
+        <view class="segment-item {{recordTab === 'idle' ? 'active' : ''}}" bindtap="onRecordTabTap" data-tab="idle">互借记录</view>
+        <view class="segment-item {{recordTab === 'help' ? 'active' : ''}}" bindtap="onRecordTabTap" data-tab="help">互助记录</view>
+      </view>
+    </view>
+
+    <!-- Idle Records -->
+    <view wx:if="{{recordTab === 'idle'}}">
+      <block wx:for="{{idleRecords}}" wx:key="id">
+        <view class="list-row" bindtap="onOpenRecord" data-record="{{item}}">
+          <view class="list-bd">
+            <view class="list-title">{{item.title}}</view>
+            <view class="list-desc">{{item.roleText}}：{{item.peerName}} · {{item.dateText}}</view>
+          </view>
+          <view class="list-ft">
+            <view class="record-tag {{item.type === 'LEND' ? 'lend' : 'borrow'}}">{{item.typeText}}</view>
+          </view>
+        </view>
+      </block>
+      <view class="empty-state" wx:if="{{idleRecords.length === 0}}">
+        <text class="empty-text">暂无互借记录</text>
+      </view>
+      <view class="list-end" wx:if="{{idleRecords.length > 0}}">— 共 {{idleRecords.length}} 条记录 —</view>
+    </view>
+
+    <!-- Help Records -->
+    <view wx:if="{{recordTab === 'help'}}">
+      <block wx:for="{{helpRecords}}" wx:key="id">
+        <view class="list-row" bindtap="onOpenRecord" data-record="{{item}}">
+          <view class="list-bd">
+            <view class="list-title">{{item.title}}</view>
+            <view class="list-desc">{{item.roleText}}：{{item.peerName}} · {{item.dateText}}</view>
+          </view>
+          <view class="list-ft">
+            <view class="record-tag {{item.type === 'HELP' ? 'help' : 'seek'}}">{{item.typeText}}</view>
+          </view>
+        </view>
+      </block>
+      <view class="empty-state" wx:if="{{helpRecords.length === 0}}">
+        <text class="empty-text">暂无互助记录</text>
+      </view>
+      <view class="list-end" wx:if="{{helpRecords.length > 0}}">— 共 {{helpRecords.length}} 条记录 —</view>
+    </view>
+
+  </view>
+
+</view>
+
+<!-- Logout Alert -->
+<view class="alert-overlay" wx:if="{{showLogoutAlert}}" catchtap="onCloseLogoutAlert">
+  <view class="alert" catchtap="">
+    <view class="alert-title">退出登录</view>
+    <view class="alert-body">确定要退出当前账户吗？</view>
+    <view class="alert-actions">
+      <view class="alert-btn" bindtap="onCancelLogout">取消</view>
+      <view class="alert-btn alert-btn-bold alert-btn-danger" bindtap="onDoLogout">确认退出</view>
+    </view>
+  </view>
+</view>
+
+<!-- Record Detail Alert -->
+<view class="alert-overlay" wx:if="{{showRecordDetail}}" catchtap="onCloseRecordDetail">
+  <view class="alert" catchtap="">
+    <view class="alert-title">互助记录详情</view>
+    <view class="alert-body">
+      <view class="info-row">
+        <text class="info-label">物品/事项</text>
+        <text class="info-value">{{recordDetail.item}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">我的角色</text>
+        <text class="info-value">{{recordDetail.role}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">对方</text>
+        <text class="info-value">{{recordDetail.peer}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">日期</text>
+        <text class="info-value">{{recordDetail.date}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">评价</text>
+        <text class="info-value">{{recordDetail.remark}}</text>
+      </view>
+    </view>
+    <view class="alert-actions">
+      <view class="alert-btn alert-btn-bold" bindtap="onCloseRecordDetail">关闭</view>
+    </view>
+  </view>
+</view>

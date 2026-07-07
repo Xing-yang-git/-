@@ -1,0 +1,693 @@
+/* ============================================================
+   B-End Admin — 社区互助闲置平台 物业管理后台
+   Element Plus overrides + layout styles
+   ============================================================ */
+
+:root {
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", sans-serif;
+  --font-mono: "SF Mono", Menlo, Consolas, monospace;
+  --accent: #0071e3;
+  --accent-hover: #0077ed;
+  --accent-active: #0066cc;
+  --bg: #f5f5f7;
+  --surface: #ffffff;
+  --sidebar-width: 220px;
+  --topbar-height: 56px;
+  --text: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-tertiary: #86868b;
+  --border: #d2d2d7;
+  --border-soft: #e8e8ed;
+  --red: #ff3b30;
+  --orange: #ff9500;
+  --green: #34c759;
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  --ease: cubic-bezier(0.28, 0, 0.22, 1);
+  --transition: 150ms var(--ease);
+}
+
+/* ─── Global ─── */
+body {
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--text);
+}
+
+/* ─── Admin Layout ─── */
+.admin-layout {
+  height: 100vh;
+  display: flex;
+}
+
+.admin-layout .el-aside {
+  background: #fafafc;
+  border-right: 0.5px solid var(--border-soft);
+  overflow: hidden;
+}
+
+.admin-layout .el-main {
+  background: var(--bg);
+  padding: 24px;
+  overflow-y: auto;
+}
+
+/* ─── Sidebar ─── */
+.sidebar-logo {
+  padding: 28px 24px 24px;
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar-logo .logo-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #0071e3 0%, #2997ff 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 16px;
+}
+
+/* ─── Sidebar Menu overrides ─── */
+.admin-sidebar-menu {
+  border-right: none !important;
+  background: transparent !important;
+}
+
+.admin-sidebar-menu .el-menu-item {
+  margin: 2px 0;
+  border-radius: 12px;
+  font-size: 15px;
+  height: 48px;
+  line-height: 48px;
+  color: var(--text-secondary);
+  font-weight: 450;
+  transition: all 0.25s var(--ease);
+}
+
+.admin-sidebar-menu .el-menu-item:hover {
+  color: var(--text);
+  background: rgba(0,0,0,0.04);
+}
+
+.admin-sidebar-menu .el-menu-item.is-active {
+  color: var(--accent);
+  background: rgba(0,113,227,0.06);
+  font-weight: 550;
+}
+
+.admin-sidebar-menu .el-menu-item .el-icon {
+  font-size: 20px;
+  margin-right: 8px;
+}
+
+/* ─── Sidebar Footer ─── */
+.sidebar-footer {
+  padding: 16px 24px;
+  border-top: 0.5px solid var(--border-soft);
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: auto;
+}
+
+/* ─── Topbar ─── */
+.topbar {
+  background: rgba(255,255,255,0.82);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  padding: 12px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 56px;
+  border-bottom: 0.5px solid var(--border-soft);
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ─── Stat Cards ─── */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  transition: box-shadow 0.3s var(--ease), transform 0.3s var(--ease);
+}
+
+.stat-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.stat-card .stat-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.stat-card .stat-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.stat-card .stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.stat-card .stat-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.stat-card .stat-change {
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.stat-card .stat-change.up { color: var(--green); }
+.stat-card .stat-change.down { color: var(--red); }
+
+/* Dashboard luxe stat cards */
+.stat-grid-luxe {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+.stat-card-luxe {
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 32px 28px 28px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  transition: box-shadow 0.4s var(--ease), transform 0.4s var(--ease);
+}
+
+.stat-card-luxe:hover {
+  box-shadow: 0 8px 28px rgba(0,0,0,0.08);
+  transform: translateY(-2px);
+}
+
+.stat-card-luxe .luxe-value {
+  font-size: 44px;
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+
+.stat-card-luxe .luxe-label {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  font-weight: 450;
+}
+
+.stat-card-luxe .luxe-change {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.luxe-change.up { color: var(--green); }
+.luxe-change.down { color: var(--red); }
+
+/* ─── Panel ─── */
+.panel {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+
+.panel-header {
+  padding: 14px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 0.5px solid var(--border-soft);
+}
+
+.panel-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* ─── Segment Tabs ─── */
+.segment-row {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg);
+  border-radius: 8px;
+}
+
+.segment-btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  transition: all var(--transition);
+}
+
+.segment-btn:hover {
+  background: rgba(0,113,227,0.04);
+}
+
+.segment-btn.active {
+  background: rgba(0,113,227,0.06);
+  color: var(--accent);
+}
+
+/* ─── Status Badges ─── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.badge-success { background: rgba(52,199,89,0.1); color: var(--green); }
+.badge-warning { background: rgba(255,149,0,0.1); color: var(--orange); }
+.badge-danger { background: rgba(255,59,48,0.1); color: var(--red); }
+.badge-info { background: rgba(0,113,227,0.1); color: var(--accent); }
+.badge-default { background: var(--bg); color: var(--text-secondary); }
+
+/* ─── Table overrides ─── */
+.el-table {
+  --el-table-border-color: var(--border-soft);
+  font-size: 14px;
+}
+
+.el-table th.el-table__cell {
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 10px 0;
+}
+
+.el-table td.el-table__cell {
+  padding: 12px 0;
+  border-bottom: 0.5px solid var(--border-soft);
+}
+
+/* ─── Filter Row ─── */
+.filter-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 8px 20px 12px;
+  background: var(--surface);
+}
+
+/* ─── Content area padding tweaks ─── */
+.content-section {
+  padding: 0;
+}
+
+/* ─── Section title ─── */
+.section-title {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  margin-bottom: 16px;
+}
+
+.section-subtitle {
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+/* ─── Detail row ─── */
+.detail-row {
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+  font-size: 14px;
+}
+
+.detail-row .dl {
+  color: var(--text-secondary);
+  width: 90px;
+  flex-shrink: 0;
+}
+
+.detail-row .dv {
+  color: var(--text);
+  flex: 1;
+}
+
+/* ─── Divider ─── */
+.dv-divider {
+  height: 0.5px;
+  background: var(--border-soft);
+  margin: 12px 0;
+}
+
+/* ─── Quick stats ─── */
+.quick-stats {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.quick-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.quick-stat .qs-value {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.quick-stat .qs-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* ─── Luxe chart ─── */
+.luxe-section {
+  margin-bottom: 32px;
+}
+
+.luxe-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 16px;
+}
+
+.luxe-section-title {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.luxe-section-sub {
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.chart-luxe {
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.two-col-luxe {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.stat-panel-luxe {
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-around;
+  text-align: center;
+}
+
+.top-list-luxe {
+  list-style: none;
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 20px 32px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  margin: 0;
+}
+
+.top-list-luxe li {
+  padding: 14px 0;
+  display: flex;
+  justify-content: space-between;
+  font-size: 15px;
+  align-items: center;
+}
+
+.top-list-luxe li + li {
+  border-top: 0.5px solid var(--border-soft);
+}
+
+.top-list-luxe .rank {
+  color: var(--text-tertiary);
+  width: 36px;
+  font-weight: 500;
+}
+
+.top-list-luxe .name {
+  flex: 1;
+  font-weight: 450;
+}
+
+.top-list-luxe .count {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+/* ─── Text utils ─── */
+.text-secondary { color: var(--text-secondary); }
+.text-tertiary { color: var(--text-tertiary); }
+.text-red { color: var(--red); }
+.text-orange { color: var(--orange); }
+.text-green { color: var(--green); }
+.text-sm { font-size: 12px; }
+.text-xs { font-size: 11px; }
+.mt-4 { margin-top: 4px; }
+.mt-8 { margin-top: 8px; }
+.mt-12 { margin-top: 12px; }
+.mt-16 { margin-top: 16px; }
+.mb-8 { margin-bottom: 8px; }
+.mb-16 { margin-bottom: 16px; }
+.text-center { text-align: center; }
+
+/* ─── Buttons ─── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  height: 32px; padding: 0 14px; border-radius: 6px; font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: all var(--transition); white-space: nowrap; border: none;
+}
+.btn:active { transform: scale(0.97); }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-secondary { background: var(--bg); color: var(--text); }
+.btn-secondary:hover { background: var(--border-soft); }
+.btn-danger { background: var(--red); color: #fff; }
+.btn-ghost { background: transparent; color: var(--accent); }
+.btn-sm { height: 26px; padding: 0 10px; font-size: 12px; border-radius: 4px; }
+
+/* ─── Publish form ─── */
+.publish-field { margin-bottom: 16px; }
+.field-label {
+  font-size: 13px; font-weight: 500; color: var(--text-secondary);
+  display: block; margin-bottom: 6px;
+}
+.field-label .required { color: var(--red); }
+
+/* ─── Publish mode toggle buttons ─── */
+.btn-sm-toggle {
+  height: 26px; padding: 0 10px; font-size: 12px; border-radius: 4px;
+  border: none; cursor: pointer; font-weight: 500;
+  background: var(--bg); color: var(--text);
+  transition: all var(--transition);
+}
+.btn-sm-toggle.active {
+  background: var(--accent); color: #fff;
+}
+.btn-sm-toggle:not(.active):hover { background: var(--border-soft); }
+
+/* ─── Custom Checkbox (offline modal) ─── */
+.offline-check-label {
+  display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; padding: 4px 0;
+}
+.check-box {
+  width: 18px; height: 18px; border-radius: 4px; border: 1.5px solid var(--border);
+  display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff;
+  transition: all var(--transition); flex-shrink: 0;
+}
+.check-box.checked { background: var(--accent); border-color: var(--accent); }
+
+/* ─── Resident search ─── */
+.rs-item {
+  display: flex; align-items: center; padding: 10px 16px; cursor: pointer;
+}
+.rs-item:hover { background: rgba(0,0,0,0.03); }
+.rs-item.selected { background: rgba(0,113,227,0.06); }
+.rs-separator {
+  height: 1px;
+  background: linear-gradient(to right, transparent 5%, var(--border-soft) 25%, var(--border-soft) 75%, transparent 95%);
+}
+
+/* ─── Auth pages ─── */
+.auth-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: var(--bg);
+}
+
+/* ─── Home launcher grid ─── */
+.launcher-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 768px) {
+  .stat-grid-luxe {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .two-col-luxe {
+    grid-template-columns: 1fr;
+  }
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .topbar {
+    padding: 0 16px;
+  }
+  .topbar-title {
+    font-size: 17px;
+  }
+}
+
+/* ─── Keyframe Animations ─── */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+@keyframes toastIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+
+/* ─── Element Plus Overrides — Modal/Dialog ─── */
+.el-dialog {
+  border-radius: var(--radius-lg);
+}
+.el-dialog__header {
+  text-align: center;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  padding: 20px 24px 12px;
+}
+
+/* ─── Element Plus Overrides — Input ─── */
+.el-input__wrapper {
+  border-radius: 6px;
+  box-shadow: 0 0 0 0.5px var(--border-soft);
+}
+.el-input__wrapper:hover { box-shadow: 0 0 0 0.5px var(--border); }
+.el-input.is-focus .el-input__wrapper { box-shadow: 0 0 0 1px var(--accent); }
+
+/* ─── Element Plus Overrides — Checkbox ─── */
+.el-checkbox__input.is-checked .el-checkbox__inner {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ─── Element Plus Overrides — Radio ─── */
+.el-radio__input.is-checked .el-radio__inner {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+/* ─── Element Plus Overrides — Message (Toast) ─── */
+.el-message {
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+}
+
+/* ─── Rating Tag ─── */
+.rating-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--bg);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+.rating-tag .stars { color: var(--orange); font-size: 11px; line-height: 1; }
+.rating-tag .label { color: var(--text-secondary); font-size: 10px; line-height: 1; }
+
+/* ─── Form Field (iOS style) ─── */
+.field-input {
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 13px;
+  color: var(--text);
+  border: 0.5px solid var(--border-soft);
+  transition: border-color var(--transition);
+}
+.field-input:focus { border-color: var(--accent); background: var(--surface); outline: none; }
+.field-input::placeholder { color: var(--text-tertiary); }

@@ -1,0 +1,35 @@
+<view class="container">
+  <!-- Session List -->
+  <view class="session-list" wx:if="{{sessions.length > 0}}">
+    <view
+      class="session-item"
+      wx:for="{{sessions}}"
+      wx:key="id"
+      bindtap="onSessionTap"
+      data-id="{{item.id}}"
+      data-name="{{item.otherName}}"
+      data-room="{{item.roomInfo}}"
+      data-about="{{item.aboutTitle}}"
+      data-about-id="{{item.aboutId}}"
+    >
+      <view class="avatar" style="background: {{item.avatarColor}};">{{item.avatarText}}</view>
+      <view class="session-content">
+        <view class="session-top">
+          <text class="session-name">{{item.otherName}}</text>
+          <text class="session-time">{{item.timeText}}</text>
+        </view>
+        <view class="session-bottom">
+          <text class="session-preview {{item.isRead ? 'read' : ''}}">{{item.lastMessage}}</text>
+          <view class="unread-badge" wx:if="{{item.unreadCount > 0}}">{{item.unreadCount > 99 ? '99+' : item.unreadCount}}</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- Empty State -->
+  <view class="empty-state" wx:if="{{sessions.length === 0}}">
+    <view class="empty-icon">💬</view>
+    <text class="empty-text">暂无消息</text>
+    <text class="empty-hint">去社区逛逛，开始一段对话吧</text>
+  </view>
+</view>

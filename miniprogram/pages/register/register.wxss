@@ -1,0 +1,361 @@
+/* ============================================================
+   注册页 — 对齐原型 c-end/pages/register.html + ios-ui.css
+   单位转换: 原型 px × 2 = rpx
+   ============================================================ */
+
+.register-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+/* --- Step Indicator (对齐 ios-ui.css .step-row / .step-labels) --- */
+.step-indicator-wrap {
+  background: var(--surface);
+  padding: 0 64rpx;
+}
+
+.step-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40rpx 0;
+}
+
+.step-circle {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 50%;
+  background: var(--fill-tertiary);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.step-circle.active,
+.step-circle.done {
+  background: var(--blue);
+  color: var(--surface);
+}
+
+.step-line {
+  width: 96rpx;
+  height: 4rpx;
+  background: var(--fill-tertiary);
+  flex-shrink: 0;
+}
+
+.step-line.done {
+  background: var(--blue);
+}
+
+.step-labels {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 40rpx;
+  margin-top: 8rpx;
+}
+
+.step-label {
+  font-size: 24rpx;
+  color: var(--text-secondary);
+  text-align: center;
+  width: 120rpx;
+}
+
+.step-label.active {
+  color: var(--blue);
+  font-weight: 500;
+}
+
+/* --- Page Content (对齐 ios-ui.css .page-content) --- */
+.page-content {
+  flex: 1;
+  background: var(--surface);
+}
+
+/* --- Step Body (对齐原型 inline style) --- */
+.step-body {
+  padding: 32rpx;
+}
+
+/* --- Search (对齐 ios-ui.css .search-input-wrap) --- */
+.search-input-wrap {
+  display: flex;
+  align-items: center;
+  background: var(--fill-tertiary);
+  border-radius: 20rpx;
+  padding: 0 16rpx;
+  height: 72rpx;
+  margin-bottom: 24rpx;
+}
+
+.search-input-wrap .search-icon {
+  width: 32rpx;
+  height: 32rpx;
+  margin: 0 12rpx;
+  flex-shrink: 0;
+}
+
+.search-input-wrap .search-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: var(--text-base);
+  height: 100%;
+}
+
+.search-input-wrap .search-clear {
+  width: 28rpx;
+  height: 28rpx;
+  padding: 8rpx;
+  flex-shrink: 0;
+}
+
+/* --- List Group (对齐 ios-ui.css .list-group / .list-row) --- */
+.list-group {
+  margin: 0;
+  background: var(--surface);
+  border-radius: 16rpx;
+  overflow: hidden;
+}
+
+.list-row {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 32rpx;
+  min-height: 88rpx;
+  gap: 24rpx;
+  background: var(--surface);
+  transition: background var(--motion-fast) var(--ease);
+}
+
+.list-row:active {
+  background: var(--fill-quaternary);
+}
+
+.list-row + .list-row {
+  border-top: 1rpx solid var(--separator);
+}
+
+.list-row .list-bd {
+  flex: 1;
+  min-width: 0;
+}
+
+.list-row .list-title {
+  font-size: var(--text-base);
+  color: var(--text);
+}
+
+.list-row .list-desc {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-top: 4rpx;
+  line-height: 1.3;
+}
+
+.list-row.selected {
+  background: var(--fill-quaternary);
+}
+
+.check-mark {
+  color: var(--blue);
+  font-size: 36rpx;
+  font-weight: 700;
+  margin-left: 16rpx;
+  flex-shrink: 0;
+}
+
+/* --- Inputs (对齐 ios-ui.css .input-group / .input-label / .input) --- */
+.input-group {
+  margin-bottom: 32rpx;
+}
+
+.input-label {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-bottom: 12rpx;
+  letter-spacing: -0.01em;
+}
+
+.input-label .required {
+  color: var(--red);
+}
+
+.input {
+  width: 100%;
+  height: 88rpx;
+  padding: 0 24rpx;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  background: var(--fill-tertiary);
+  transition: background var(--motion-fast) var(--ease);
+}
+
+/* --- Room Row (对齐原型 .room-row) --- */
+.room-row {
+  display: flex;
+  gap: 16rpx;
+}
+
+.room-row .input-group {
+  flex: 1;
+}
+
+/* --- Segmented Control (对齐 ios-ui.css .segment) --- */
+.segment {
+  display: flex;
+  background: var(--bg);
+  border-radius: 16rpx;
+  padding: 4rpx;
+}
+
+.segment-item {
+  flex: 1;
+  text-align: center;
+  padding: 12rpx 0;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-radius: 14rpx;
+  transition: all var(--motion-fast) var(--ease);
+}
+
+.segment-item.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+/* --- Callout (对齐 ios-ui.css .callout / .callout-red) --- */
+.callout {
+  padding: 28rpx 32rpx;
+  background: rgba(255, 149, 0, 0.08);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  color: var(--orange);
+  line-height: 1.5;
+}
+
+.callout-red {
+  background: rgba(255, 59, 48, 0.08);
+  color: var(--red);
+}
+
+/* --- Image Upload Grid (对齐 ios-ui.css .img-upload-grid) --- */
+.img-upload-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16rpx;
+}
+
+.img-upload-item {
+  aspect-ratio: 1;
+  border-radius: 16rpx;
+  background: var(--fill-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 56rpx;
+  color: var(--text-tertiary);
+  position: relative;
+  overflow: hidden;
+}
+
+.img-upload-add {
+  border: 3rpx dashed var(--fill-secondary);
+  background: transparent;
+}
+
+.add-icon {
+  font-size: 72rpx;
+  color: var(--fill-secondary);
+  line-height: 1;
+}
+
+.uploaded-img {
+  width: 100%;
+  height: 100%;
+}
+
+.img-delete {
+  position: absolute;
+  top: 8rpx;
+  right: 8rpx;
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.65);
+  color: var(--surface);
+  font-size: 26rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.upload-hint {
+  font-size: 24rpx;
+  color: var(--text-tertiary);
+  margin-top: 12rpx;
+  display: block;
+}
+
+/* --- Buttons (对齐 ios-ui.css .btn / .btn-primary / .btn-secondary) --- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 88rpx;
+  padding: 0 40rpx;
+  border-radius: 16rpx;
+  font-size: var(--text-base);
+  font-weight: 500;
+  gap: 8rpx;
+  letter-spacing: -0.01em;
+  border: none;
+}
+
+.btn::after {
+  border: none;
+}
+
+.btn:active {
+  transform: scale(0.97);
+  opacity: 0.85;
+}
+
+.btn-primary {
+  background: var(--blue);
+  color: var(--surface);
+}
+
+.btn-secondary {
+  background: var(--fill-tertiary);
+  color: var(--text);
+}
+
+.btn[disabled] {
+  opacity: 0.35;
+}
+
+/* --- Step Footer (对齐原型 .step-footer) --- */
+.step-footer {
+  display: flex;
+  gap: 24rpx;
+  padding: 32rpx;
+  background: var(--surface);
+  border-top: 1rpx solid var(--separator);
+  flex-shrink: 0;
+}
+
+.step-footer .btn {
+  flex: 1;
+}

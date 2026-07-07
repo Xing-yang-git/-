@@ -1,0 +1,307 @@
+/* ============================================================
+   publish-idle 页面样式 — 像素级对齐原型 publish-idle.html
+   原型路径: c-end/pages/publish-idle.html
+   单位换算: prototype px × 2 = rpx
+   CSS变量: --ios-* → --* (映射自 app.wxss page {} 块)
+   ============================================================ */
+
+/* --- Page Content (scrollable) --- */
+.page-content {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--bg);
+}
+
+/* --- Section (matches prototype inline-style divs) --- */
+.section {
+  padding: var(--space-4);
+  background: var(--surface);
+  margin-bottom: 16rpx;
+}
+
+/* --- Required asterisk --- */
+.required {
+  color: var(--red);
+}
+
+/* --- Input Label --- */
+.input-label {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-bottom: 12rpx;
+  letter-spacing: -0.01em;
+}
+
+/* --- Input Group --- */
+.input-group {
+  margin-bottom: var(--space-4);
+}
+
+/* --- Text Input --- */
+.input {
+  width: 100%;
+  height: 88rpx;
+  padding: 0 24rpx;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  background: var(--fill-tertiary);
+  box-sizing: border-box;
+}
+
+/* --- Textarea --- */
+.textarea {
+  width: 100%;
+  min-height: 200rpx;
+  padding: 20rpx 24rpx;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  background: var(--fill-tertiary);
+  box-sizing: border-box;
+}
+
+/* --- Segment Control --- */
+.segment {
+  display: flex;
+  background: var(--bg);
+  border-radius: 16rpx;
+  padding: 4rpx;
+}
+
+.segment-item {
+  flex: 1;
+  text-align: center;
+  padding: 12rpx 0;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-radius: 14rpx;
+  transition: all var(--motion-fast) var(--ease);
+}
+
+.segment-item.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+/* --- Category Pills --- */
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 16rpx 32rpx;
+  border-radius: var(--radius-pill);
+  background: var(--fill-tertiary);
+  font-size: var(--text-sm);
+  color: var(--text);
+  transition: all var(--motion-fast) var(--ease);
+}
+
+.pill:active {
+  transform: scale(0.97);
+}
+
+.pill.selected {
+  background: var(--blue);
+  color: #FFFFFF;
+}
+
+.pill-icon {
+  width: 36rpx;
+  height: 36rpx;
+  flex-shrink: 0;
+}
+
+.pill.selected .pill-icon {
+  filter: brightness(0) invert(1);
+}
+
+/* --- Select / Picker --- */
+.select-wrap {
+  margin-top: 16rpx;
+}
+
+.select {
+  width: 100%;
+  height: 88rpx;
+  padding: 0 24rpx;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  background: var(--fill-tertiary);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+/* --- Image Upload Grid --- */
+.img-upload-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16rpx;
+}
+
+.img-upload-item {
+  aspect-ratio: 1;
+  border-radius: 16rpx;
+  background: var(--fill-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.img-upload-item .upload-img {
+  width: 100%;
+  height: 100%;
+}
+
+.img-add-btn {
+  font-size: 56rpx;
+  color: var(--text-tertiary);
+}
+
+.add-plus {
+  color: var(--text-tertiary);
+  font-size: 56rpx;
+  line-height: 1;
+}
+
+.img-delete {
+  position: absolute;
+  top: 8rpx;
+  right: 8rpx;
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.65);
+  color: #FFFFFF;
+  font-size: 26rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+/* --- Callout / Notice --- */
+.callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 8rpx;
+  padding: 28rpx 32rpx;
+  background: rgba(255, 149, 0, 0.08);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  color: var(--orange);
+  line-height: 1.5;
+}
+
+.callout-red {
+  background: rgba(255, 59, 48, 0.08);
+  color: var(--red);
+}
+
+.callout-icon {
+  width: 40rpx;
+  height: 40rpx;
+  flex-shrink: 0;
+  margin-top: 2rpx;
+}
+
+.callout-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.callout-strong {
+  font-weight: 600;
+}
+
+/* --- Action Bar (sticky bottom) --- */
+.action-bar {
+  display: flex;
+  gap: 24rpx;
+  padding: var(--space-4);
+  padding-bottom: calc(var(--space-4) + var(--safe-bottom));
+  background: rgba(255, 255, 255, 0.82);
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+}
+
+.action-bar .btn {
+  flex: 1;
+}
+
+/* --- Borrow Time Row --- */
+.time-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 16rpx;
+}
+
+.time-row:last-child {
+  margin-bottom: 0;
+}
+
+.time-label {
+  width: 120rpx;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.time-picker {
+  flex: 1;
+  height: 72rpx;
+  padding: 0 20rpx;
+  border-radius: var(--radius-sm);
+  background: var(--fill-tertiary);
+  display: flex;
+  align-items: center;
+}
+
+.time-value {
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+/* --- HELP Placeholder --- */
+.help-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 160rpx 0;
+}
+
+.help-placeholder-icon {
+  width: 80rpx;
+  height: 80rpx;
+  opacity: 0.3;
+  margin-bottom: 24rpx;
+}
+
+.help-placeholder-text {
+  font-size: var(--text-base);
+  color: var(--text-tertiary);
+}
+
+/* --- Time Hint --- */
+.time-hint {
+  font-size: 22rpx;
+  color: var(--text-tertiary);
+  margin-top: 8rpx;
+}

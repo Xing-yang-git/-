@@ -1,0 +1,1463 @@
+/* ============================================================
+   my-posts 管理页 — 像素级对齐原型 my-posts.html
+   原型路径: c-end/pages/my-posts.html
+   单位换算: prototype px × 2 = rpx
+   CSS变量: --ios-* → --* (映射自 app.wxss page {} 块)
+   ============================================================ */
+
+.container {
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ============================================================
+   First-level Tabs (underline style) — fixed below system nav bar
+   ============================================================ */
+.seg-wrap {
+  padding: 8rpx var(--margin) 20rpx;
+  background: var(--surface);
+  border-bottom: 1rpx solid var(--separator);
+  flex-shrink: 0;
+}
+
+.main-tabs {
+  display: flex;
+  justify-content: space-between;
+}
+
+.main-tab {
+  flex: 1;
+  text-align: center;
+  font-size: 28rpx;
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 16rpx 0 12rpx;
+  position: relative;
+  transition: color var(--motion-fast) var(--ease);
+}
+
+.main-tab::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 6rpx;
+  border-radius: 4rpx;
+  background: var(--blue);
+  transition: width var(--motion-fast) var(--ease);
+}
+
+.main-tab.active {
+  color: var(--blue);
+  font-size: 32rpx;
+}
+
+.main-tab.active::after {
+  width: 32rpx;
+}
+
+/* ============================================================
+   Panel Wrapper — flex column so sub-tabs stay fixed, list scrolls
+   ============================================================ */
+.panel-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;  /* critical for flex children to properly constrain */
+}
+
+/* ============================================================
+   Second-level Segments (iOS segment control)
+   ============================================================ */
+.seg-sub-wrap {
+  padding: 16rpx var(--margin) 16rpx;
+  background: var(--surface);
+  flex-shrink: 0;
+}
+
+.seg-sub-wrap .segment {
+  margin: 0;
+}
+
+.segment {
+  display: flex;
+  background: var(--bg);
+  border-radius: 16rpx;
+  padding: 4rpx;
+}
+
+.segment-item {
+  flex: 1;
+  text-align: center;
+  padding: 12rpx 0;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-radius: 14rpx;
+  transition: all var(--motion-fast) var(--ease);
+}
+
+.segment-item.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+.seg-count {
+  font-size: 22rpx;
+  opacity: 0.6;
+}
+
+/* ============================================================
+   Page Content (scroll-view — fills remaining panel height)
+   ============================================================ */
+.page-content {
+  flex: 1;
+  min-height: 0;  /* critical for flex children to properly constrain */
+}
+
+/* ============================================================
+   Post Cards
+   ============================================================ */
+.post-card {
+  padding: 28rpx var(--margin);
+  background: var(--surface);
+  display: flex;
+  gap: 24rpx;
+  position: relative;
+}
+
+.post-card + .post-card {
+  border-top: none;
+  background-image: linear-gradient(
+    to right,
+    transparent 8%,
+    var(--separator) 25%,
+    var(--separator) 75%,
+    transparent 92%
+  );
+  background-repeat: no-repeat;
+  background-size: 100% 1rpx;
+  background-position: top;
+}
+
+.post-card:active {
+  background: var(--fill-quaternary);
+}
+
+.post-img {
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 16rpx;
+  background: var(--fill-tertiary);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.post-icon {
+  width: 56rpx;
+  height: 56rpx;
+}
+
+.post-info {
+  flex: 1;
+  min-width: 0;
+  padding-right: 0;
+}
+
+.post-title {
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.3;
+}
+
+.post-tags {
+  display: flex;
+  gap: 12rpx;
+  margin-top: 6rpx;
+}
+
+.post-time {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-top: 4rpx;
+  padding-right: 100rpx;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Status Tag */
+.post-status {
+  position: absolute;
+  top: 28rpx;
+  right: var(--margin);
+  display: inline-flex;
+  align-items: center;
+  height: 40rpx;
+  padding: 0 16rpx;
+  border-radius: 8rpx;
+  font-size: 22rpx;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.post-status-tag-fill {
+  background: var(--fill-tertiary);
+  color: var(--text-secondary);
+}
+
+.post-status-tag-blue {
+  background: rgba(0, 113, 227, 0.1);
+  color: var(--blue);
+}
+
+.post-status-tag-orange {
+  background: rgba(255, 149, 0, 0.1);
+  color: var(--orange);
+}
+
+.post-status-tag-green {
+  background: rgba(52, 199, 89, 0.1);
+  color: var(--green);
+}
+
+.post-status-tag-red {
+  background: rgba(255, 59, 48, 0.1);
+  color: var(--red);
+}
+
+/* Action Button */
+.post-act-btn {
+  position: absolute;
+  bottom: 20rpx;
+  right: var(--margin);
+  font-size: 22rpx;
+  padding: 4rpx 16rpx;
+  border-radius: 20rpx;
+  background: var(--fill-tertiary);
+  color: var(--text-secondary);
+  border: none;
+  transition: all var(--motion-fast) var(--ease);
+  line-height: 1.8;
+}
+
+.post-act-btn::after {
+  border: none;
+}
+
+.post-act-btn.danger {
+  color: var(--red);
+}
+
+.post-act-btn.primary {
+  color: var(--blue);
+}
+
+/* ============================================================
+   Apply Items
+   ============================================================ */
+.apply-item {
+  padding: 24rpx var(--margin);
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+}
+
+.apply-item + .apply-item {
+  border-top: none;
+  background-image: linear-gradient(
+    to right,
+    transparent 8%,
+    var(--separator) 25%,
+    var(--separator) 75%,
+    transparent 92%
+  );
+  background-repeat: no-repeat;
+  background-size: 100% 1rpx;
+  background-position: top;
+}
+
+.apply-item:active {
+  background: var(--fill-quaternary);
+}
+
+.apply-avatar {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 50%;
+  background: var(--fill-tertiary);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.apply-avatar-icon {
+  width: 44rpx;
+  height: 44rpx;
+}
+
+.apply-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.apply-name {
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.apply-meta {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-top: 4rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Apply Tag */
+.apply-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 40rpx;
+  padding: 0 16rpx;
+  border-radius: 8rpx;
+  font-size: 22rpx;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+/* Approval Action Buttons */
+.approval-actions {
+  display: flex;
+  gap: 16rpx;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.approval-btn {
+  height: 56rpx;
+  padding: 0 24rpx;
+  border-radius: 14rpx;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+}
+
+.approval-btn::after {
+  border: none;
+}
+
+.approve-btn {
+  background: rgba(52, 199, 89, 0.1);
+  color: var(--green);
+}
+
+.reject-btn {
+  background: rgba(255, 59, 48, 0.1);
+  color: var(--red);
+}
+
+/* ============================================================
+   Progress Items — 进行中 / 已完成 cards
+   Layout: avatar left | info center | action button bottom-right
+   ============================================================ */
+.progress-item {
+  padding: 24rpx var(--margin);
+  background: var(--surface);
+  display: flex;
+  gap: 24rpx;
+  position: relative;
+}
+
+.progress-item + .progress-item {
+  border-top: none;
+  background-image: linear-gradient(
+    to right,
+    transparent 8%,
+    var(--separator) 25%,
+    var(--separator) 75%,
+    transparent 92%
+  );
+  background-repeat: no-repeat;
+  background-size: 100% 1rpx;
+  background-position: top;
+}
+
+.progress-item:active {
+  background: var(--fill-quaternary);
+}
+
+.progress-avatar {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 50%;
+  background: var(--fill-tertiary);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.progress-avatar-icon {
+  width: 44rpx;
+  height: 44rpx;
+}
+
+.progress-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.progress-name {
+  font-size: var(--text-xs);
+  font-weight: 400;
+  color: var(--text-secondary);
+  margin-top: 4rpx;
+  padding-right: 100rpx;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Gray name for completed items */
+.progress-name-secondary {
+  color: var(--text-secondary);
+}
+
+.progress-title {
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--text);
+  margin-top: 4rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.3;
+}
+
+/* Larger title for first-line display in 进行中/已完成 cards */
+.progress-title-lg {
+  font-size: 28rpx;
+  font-weight: 500;
+  margin-top: 0;
+}
+
+.progress-meta {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-top: 4rpx;
+  padding-right: 100rpx;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Gray meta for completed items */
+.progress-meta-secondary {
+  color: var(--text-secondary);
+}
+
+/* Action button — absolute bottom-right, like post-act-btn */
+.progress-act-btn {
+  position: absolute;
+  bottom: 20rpx;
+  right: var(--margin);
+  font-size: 22rpx;
+  padding: 8rpx 24rpx;
+  border-radius: 20rpx;
+  font-weight: 500;
+  border: none;
+  line-height: 1.6;
+}
+
+.progress-act-btn::after {
+  border: none;
+}
+
+.progress-act-btn.return-btn {
+  background: rgba(0, 113, 227, 0.1);
+  color: var(--blue);
+}
+
+.progress-act-btn.end-btn {
+  background: rgba(255, 149, 0, 0.1);
+  color: var(--orange);
+}
+
+.progress-act-btn:active {
+  opacity: 0.7;
+  transform: scale(0.97);
+}
+
+/* Completed status tag — absolute top-right, like post-status */
+.progress-status {
+  position: absolute;
+  top: 24rpx;
+  right: var(--margin);
+  display: inline-flex;
+  align-items: center;
+  height: 40rpx;
+  padding: 0 16rpx;
+  border-radius: 8rpx;
+  font-size: 22rpx;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   List End
+   ============================================================ */
+.list-end {
+  text-align: center;
+  padding: 40rpx;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+/* ============================================================
+   Empty State — text centered on screen, no circle/icon
+   ============================================================ */
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 0 80rpx;
+  text-align: center;
+}
+
+.empty-text {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* ============================================================
+   Drawer (slide-down from top)
+   ============================================================ */
+.drawer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.3);
+  animation: fadeIn 150ms var(--ease);
+}
+
+.drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 201;
+  background: linear-gradient(135deg, var(--bg) 60%, rgba(0, 113, 227, 0.04));
+  animation: slideDown 250ms var(--ease);
+  display: flex;
+  flex-direction: column;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}
+
+.drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 32rpx var(--margin);
+  flex-shrink: 0;
+}
+
+.drawer-title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.drawer-close {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 50%;
+  background: var(--fill-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.drawer-close-icon {
+  width: 28rpx;
+  height: 28rpx;
+  color: var(--text-secondary);
+}
+
+.drawer-body {
+  flex: 1;
+  padding: 0 var(--margin) 32rpx;
+}
+
+.drawer-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 32rpx;
+}
+
+.drawer-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.drawer-entry .entry-icon {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 50%;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.drawer-entry-img {
+  width: 44rpx;
+  height: 44rpx;
+}
+
+.drawer-entry .entry-label {
+  font-size: 22rpx;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* ============================================================
+   Edit Sheet (bottom sheet — flex column: header fixed + body scrolls + footer fixed)
+   Uses height: 80vh (definite) so flex: 1 resolves correctly.
+   No sticky, no scroll-view — reliable across all WeChat versions.
+   ============================================================ */
+.edit-sheet-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  animation: fadeIn var(--motion-base) var(--ease);
+}
+
+.edit-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  animation: slideUp var(--motion-base) var(--ease-out);
+  z-index: 1001;
+}
+
+/* --- Header (flex-shrink-0 = stays at top, never shrinks) --- */
+.edit-sheet-header {
+  flex-shrink: 0;
+  background: var(--surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.edit-sheet-handle {
+  width: 72rpx;
+  height: 10rpx;
+  border-radius: 6rpx;
+  background: var(--fill-primary);
+  margin: 16rpx auto 0;
+}
+
+.edit-sheet-title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  text-align: center;
+  padding: 24rpx 0;
+  color: var(--text);
+}
+
+/* --- Scrollable body (scroll-view: flex: 1 fills remaining space, scroll-y scrolls) --- */
+.edit-sheet-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0 var(--margin);
+}
+
+/* --- Footer (flex-shrink-0 = stays at bottom, never shrinks) --- */
+.edit-sheet-footer {
+  flex-shrink: 0;
+  padding: 8rpx var(--margin) 16rpx;
+  background: var(--surface);
+}
+
+/* --- Edit sheet form fields (aligned with publish-idle) --- */
+
+.edit-sheet .input-group {
+  margin-bottom: var(--space-3);
+}
+
+.edit-input-label {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-bottom: 12rpx;
+  letter-spacing: -0.01em;
+}
+
+.edit-input {
+  width: 100%;
+  height: 88rpx;
+  padding: 0 24rpx;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  background: var(--fill-tertiary);
+  box-sizing: border-box;
+}
+
+.edit-textarea {
+  width: 100%;
+  min-height: 200rpx;
+  padding: 20rpx 24rpx;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  background: var(--fill-tertiary);
+  box-sizing: border-box;
+}
+
+.edit-sheet .segment {
+  margin: 0;
+}
+
+/* --- Category Pills (in edit sheet) --- */
+.edit-sheet .pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
+.edit-sheet .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 16rpx 32rpx;
+  border-radius: var(--radius-pill);
+  background: var(--fill-tertiary);
+  font-size: var(--text-sm);
+  color: var(--text);
+  transition: all var(--motion-fast) var(--ease);
+}
+
+.edit-sheet .pill:active {
+  transform: scale(0.97);
+}
+
+.edit-sheet .pill.selected {
+  background: var(--blue);
+  color: #FFFFFF;
+}
+
+.edit-sheet .pill-icon {
+  width: 36rpx;
+  height: 36rpx;
+  flex-shrink: 0;
+}
+
+.edit-sheet .pill.selected .pill-icon {
+  filter: brightness(0) invert(1);
+}
+
+/* --- Select / Picker wrapper (in edit sheet) --- */
+.edit-sheet .select-wrap {
+  margin-top: 16rpx;
+}
+
+.edit-sheet .select {
+  width: 100%;
+  height: 88rpx;
+  padding: 0 24rpx;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  background: var(--fill-tertiary);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+/* Edit sheet Save Button */
+.edit-save-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100rpx;
+  border-radius: 16rpx;
+  font-size: var(--text-base);
+  font-weight: 500;
+  background: var(--blue);
+  color: #FFFFFF;
+  border: none;
+  letter-spacing: -0.01em;
+}
+
+.edit-save-btn::after {
+  border: none;
+}
+
+.edit-save-btn:active {
+  transform: scale(0.97);
+  opacity: 0.85;
+}
+
+/* ============================================================
+   Alert (iOS style center modal)
+   ============================================================ */
+.alert-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn var(--motion-base) var(--ease);
+}
+
+.alert {
+  position: relative;
+  z-index: 2001;
+  width: 540rpx;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  animation: scaleIn var(--motion-base) var(--ease);
+  overflow: hidden;
+}
+
+.alert-title {
+  padding: 40rpx 32rpx 4rpx;
+  text-align: center;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.alert-body {
+  padding: 16rpx 32rpx 40rpx;
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.alert-actions {
+  display: flex;
+  border-top: 1rpx solid var(--separator);
+}
+
+.alert-actions .alert-btn {
+  flex: 1;
+  height: 88rpx;
+  border-radius: 0;
+  font-size: var(--text-base);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  color: var(--blue);
+}
+
+.alert-actions .alert-btn::after {
+  border: none;
+}
+
+.alert-actions .alert-btn:active {
+  background: var(--fill-quaternary);
+  transform: none;
+  opacity: 1;
+}
+
+.alert-actions .alert-btn + .alert-btn {
+  border-left: 1rpx solid var(--separator);
+}
+
+.alert-actions .alert-btn-bold {
+  font-weight: 600;
+}
+
+.alert-actions .alert-btn-danger {
+  color: var(--red);
+}
+
+/* ============================================================
+   Approval Sheet (bottom sheet — flex column: fixed header + scroll body + fixed footer)
+   Same pattern as edit-sheet; simplified content layout.
+   ============================================================ */
+.approval-sheet-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  animation: fadeIn var(--motion-base) var(--ease);
+}
+
+.approval-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  animation: slideUp var(--motion-base) var(--ease-out);
+  z-index: 1001;
+}
+
+/* --- Header --- */
+.approval-sheet-header {
+  flex-shrink: 0;
+  background: var(--surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.approval-sheet-handle {
+  width: 72rpx;
+  height: 10rpx;
+  border-radius: 6rpx;
+  background: var(--fill-primary);
+  margin: 16rpx auto 0;
+}
+
+.approval-sheet-title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  text-align: center;
+  padding: 24rpx 0;
+  color: var(--text);
+}
+
+/* --- Scrollable body (scroll-view) --- */
+.approval-sheet-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0 var(--margin);
+}
+
+/* --- Section --- */
+.approval-section {
+  margin-bottom: var(--space-6);
+}
+
+.approval-section-label {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-bottom: 12rpx;
+  letter-spacing: 0.02em;
+}
+
+.approval-item-title {
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+/* --- Resident card --- */
+.approval-resident-card {
+  background: var(--fill-quaternary);
+  border-radius: var(--radius);
+  padding: 24rpx;
+}
+
+.approval-resident-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.approval-resident-addr {
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.approval-rating-inline {
+  display: flex;
+  align-items: baseline;
+  gap: 20rpx;
+  flex-shrink: 0;
+}
+
+.approval-rating-score-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4rpx;
+}
+
+.approval-rating-label {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.approval-rating-value {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--orange);
+}
+
+.approval-rating-unit {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* --- Stats grid --- */
+.approval-stats-grid {
+  display: flex;
+  flex-wrap: wrap;
+  background: var(--fill-quaternary);
+  border-radius: var(--radius);
+  padding: 24rpx 16rpx;
+}
+
+.approval-stat-item {
+  width: 33.33%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16rpx 0;
+}
+
+.approval-stat-half {
+  width: 50%;
+}
+
+.approval-stat-value {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.approval-stat-label {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-top: 4rpx;
+}
+
+/* --- Friendly reminder --- */
+.approval-tip {
+  background: rgba(0, 113, 227, 0.05);
+  border-radius: var(--radius);
+  padding: 24rpx;
+  margin-bottom: var(--space-6);
+}
+
+.approval-tip-header {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  margin-bottom: 12rpx;
+}
+
+.approval-tip-icon {
+  font-size: var(--text-base);
+}
+
+.approval-tip-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.approval-tip-text {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* --- Footer --- */
+.approval-sheet-footer {
+  flex-shrink: 0;
+  padding: 8rpx var(--margin) 16rpx;
+  background: var(--surface);
+}
+
+.approval-footer-row {
+  display: flex;
+  gap: 16rpx;
+}
+
+.approval-footer-row .approval-confirm-btn {
+  flex: 1;
+}
+
+.approval-reject-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100rpx;
+  border-radius: 16rpx;
+  font-size: var(--text-base);
+  font-weight: 500;
+  background: rgba(255, 59, 48, 0.1);
+  color: var(--red);
+  border: none;
+  letter-spacing: -0.01em;
+}
+
+.approval-reject-btn::after {
+  border: none;
+}
+
+.approval-reject-btn:active {
+  transform: scale(0.97);
+  opacity: 0.85;
+}
+
+.approval-confirm-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100rpx;
+  border-radius: 16rpx;
+  font-size: var(--text-base);
+  font-weight: 500;
+  background: var(--blue);
+  color: #FFFFFF;
+  border: none;
+  letter-spacing: -0.01em;
+}
+
+.approval-confirm-btn::after {
+  border: none;
+}
+
+.approval-confirm-btn:active {
+  transform: scale(0.97);
+  opacity: 0.85;
+}
+
+/* ============================================================
+   Progress Sheet (进行中 detail — same pattern as approval sheet)
+   ============================================================ */
+.progress-sheet-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  animation: fadeIn var(--motion-base) var(--ease);
+}
+
+.progress-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  animation: slideUp var(--motion-base) var(--ease-out);
+  z-index: 1001;
+}
+
+/* --- Header --- */
+.progress-sheet-header {
+  flex-shrink: 0;
+  background: var(--surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.progress-sheet-handle {
+  width: 72rpx;
+  height: 10rpx;
+  border-radius: 6rpx;
+  background: var(--fill-primary);
+  margin: 16rpx auto 0;
+}
+
+.progress-sheet-title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  text-align: center;
+  padding: 24rpx 0;
+  color: var(--text);
+}
+
+/* --- Scrollable body (scroll-view) --- */
+.progress-sheet-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0 var(--margin);
+}
+
+/* --- Return time badge --- */
+.progress-return-time {
+  background: var(--fill-quaternary);
+  border-radius: var(--radius);
+  padding: 20rpx 24rpx;
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.progress-return-time.overdue {
+  background: rgba(255, 59, 48, 0.08);
+  color: var(--red);
+  font-weight: 500;
+}
+
+/* --- Star Rating --- */
+.progress-stars-row {
+  display: flex;
+  gap: 12rpx;
+  justify-content: center;
+  padding: 16rpx 0;
+}
+
+.progress-star {
+  font-size: 52rpx;
+  color: var(--fill-primary);
+  transition: color var(--motion-fast) var(--ease);
+}
+
+.progress-star.active {
+  color: var(--orange);
+}
+
+.progress-star:active {
+  transform: scale(1.15);
+}
+
+/* --- Feedback textarea --- */
+.progress-feedback-input {
+  width: 100%;
+  min-height: 160rpx;
+  padding: 20rpx 24rpx;
+  border: none;
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  background: var(--fill-quaternary);
+  box-sizing: border-box;
+}
+
+/* --- Footer --- */
+.progress-sheet-footer {
+  flex-shrink: 0;
+  padding: 8rpx var(--margin) 16rpx;
+  background: var(--surface);
+}
+
+.progress-confirm-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100rpx;
+  border-radius: 16rpx;
+  font-size: var(--text-base);
+  font-weight: 500;
+  background: var(--blue);
+  color: #FFFFFF;
+  border: none;
+  letter-spacing: -0.01em;
+}
+
+.progress-confirm-btn::after {
+  border: none;
+}
+
+.progress-confirm-btn:active {
+  transform: scale(0.97);
+  opacity: 0.85;
+}
+
+/* ============================================================
+   Completed Sheet (已完成 detail — same pattern as approval sheet)
+   ============================================================ */
+.completed-sheet-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  animation: fadeIn var(--motion-base) var(--ease);
+}
+
+.completed-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  animation: slideUp var(--motion-base) var(--ease-out);
+  z-index: 1001;
+}
+
+/* --- Header --- */
+.completed-sheet-header {
+  flex-shrink: 0;
+  background: var(--surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.completed-sheet-handle {
+  width: 72rpx;
+  height: 10rpx;
+  border-radius: 6rpx;
+  background: var(--fill-primary);
+  margin: 16rpx auto 0;
+}
+
+.completed-sheet-title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  text-align: center;
+  padding: 24rpx 0;
+  color: var(--text);
+}
+
+/* --- Scrollable body (scroll-view) --- */
+.completed-sheet-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0 var(--margin);
+}
+
+/* --- Rating grid (2 columns) --- */
+.completed-rating-grid {
+  display: flex;
+  gap: 16rpx;
+}
+
+.completed-rating-card {
+  flex: 1;
+  background: var(--fill-quaternary);
+  border-radius: var(--radius);
+  padding: 32rpx 24rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.completed-rating-card-label {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.completed-rating-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8rpx;
+}
+
+.completed-rating-score {
+  font-size: 44rpx;
+  font-weight: 700;
+  color: var(--orange);
+}
+
+.completed-rating-unit {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.completed-rating-pending {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
+
+/* --- Feedback list --- */
+.completed-feedback-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.completed-feedback-card {
+  background: var(--fill-quaternary);
+  border-radius: var(--radius);
+  padding: 24rpx;
+}
+
+.completed-feedback-card-label {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-bottom: 12rpx;
+  display: block;
+}
+
+.completed-feedback-text {
+  font-size: var(--text-sm);
+  color: var(--text);
+  line-height: 1.6;
+}
+

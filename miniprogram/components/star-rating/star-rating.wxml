@@ -1,0 +1,9 @@
+<view class="stars">
+  <view
+    wx:for="{{[1,2,3,4,5]}}"
+    wx:key="*this"
+    class="star {{index < score ? 'active' : ''}} {{readonly ? 'readonly' : ''}} {{size === 'l' ? 'star-lg' : 'star-md'}}"
+    data-score="{{index}}"
+    bindtap="{{readonly ? '' : 'onTap'}}"
+  >&#9733;</view>
+</view>

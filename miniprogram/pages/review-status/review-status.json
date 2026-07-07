@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "账户状态",
+  "navigationBarBackgroundColor": "#FFFFFF",
+  "navigationBarTextStyle": "black",
+  "enablePullDownRefresh": true
+}

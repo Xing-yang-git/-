@@ -1,0 +1,58 @@
+<view class="search-page">
+  <!-- Search bar -->
+  <view class="search-header">
+    <view class="search-input-wrap">
+      <image class="search-icon" src="../../images/search-icon.svg" mode="aspectFit"></image>
+      <input class="search-input" type="text" placeholder="输入关键词" value="{{keyword}}" bindinput="onKeywordInput" bindconfirm="onSearch" focus="{{autoFocus}}" />
+      <image class="search-clear" wx:if="{{keyword}}" src="../../images/search-clear.svg" mode="aspectFit" bindtap="onClearKeyword"></image>
+    </view>
+  </view>
+
+  <!-- History or empty state (when no keyword) -->
+  <view class="search-body" wx:if="{{!keyword && !searching}}">
+    <view class="section" wx:if="{{history.length > 0}}">
+      <view class="section-header">
+        <text class="section-title">搜索历史</text>
+        <text class="section-action" bindtap="onClearHistory">清空</text>
+      </view>
+      <view class="pill-row">
+        <text class="pill" wx:for="{{history}}" wx:key="*this" bindtap="onQuickSearch" data-keyword="{{item}}">{{item}}</text>
+      </view>
+    </view>
+
+    <!-- 无搜索记录空状态 -->
+    <view class="empty-history" wx:if="{{history.length === 0}}">
+      <text class="empty-text">无搜索记录</text>
+    </view>
+  </view>
+
+  <!-- Filter tabs (when searching) -->
+  <view class="filter-tabs" wx:if="{{searching}}">
+    <text class="filter-tab {{currentFilter === 'all' ? 'active' : ''}}" bindtap="onFilterChange" data-filter="all">全部</text>
+    <text class="filter-tab {{currentFilter === 'idle' ? 'active' : ''}}" bindtap="onFilterChange" data-filter="idle">闲置</text>
+    <text class="filter-tab {{currentFilter === 'help' ? 'active' : ''}}" bindtap="onFilterChange" data-filter="help">技能</text>
+  </view>
+
+  <!-- Results -->
+  <scroll-view class="search-body" wx:if="{{searching}}" scroll-y enhanced show-scrollbar="{{false}}">
+    <view class="result-count" wx:if="{{filteredResults.length > 0}}">共找到 {{filteredResults.length}} 条结果</view>
+
+    <view class="result-list" wx:if="{{filteredResults.length > 0}}">
+      <view class="list-card" wx:for="{{filteredResults}}" wx:key="id" bindtap="onResultTap" data-item="{{item}}">
+        <view class="thumb" style="background:{{item.bgColor || '#F2F2F7'}};">
+          <text>{{item.type === 'help' ? '🤝' : '📦'}}</text>
+        </view>
+        <view class="info">
+          <view class="card-title">{{item.title}}</view>
+          <view class="card-meta">{{item.subtitle}}</view>
+        </view>
+      </view>
+    </view>
+
+    <!-- Empty -->
+    <view class="empty-state" wx:if="{{filteredResults.length === 0}}">
+      <view class="empty-icon">🔍</view>
+      <view class="empty-text">没有找到相关内容</view>
+    </view>
+  </scroll-view>
+</view>

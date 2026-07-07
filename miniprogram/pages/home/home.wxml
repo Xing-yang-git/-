@@ -1,0 +1,108 @@
+<view class="home-page">
+  <!-- Header: community name + search box -->
+  <view class="home-header">
+    <view class="community-name">{{communityName}}</view>
+    <view class="search-box" bindtap="onSearchTap">
+      <text class="search-placeholder">搜索</text>
+      <image class="search-box-icon" src="../../images/search-icon.svg" mode="aspectFit" />
+    </view>
+  </view>
+
+  <!-- Segmented Control -->
+  <view class="segment-wrap">
+    <view class="segment">
+      <view class="segment-item {{currentTab === 0 ? 'active' : ''}}" bindtap="onTabChange" data-tab="0">闲置借出</view>
+      <view class="segment-item {{currentTab === 1 ? 'active' : ''}}" bindtap="onTabChange" data-tab="1">需求借入</view>
+      <view class="segment-item {{currentTab === 2 ? 'active' : ''}}" bindtap="onTabChange" data-tab="2">技能求助</view>
+    </view>
+  </view>
+
+  <!-- Content list -->
+  <scroll-view class="page-content" scroll-y enhanced show-scrollbar="{{false}}" refresher-enabled refresher-triggered="{{refreshing}}" bindrefresherrefresh="onPullDownRefresh">
+
+    <!-- Tab 0: 闲置借出 LEND -->
+    <block wx:if="{{currentTab === 0}}">
+      <view class="list-card" wx:for="{{idleList}}" wx:key="id" bindtap="onCardTap" data-item="{{item}}" data-type="idle">
+        <view class="thumb" style="background:{{item.bgColor || '#F2F2F7'}};">
+          <image class="thumb-icon" src="../../images/{{item.icon}}" mode="aspectFit" />
+        </view>
+        <view class="info">
+          <view class="card-title">{{item.title}}</view>
+          <view class="card-meta">{{item.userRoom}} · {{item.timeAgo}}</view>
+          <view class="tags">
+            <text class="tag tag-blue">{{item.durationLabel || '可借'}}</text>
+            <text class="tag tag-gray" wx:if="{{item.conditionLabel}}">{{item.conditionLabel}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="list-end" wx:if="{{!hasMore && idleList.length > 0}}">— 共 {{idleList.length}} 件物品 —</view>
+    </block>
+
+    <!-- Tab 1: 需求借入 WANTED -->
+    <block wx:if="{{currentTab === 1}}">
+      <view class="list-card" wx:for="{{idleList}}" wx:key="id" bindtap="onCardTap" data-item="{{item}}" data-type="idle">
+        <view class="thumb" style="background:{{item.bgColor || '#FFF3E0'}};">
+          <image class="thumb-icon" src="../../images/{{item.icon}}" mode="aspectFit" />
+        </view>
+        <view class="info">
+          <view class="card-title">{{item.title}}</view>
+          <view class="card-meta">{{item.userRoom}} · {{item.timeAgo}}</view>
+          <view class="tags">
+            <text class="tag tag-blue">{{item.durationLabel || '需借'}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="list-end" wx:if="{{!hasMore && idleList.length > 0}}">— 共 {{idleList.length}} 条需求 —</view>
+    </block>
+
+    <!-- Tab 2: 技能求助 HELP -->
+    <block wx:if="{{currentTab === 2}}">
+      <view class="list-card" wx:for="{{helpList}}" wx:key="id" bindtap="onHelpCardTap" data-item="{{item}}">
+        <view class="thumb" style="background:{{item.bgColor || '#FFEDED'}};">
+          <image class="thumb-icon" src="../../images/{{item.icon}}" mode="aspectFit" />
+        </view>
+        <view class="info">
+          <view class="card-title">
+            <text class="tag tag-red urgent-tag" wx:if="{{item.isUrgent}}">急</text>
+            {{item.title}}
+          </view>
+          <view class="card-meta">{{item.userRoom}} · {{item.timeAgo}}</view>
+          <view class="tags">
+            <text class="tag tag-blue">{{item.category || '求助'}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="list-end" wx:if="{{!hasMore && helpList.length > 0}}">— 共 {{helpList.length}} 条求助 —</view>
+    </block>
+
+    <!-- Empty state -->
+    <view class="empty-state" wx:if="{{idleList.length === 0 && helpList.length === 0 && !loading}}">
+      <image class="empty-icon-img" src="../../images/empty-icon.svg" mode="aspectFit" />
+      <view class="empty-text">暂无内容</view>
+    </view>
+  </scroll-view>
+
+  <!-- FAB -->
+  <view class="fab" bindtap="onFabTap">
+    <image class="fab-icon-img {{fabOpen ? 'rotate' : ''}}" src="../../images/plus-icon.svg" mode="aspectFit" />
+  </view>
+
+  <!-- FAB Menu -->
+  <view class="fab-menu" wx:if="{{fabOpen}}">
+    <view class="fab-menu-item" bindtap="onPublishIdle">
+      <image class="fab-menu-icon" src="../../images/icon-upload.svg" mode="aspectFit" />
+      <text>发布闲置物品</text>
+    </view>
+    <view class="fab-menu-item" bindtap="onPublishBorrow">
+      <image class="fab-menu-icon" src="../../images/icon-clock.svg" mode="aspectFit" />
+      <text>发布需求借入</text>
+    </view>
+    <view class="fab-menu-item" bindtap="onPublishHelp">
+      <image class="fab-menu-icon" src="../../images/icon-help-circle.svg" mode="aspectFit" />
+      <text>发布技能求助</text>
+    </view>
+  </view>
+
+  <!-- FAB overlay -->
+  <view class="fab-overlay" wx:if="{{fabOpen}}" bindtap="onCloseFab"></view>
+</view>

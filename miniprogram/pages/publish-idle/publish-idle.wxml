@@ -1,0 +1,369 @@
+<view class="page-content">
+
+  <!-- Post Type Segment (3 options) -->
+  <view class="section">
+    <view class="input-label">发布类型</view>
+    <view class="segment" style="margin:0;">
+      <view class="segment-item {{postType === 'LEND' ? 'active' : ''}}" bindtap="onPostTypeTap" data-value="LEND">闲置借出</view>
+      <view class="segment-item {{postType === 'WANTED' ? 'active' : ''}}" bindtap="onPostTypeTap" data-value="WANTED">需求借入</view>
+      <view class="segment-item {{postType === 'HELP' ? 'active' : ''}}" bindtap="onPostTypeTap" data-value="HELP">技能求助</view>
+    </view>
+  </view>
+
+  <!-- ================================================================ -->
+  <!-- LEND 闲置借出 -->
+  <!-- ================================================================ -->
+  <block wx:if="{{postType === 'LEND'}}">
+
+    <!-- Images -->
+    <view class="section">
+      <view class="input-label">物品图片 <text class="required">*</text>（至少 1 张，最多 9 张）</view>
+      <view class="img-upload-grid">
+        <block wx:for="{{images}}" wx:key="*this">
+          <view class="img-upload-item">
+            <image class="upload-img" src="{{item}}" mode="aspectFill" />
+            <view class="img-delete" bindtap="onRemoveImage" data-index="{{index}}">×</view>
+          </view>
+        </block>
+        <view class="img-upload-item img-add-btn" bindtap="onChooseImage">
+          <text class="add-plus">+</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- Basic Info -->
+    <view class="section">
+      <view class="input-group">
+        <view class="input-label">物品标题 <text class="required">*</text></view>
+        <input class="input" placeholder="例：博世冲击钻套装 GBH 2-20" value="{{title}}" bindinput="onInput" data-field="title" />
+      </view>
+
+      <view class="input-group">
+        <view class="input-label">物品类型 <text class="required">*</text></view>
+        <view class="pill-row">
+          <view class="pill {{category === '工具' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="工具">
+            <image class="pill-icon" src="../../images/icon-wrench.svg" mode="aspectFit" />
+            <text>工具</text>
+          </view>
+          <view class="pill {{category === '电子产品' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="电子产品">
+            <image class="pill-icon" src="../../images/icon-phone.svg" mode="aspectFit" />
+            <text>电子产品</text>
+          </view>
+          <view class="pill {{category === '书籍' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="书籍">
+            <image class="pill-icon" src="../../images/icon-book.svg" mode="aspectFit" />
+            <text>书籍</text>
+          </view>
+          <view class="pill {{category === '家居' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="家居">
+            <image class="pill-icon" src="../../images/icon-home.svg" mode="aspectFit" />
+            <text>家居</text>
+          </view>
+          <view class="pill {{category === '运动' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="运动">
+            <image class="pill-icon" src="../../images/icon-ball.svg" mode="aspectFit" />
+            <text>运动</text>
+          </view>
+          <view class="pill {{category === '玩具' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="玩具">
+            <image class="pill-icon" src="../../images/icon-gamepad.svg" mode="aspectFit" />
+            <text>玩具</text>
+          </view>
+          <view class="pill {{category === '服饰' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="服饰">
+            <image class="pill-icon" src="../../images/icon-shirt.svg" mode="aspectFit" />
+            <text>服饰</text>
+          </view>
+          <view class="pill {{category === '其他' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="其他">
+            <image class="pill-icon" src="../../images/icon-info.svg" mode="aspectFit" />
+            <text>其他</text>
+          </view>
+        </view>
+        <input class="input" wx:if="{{category === '其他'}}" placeholder="手动输入类型" value="{{customType}}" bindinput="onInput" data-field="customType" style="margin-top:16rpx;" />
+      </view>
+
+      <view class="input-group">
+        <view class="input-label">参考价格 <text class="required">*</text>（人民币）</view>
+        <input class="input" type="digit" placeholder="用于损坏赔偿基准" value="{{price}}" bindinput="onInput" data-field="price" />
+      </view>
+
+      <view class="input-group" style="margin-bottom:0;">
+        <view class="input-label">物品详细描述</view>
+        <textarea class="textarea" placeholder="描述物品现状、使用痕迹、附件清单、借用注意事项等" value="{{description}}" bindinput="onInput" data-field="description" />
+      </view>
+    </view>
+
+    <!-- Duration -->
+    <view class="section">
+      <view class="input-label">借出时长 <text class="required">*</text></view>
+      <view class="segment" style="margin:0;">
+        <view class="segment-item {{durationUnit === 'day' ? 'active' : ''}}" bindtap="onUnitTap" data-value="day">按天</view>
+        <view class="segment-item {{durationUnit === 'hour' ? 'active' : ''}}" bindtap="onUnitTap" data-value="hour">按小时</view>
+      </view>
+      <picker class="select-wrap" mode="selector" range="{{durationOptions}}" value="{{durationIndex}}" bindchange="onDurationChange">
+        <view class="select">{{durationOptions[durationIndex]}}</view>
+      </picker>
+    </view>
+
+    <!-- Pickup -->
+    <view class="section">
+      <view class="input-label">借出形式 <text class="required">*</text></view>
+      <view class="segment" style="margin:0;">
+        <view class="segment-item {{pickupMethod === 'self_pickup' ? 'active' : ''}}" bindtap="onPickupTap" data-value="self_pickup">需自提</view>
+        <view class="segment-item {{pickupMethod === 'both' ? 'active' : ''}}" bindtap="onPickupTap" data-value="both">自提 / 可送上门</view>
+      </view>
+    </view>
+
+    <!-- Condition -->
+    <view class="section">
+      <view class="input-label">物品状况（可选）</view>
+      <view class="segment" style="margin:0;">
+        <view class="segment-item {{condition === 'like-new' ? 'active' : ''}}" bindtap="onConditionTap" data-value="like-new">几乎全新</view>
+        <view class="segment-item {{condition === 'normal' ? 'active' : ''}}" bindtap="onConditionTap" data-value="normal">正常使用痕迹</view>
+        <view class="segment-item {{condition === 'worn' ? 'active' : ''}}" bindtap="onConditionTap" data-value="worn">有明显磨损</view>
+      </view>
+    </view>
+
+    <!-- Notice -->
+    <view class="section">
+      <view class="callout" style="margin:0 0 24rpx;">
+        <image class="callout-icon" src="../../images/icon-heart-orange.svg" mode="aspectFit" />
+        <view class="callout-text">
+          <text class="callout-strong">请借入者好好爱护借用的物品</text>
+          <text>借用期间妥善保管，避免磕碰、进水、暴晒。</text>
+        </view>
+      </view>
+      <view class="callout callout-red" style="margin:0;">
+        <image class="callout-icon" src="../../images/icon-alert-triangle.svg" mode="aspectFit" />
+        <view class="callout-text">
+          <text>丢失/完全损坏需赔偿至少原价的 80%。借出前请双方拍照留证，平台仅做记录不介入。</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- Action Bar -->
+    <view class="action-bar">
+      <button class="btn btn-primary btn-block btn-lg" bindtap="onSubmit">确认发布</button>
+    </view>
+
+  </block>
+
+  <!-- ================================================================ -->
+  <!-- WANTED 需求借入 -->
+  <!-- ================================================================ -->
+  <block wx:if="{{postType === 'WANTED'}}">
+
+    <!-- Images -->
+    <view class="section">
+      <view class="input-label">物品图片（可选，最多 9 张）</view>
+      <view class="img-upload-grid">
+        <block wx:for="{{images}}" wx:key="*this">
+          <view class="img-upload-item">
+            <image class="upload-img" src="{{item}}" mode="aspectFill" />
+            <view class="img-delete" bindtap="onRemoveImage" data-index="{{index}}">×</view>
+          </view>
+        </block>
+        <view class="img-upload-item img-add-btn" bindtap="onChooseImage">
+          <text class="add-plus">+</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- Item Name & Category & Usage -->
+    <view class="section">
+      <view class="input-group">
+        <view class="input-label">物品名称 <text class="required">*</text></view>
+        <input class="input" placeholder="例：博世冲击钻套装 GBH 2-20" value="{{title}}" bindinput="onInput" data-field="title" />
+      </view>
+
+      <view class="input-group">
+        <view class="input-label">物品类型 <text class="required">*</text></view>
+        <view class="pill-row">
+          <view class="pill {{category === '工具' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="工具">
+            <image class="pill-icon" src="../../images/icon-wrench.svg" mode="aspectFit" />
+            <text>工具</text>
+          </view>
+          <view class="pill {{category === '电子产品' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="电子产品">
+            <image class="pill-icon" src="../../images/icon-phone.svg" mode="aspectFit" />
+            <text>电子产品</text>
+          </view>
+          <view class="pill {{category === '书籍' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="书籍">
+            <image class="pill-icon" src="../../images/icon-book.svg" mode="aspectFit" />
+            <text>书籍</text>
+          </view>
+          <view class="pill {{category === '家居' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="家居">
+            <image class="pill-icon" src="../../images/icon-home.svg" mode="aspectFit" />
+            <text>家居</text>
+          </view>
+          <view class="pill {{category === '运动' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="运动">
+            <image class="pill-icon" src="../../images/icon-ball.svg" mode="aspectFit" />
+            <text>运动</text>
+          </view>
+          <view class="pill {{category === '玩具' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="玩具">
+            <image class="pill-icon" src="../../images/icon-gamepad.svg" mode="aspectFit" />
+            <text>玩具</text>
+          </view>
+          <view class="pill {{category === '服饰' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="服饰">
+            <image class="pill-icon" src="../../images/icon-shirt.svg" mode="aspectFit" />
+            <text>服饰</text>
+          </view>
+          <view class="pill {{category === '其他' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="其他">
+            <image class="pill-icon" src="../../images/icon-info.svg" mode="aspectFit" />
+            <text>其他</text>
+          </view>
+        </view>
+        <input class="input" wx:if="{{category === '其他'}}" placeholder="手动输入类型" value="{{customType}}" bindinput="onInput" data-field="customType" style="margin-top:16rpx;" />
+      </view>
+
+      <view class="input-group" style="margin-bottom:0;">
+        <view class="input-label">用途说明 <text class="required">*</text></view>
+        <textarea class="textarea" placeholder="请描述您需要借用此物品的原因和用途，让出借人更好地了解您的需求" value="{{description}}" bindinput="onInput" data-field="description" />
+      </view>
+    </view>
+
+    <!-- Duration (same format as LEND) -->
+    <view class="section">
+      <view class="input-label">期望借用时长 <text class="required">*</text></view>
+      <view class="segment" style="margin:0;">
+        <view class="segment-item {{durationUnit === 'day' ? 'active' : ''}}" bindtap="onUnitTap" data-value="day">按天</view>
+        <view class="segment-item {{durationUnit === 'hour' ? 'active' : ''}}" bindtap="onUnitTap" data-value="hour">按小时</view>
+      </view>
+      <picker class="select-wrap" mode="selector" range="{{durationOptions}}" value="{{durationIndex}}" bindchange="onDurationChange">
+        <view class="select">{{durationOptions[durationIndex]}}</view>
+      </picker>
+    </view>
+
+    <!-- Notice -->
+    <view class="section">
+      <view class="callout" style="margin:0 0 24rpx;">
+        <image class="callout-icon" src="../../images/icon-heart-orange.svg" mode="aspectFit" />
+        <view class="callout-text">
+          <text class="callout-strong">温馨提示</text>
+          <text>借用期间请爱惜物品，按时归还。如有损坏请主动与出借人协商赔偿。</text>
+        </view>
+      </view>
+      <view class="callout callout-red" style="margin:0;">
+        <image class="callout-icon" src="../../images/icon-alert-triangle.svg" mode="aspectFit" />
+        <view class="callout-text">
+          <text>借入前请与出借人确认物品状况并拍照留证，避免归还时产生纠纷。</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- Action Bar -->
+    <view class="action-bar">
+      <button class="btn btn-primary btn-block btn-lg" bindtap="onSubmit">确认发布</button>
+    </view>
+
+  </block>
+
+  <!-- ================================================================ -->
+  <!-- HELP 技能求助 -->
+  <!-- ================================================================ -->
+  <block wx:if="{{postType === 'HELP'}}">
+
+    <!-- Title -->
+    <view class="section">
+      <view class="input-group" style="margin-bottom:0;">
+        <view class="input-label">求助标题 <text class="required">*</text></view>
+        <input class="input" placeholder="简要描述你需要的帮助" value="{{title}}" bindinput="onInput" data-field="title" />
+      </view>
+    </view>
+
+    <!-- Category -->
+    <view class="section">
+      <view class="input-label">求助类型 <text class="required">*</text></view>
+      <view class="pill-row">
+        <view class="pill {{category === '维修' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="维修">
+          <image class="pill-icon" src="../../images/icon-wrench.svg" mode="aspectFit" />
+          <text>维修</text>
+        </view>
+        <view class="pill {{category === '陪护' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="陪护">
+          <image class="pill-icon" src="../../images/icon-users.svg" mode="aspectFit" />
+          <text>陪护</text>
+        </view>
+        <view class="pill {{category === '代取' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="代取">
+          <image class="pill-icon" src="../../images/icon-download.svg" mode="aspectFit" />
+          <text>代取</text>
+        </view>
+        <view class="pill {{category === '搬运' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="搬运">
+          <image class="pill-icon" src="../../images/icon-download.svg" mode="aspectFit" />
+          <text>搬运</text>
+        </view>
+        <view class="pill {{category === '辅导' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="辅导">
+          <image class="pill-icon" src="../../images/icon-book.svg" mode="aspectFit" />
+          <text>辅导</text>
+        </view>
+        <view class="pill {{category === '遛宠' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="遛宠">
+          <image class="pill-icon" src="../../images/icon-heart.svg" mode="aspectFit" />
+          <text>遛宠</text>
+        </view>
+        <view class="pill {{category === '烹饪' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="烹饪">
+          <image class="pill-icon" src="../../images/icon-heart.svg" mode="aspectFit" />
+          <text>烹饪</text>
+        </view>
+        <view class="pill {{category === '其他' ? 'selected' : ''}}" bindtap="onCategoryTap" data-value="其他">
+          <image class="pill-icon" src="../../images/icon-info.svg" mode="aspectFit" />
+          <text>其他</text>
+        </view>
+      </view>
+      <input class="input" wx:if="{{category === '其他'}}" placeholder="手动输入求助类型" value="{{customType}}" bindinput="onInput" data-field="customType" style="margin-top:16rpx;" />
+    </view>
+
+    <!-- Description + Urgency -->
+    <view class="section">
+      <view class="input-group">
+        <view class="input-label">详细描述 <text class="required">*</text></view>
+        <textarea class="textarea" placeholder="描述具体情况、需要什么帮助、大概需要多长时间等" value="{{description}}" bindinput="onInput" data-field="description" />
+      </view>
+
+      <view class="input-label" style="margin-top:24rpx;">紧急程度 <text class="required">*</text></view>
+      <view class="segment" style="margin:0;">
+        <view class="segment-item {{urgency === 'normal' ? 'active' : ''}}" bindtap="onUrgencyTap" data-value="normal">一般</view>
+        <view class="segment-item {{urgency === 'urgent' ? 'active' : ''}}" bindtap="onUrgencyTap" data-value="urgent">紧急</view>
+      </view>
+    </view>
+
+    <!-- Time Range (optional) -->
+    <view class="section">
+      <view class="input-label">时间范围（选填）</view>
+      <view class="time-row">
+        <view class="time-label">从</view>
+        <picker class="time-picker" mode="date" value="{{helpStartDate}}" bindchange="onHelpStartDateChange">
+          <view class="time-value">{{helpStartDate || '请选择日期'}}</view>
+        </picker>
+        <picker class="time-picker" mode="selector" range="{{hourOptions}}" value="{{helpStartHour}}" bindchange="onHelpStartHourChange">
+          <view class="time-value">{{hourOptions[helpStartHour]}}</view>
+        </picker>
+      </view>
+      <view class="time-row">
+        <view class="time-label">至</view>
+        <picker class="time-picker" mode="date" value="{{helpEndDate}}" bindchange="onHelpEndDateChange">
+          <view class="time-value">{{helpEndDate || '请选择日期'}}</view>
+        </picker>
+        <picker class="time-picker" mode="selector" range="{{hourOptions}}" value="{{helpEndHour}}" bindchange="onHelpEndHourChange">
+          <view class="time-value">{{hourOptions[helpEndHour]}}</view>
+        </picker>
+      </view>
+      <view class="time-hint">选填，设置你希望获得帮助的时间范围</view>
+    </view>
+
+    <!-- Images (optional) -->
+    <view class="section">
+      <view class="input-label">图片（选填，最多 9 张）</view>
+      <view class="img-upload-grid">
+        <block wx:for="{{images}}" wx:key="*this">
+          <view class="img-upload-item">
+            <image class="upload-img" src="{{item}}" mode="aspectFill" />
+            <view class="img-delete" bindtap="onRemoveImage" data-index="{{index}}">×</view>
+          </view>
+        </block>
+        <view class="img-upload-item img-add-btn" bindtap="onChooseImage">
+          <text class="add-plus">+</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- Action Bar -->
+    <view class="action-bar">
+      <button class="btn btn-primary btn-block btn-lg" bindtap="onSubmit">确认发布</button>
+    </view>
+
+  </block>
+
+</view>

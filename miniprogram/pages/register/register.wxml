@@ -1,0 +1,112 @@
+<view class="register-page">
+  <!-- Step Indicator -->
+  <view class="step-indicator-wrap">
+    <view class="step-row">
+      <view class="step-circle {{currentStep >= 0 ? 'active' : ''}} {{currentStep > 0 ? 'done' : ''}}">
+        <text wx:if="{{currentStep > 0}}">✓</text>
+        <text wx:else>1</text>
+      </view>
+      <view class="step-line {{currentStep >= 1 ? 'done' : ''}}"></view>
+      <view class="step-circle {{currentStep >= 1 ? 'active' : ''}} {{currentStep > 1 ? 'done' : ''}}">
+        <text wx:if="{{currentStep > 1}}">✓</text>
+        <text wx:else>2</text>
+      </view>
+      <view class="step-line {{currentStep >= 2 ? 'done' : ''}}"></view>
+      <view class="step-circle {{currentStep >= 2 ? 'active' : ''}}">
+        <text>3</text>
+      </view>
+    </view>
+    <view class="step-labels">
+      <text class="step-label {{currentStep === 0 ? 'active' : ''}}">选择小区</text>
+      <text class="step-label {{currentStep === 1 ? 'active' : ''}}">填写房号</text>
+      <text class="step-label {{currentStep === 2 ? 'active' : ''}}">上传证件</text>
+    </view>
+  </view>
+
+  <scroll-view class="page-content" scroll-y enhanced show-scrollbar="{{false}}">
+    <!-- Step 1: 选择小区 -->
+    <view class="step-panel" wx:if="{{currentStep === 0}}">
+      <view class="step-body">
+        <view class="search-input-wrap">
+          <image class="search-icon" src="/images/search-icon.svg" mode="aspectFit"></image>
+          <input class="search-input" type="text" placeholder="搜索小区名称" value="{{searchKeyword}}" bindinput="onSearchInput" />
+          <image class="search-clear" wx:if="{{searchKeyword}}" src="/images/close-icon.svg" mode="aspectFit" bindtap="onClearSearch"></image>
+        </view>
+        <view class="list-group">
+          <view class="list-row {{selectedTenant === item.id ? 'selected' : ''}}"
+                wx:for="{{filteredTenants}}" wx:key="id"
+                bindtap="onSelectTenant" data-tenant-id="{{item.id}}">
+            <view class="list-bd">
+              <view class="list-title">{{item.name}}</view>
+            </view>
+            <text class="check-mark" wx:if="{{selectedTenant === item.id}}">✓</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- Step 2: 填写房号 -->
+    <view class="step-panel" wx:if="{{currentStep === 1}}">
+      <view class="step-body">
+        <view class="room-row">
+          <view class="input-group">
+            <view class="input-label">栋号 <text class="required">*</text></view>
+            <input class="input" type="number" placeholder="例：3" value="{{building}}" bindinput="onBuildingInput" />
+          </view>
+          <view class="input-group">
+            <view class="input-label">单元号 <text class="required">*</text></view>
+            <input class="input" type="number" placeholder="例：2" value="{{unit}}" bindinput="onUnitInput" />
+          </view>
+          <view class="input-group">
+            <view class="input-label">房号 <text class="required">*</text></view>
+            <input class="input" type="number" placeholder="例：1502" value="{{room}}" bindinput="onRoomInput" />
+          </view>
+        </view>
+
+        <view class="input-group">
+          <view class="input-label">住户类型 <text class="required">*</text></view>
+          <view class="segment">
+            <view class="segment-item {{residentType === '业主' ? 'active' : ''}}" bindtap="onSetType" data-type="业主">业主</view>
+            <view class="segment-item {{residentType === '租客' ? 'active' : ''}}" bindtap="onSetType" data-type="租客">租客</view>
+          </view>
+        </view>
+
+        <view class="callout" style="margin:12px 0;">
+          <text>ℹ️ 昵称自动生成，例：「{{nickPreview}}」，不可自行修改。</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- Step 3: 上传证件 -->
+    <view class="step-panel" wx:if="{{currentStep === 2}}">
+      <view class="step-body">
+        <view class="input-group">
+          <view class="input-label">真实姓名 <text class="required">*</text></view>
+          <input class="input" type="text" placeholder="请输入真实姓名" value="{{realName}}" bindinput="onNameInput" />
+        </view>
+        <view class="input-group">
+          <view class="input-label">{{docLabel}} <text class="required">*</text></view>
+          <view class="img-upload-grid">
+            <view class="img-upload-item" wx:for="{{docImages}}" wx:key="index" bindtap="onPreviewImage" data-index="{{index}}">
+              <image src="{{item}}" mode="aspectFill" class="uploaded-img" />
+              <view class="img-delete" catchtap="onDeleteImage" data-index="{{index}}">✕</view>
+            </view>
+            <view class="img-upload-item img-upload-add" wx:if="{{docImages.length < 3}}" bindtap="onAddImage">
+              <text class="add-icon">+</text>
+            </view>
+          </view>
+          <text class="upload-hint">{{docHint}}</text>
+        </view>
+        <view class="callout callout-red">
+          <text>⚠️ 请确保上传的证件信息与所选房号一致。物业将核验证件真实性，虚假信息将被驳回或封禁。</text>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+
+  <!-- Footer -->
+  <view class="step-footer">
+    <button class="btn btn-secondary" wx:if="{{currentStep > 0}}" bindtap="onPrevStep">上一步</button>
+    <button class="btn btn-primary" bindtap="onNextStep">{{currentStep === 2 ? '提交认证' : '下一步'}}</button>
+  </view>
+</view>

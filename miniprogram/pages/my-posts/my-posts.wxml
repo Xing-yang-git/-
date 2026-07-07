@@ -1,0 +1,849 @@
+<!--
+  my-posts 管理页 — 像素级对齐原型 my-posts.html
+  原型路径: c-end/pages/my-posts.html
+-->
+<view class="container">
+
+  <!-- First-level Tabs (underline style) — fixed at top below system nav bar -->
+  <view class="seg-wrap">
+    <view class="main-tabs">
+      <view class="main-tab {{mainTab === 'publish' ? 'active' : ''}}" bindtap="onMainTabTap" data-tab="publish">发布</view>
+      <view class="main-tab {{mainTab === 'approval' ? 'active' : ''}}" bindtap="onMainTabTap" data-tab="approval">审批</view>
+      <view class="main-tab {{mainTab === 'inProgress' ? 'active' : ''}}" bindtap="onMainTabTap" data-tab="inProgress">进行中</view>
+      <view class="main-tab {{mainTab === 'completed' ? 'active' : ''}}" bindtap="onMainTabTap" data-tab="completed">已完成</view>
+    </view>
+  </view>
+
+  <!-- ===== 发布 ===== -->
+  <view wx:if="{{mainTab === 'publish'}}" class="panel-wrap">
+    <view class="seg-sub-wrap">
+      <view class="segment">
+        <view class="segment-item {{publishSubTab === 'online' ? 'active' : ''}}" bindtap="onPublishSubTap" data-sub="online">
+          在线中 <text class="seg-count">{{onlineCount}}</text>
+        </view>
+        <view class="segment-item {{publishSubTab === 'offline' ? 'active' : ''}}" bindtap="onPublishSubTap" data-sub="offline">
+          已下架 <text class="seg-count">{{offlineCount}}</text>
+        </view>
+      </view>
+    </view>
+
+    <scroll-view class="page-content" scroll-y enhanced show-scrollbar="{{false}}">
+      <!-- Online Posts -->
+      <view wx:if="{{publishSubTab === 'online'}}">
+        <block wx:for="{{onlinePosts}}" wx:key="id">
+          <view class="post-card" bindtap="onOpenEdit" data-post="{{item}}" data-type="{{item.postType === 'HELP' ? 'help' : 'idle'}}" data-source="online">
+            <view class="post-img" style="background: {{item.iconBg}};">
+              <image class="post-icon" src="{{item.iconSrc}}" mode="aspectFit" />
+            </view>
+            <view class="post-info">
+              <text class="post-title">{{item.title}}</text>
+              <view class="post-tags" wx:if="{{item.postType === 'LEND'}}">
+                <text class="tag tag-blue">{{item.durationLabel}}</text>
+                <text class="tag tag-fill">{{item.conditionLabel}}</text>
+              </view>
+              <text class="post-time">{{item.timeText}}</text>
+            </view>
+            <view class="post-status {{item.statusTagClass}}">{{item.statusText}}</view>
+            <view class="post-act-btn danger" catchtap="onConfirmOffline" data-id="{{item.id}}">下架</view>
+          </view>
+        </block>
+        <view class="list-end" wx:if="{{onlinePosts.length > 0}}">— 共 {{onlineCount}} 条在线发布 —</view>
+        <view class="empty-state" wx:if="{{onlinePosts.length === 0}}">
+          <text class="empty-text">暂无在线发布的物品或求助</text>
+        </view>
+      </view>
+
+      <!-- Offline Posts -->
+      <view wx:if="{{publishSubTab === 'offline'}}">
+        <block wx:for="{{offlinePosts}}" wx:key="id">
+          <view class="post-card" bindtap="onOpenEdit" data-post="{{item}}" data-type="{{item.postType === 'HELP' ? 'help' : 'idle'}}" data-source="offline">
+            <view class="post-img" style="background: {{item.iconBg}};">
+              <image class="post-icon" src="{{item.iconSrc}}" mode="aspectFit" />
+            </view>
+            <view class="post-info">
+              <text class="post-title">{{item.title}}</text>
+              <view class="post-tags" wx:if="{{item.postType === 'LEND'}}">
+                <text class="tag tag-blue">{{item.durationLabel}}</text>
+                <text class="tag tag-fill">{{item.conditionLabel}}</text>
+              </view>
+              <text class="post-time">{{item.timeText}}</text>
+            </view>
+            <view class="post-status post-status-tag-fill">{{item.statusText}}</view>
+            <view class="post-act-btn primary" catchtap="onOpenEdit" data-post="{{item}}" data-type="{{item.postType === 'HELP' ? 'help' : 'idle'}}" data-source="offline">重新发布</view>
+          </view>
+        </block>
+        <view class="list-end" wx:if="{{offlinePosts.length > 0}}">— 共 {{offlineCount}} 条已下架 —</view>
+        <view class="empty-state" wx:if="{{offlinePosts.length === 0}}">
+          <text class="empty-text">暂无已下架的发布</text>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <!-- ===== 审批 ===== -->
+  <view wx:if="{{mainTab === 'approval'}}" class="panel-wrap">
+    <view class="seg-sub-wrap">
+      <view class="segment">
+        <view class="segment-item {{approvalSubTab === 'borrow' ? 'active' : ''}}" bindtap="onApprovalSubTap" data-sub="borrow">借入</view>
+        <view class="segment-item {{approvalSubTab === 'help' ? 'active' : ''}}" bindtap="onApprovalSubTap" data-sub="help">求助</view>
+      </view>
+    </view>
+
+    <scroll-view class="page-content" scroll-y enhanced show-scrollbar="{{false}}">
+      <!-- Borrow Approvals -->
+      <view wx:if="{{approvalSubTab === 'borrow'}}">
+        <block wx:for="{{borrowApprovals}}" wx:key="id">
+          <view class="progress-item" bindtap="onApprovalDetail" data-id="{{item.id}}" data-type="borrow">
+            <view class="progress-avatar">
+              <image class="progress-avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
+            </view>
+            <view class="progress-info">
+              <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
+              <view class="progress-name">借入住户：{{item.applicantName}}</view>
+            </view>
+            <view class="progress-act-btn return-btn" catchtap="onApprovalDetail" data-id="{{item.id}}" data-type="borrow">审批</view>
+          </view>
+        </block>
+        <view class="empty-state" wx:if="{{borrowApprovals.length === 0}}">
+          <text class="empty-text">暂无待审批的借入申请</text>
+        </view>
+      </view>
+
+      <!-- Help Approvals -->
+      <view wx:if="{{approvalSubTab === 'help'}}">
+        <block wx:for="{{helpApprovals}}" wx:key="id">
+          <view class="progress-item" bindtap="onApprovalDetail" data-id="{{item.id}}" data-type="help">
+            <view class="progress-avatar">
+              <image class="progress-avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
+            </view>
+            <view class="progress-info">
+              <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
+              <view class="progress-name">求助住户：{{item.applicantName}}</view>
+            </view>
+            <view class="progress-act-btn return-btn" catchtap="onApprovalDetail" data-id="{{item.id}}" data-type="help">审批</view>
+          </view>
+        </block>
+        <view class="empty-state" wx:if="{{helpApprovals.length === 0}}">
+          <text class="empty-text">暂无待审批的帮助申请</text>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <!-- ===== 进行中 ===== -->
+  <view wx:if="{{mainTab === 'inProgress'}}" class="panel-wrap">
+    <view class="seg-sub-wrap">
+      <view class="segment">
+        <view class="segment-item {{inProgressSubTab === 'borrow' ? 'active' : ''}}" bindtap="onInProgressSubTap" data-sub="borrow">借入</view>
+        <view class="segment-item {{inProgressSubTab === 'lend' ? 'active' : ''}}" bindtap="onInProgressSubTap" data-sub="lend">借出</view>
+        <view class="segment-item {{inProgressSubTab === 'helpReq' ? 'active' : ''}}" bindtap="onInProgressSubTap" data-sub="helpReq">求助</view>
+        <view class="segment-item {{inProgressSubTab === 'helpPro' ? 'active' : ''}}" bindtap="onInProgressSubTap" data-sub="helpPro">帮助</view>
+      </view>
+    </view>
+
+    <scroll-view class="page-content" scroll-y enhanced show-scrollbar="{{false}}">
+      <!-- 进行中 - 借入：已经借进来自己还未归还 -->
+      <view wx:if="{{inProgressSubTab === 'borrow'}}">
+        <block wx:for="{{inProgressBorrows}}" wx:key="id">
+          <view class="progress-item" bindtap="onReturnBorrow" data-id="{{item.id}}">
+            <view class="progress-avatar">
+              <image class="progress-avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
+            </view>
+            <view class="progress-info">
+              <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
+              <view class="progress-name">借出住户：{{item.personName}}</view>
+              <view class="progress-meta">{{item.metaText}}</view>
+            </view>
+            <view class="progress-act-btn return-btn" catchtap="onReturnBorrow" data-id="{{item.id}}">归还</view>
+          </view>
+        </block>
+        <view class="empty-state" wx:if="{{inProgressBorrows.length === 0}}">
+          <text class="empty-text">暂无进行中的借入</text>
+        </view>
+      </view>
+
+      <!-- 进行中 - 借出：已经借出去他人还未归还 -->
+      <view wx:if="{{inProgressSubTab === 'lend'}}">
+        <block wx:for="{{inProgressLends}}" wx:key="id">
+          <view class="progress-item" bindtap="onReturnLend" data-id="{{item.id}}">
+            <view class="progress-avatar">
+              <image class="progress-avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
+            </view>
+            <view class="progress-info">
+              <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
+              <view class="progress-name">借走住户：{{item.personName}}</view>
+              <view class="progress-meta">{{item.metaText}}</view>
+            </view>
+            <view class="progress-act-btn return-btn" catchtap="onReturnLend" data-id="{{item.id}}">归还</view>
+          </view>
+        </block>
+        <view class="empty-state" wx:if="{{inProgressLends.length === 0}}">
+          <text class="empty-text">暂无进行中的借出</text>
+        </view>
+      </view>
+
+      <!-- 进行中 - 求助：发起的求助已经在进行中还未结束 -->
+      <view wx:if="{{inProgressSubTab === 'helpReq'}}">
+        <block wx:for="{{inProgressHelpReqs}}" wx:key="id">
+          <view class="progress-item" bindtap="onEndHelpReq" data-id="{{item.id}}">
+            <view class="progress-avatar">
+              <image class="progress-avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
+            </view>
+            <view class="progress-info">
+              <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
+              <view class="progress-name">帮助住户：{{item.personName}}</view>
+              <view class="progress-meta">{{item.metaText}}</view>
+            </view>
+            <view class="progress-act-btn end-btn" catchtap="onEndHelpReq" data-id="{{item.id}}">结束</view>
+          </view>
+        </block>
+        <view class="empty-state" wx:if="{{inProgressHelpReqs.length === 0}}">
+          <text class="empty-text">暂无进行中的求助</text>
+        </view>
+      </view>
+
+      <!-- 进行中 - 帮助：主动帮助他人的还在进行中 -->
+      <view wx:if="{{inProgressSubTab === 'helpPro'}}">
+        <block wx:for="{{inProgressHelpPros}}" wx:key="id">
+          <view class="progress-item" bindtap="onEndHelpPro" data-id="{{item.id}}">
+            <view class="progress-avatar">
+              <image class="progress-avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
+            </view>
+            <view class="progress-info">
+              <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
+              <view class="progress-name">求助住户：{{item.personName}}</view>
+              <view class="progress-meta">{{item.metaText}}</view>
+            </view>
+            <view class="progress-act-btn end-btn" catchtap="onEndHelpPro" data-id="{{item.id}}">结束</view>
+          </view>
+        </block>
+        <view class="empty-state" wx:if="{{inProgressHelpPros.length === 0}}">
+          <text class="empty-text">暂无进行中的帮助</text>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <!-- ===== 已完成 ===== -->
+  <view wx:if="{{mainTab === 'completed'}}" class="panel-wrap">
+    <view class="seg-sub-wrap">
+      <view class="segment">
+        <view class="segment-item {{completedSubTab === 'borrow' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="borrow">借入</view>
+        <view class="segment-item {{completedSubTab === 'lend' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="lend">借出</view>
+        <view class="segment-item {{completedSubTab === 'helpReq' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="helpReq">求助</view>
+        <view class="segment-item {{completedSubTab === 'helpPro' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="helpPro">帮助</view>
+      </view>
+    </view>
+
+    <scroll-view class="page-content" scroll-y enhanced show-scrollbar="{{false}}">
+      <!-- 已完成 - 借入 -->
+      <view wx:if="{{completedSubTab === 'borrow'}}">
+        <block wx:for="{{completedBorrows}}" wx:key="id">
+          <view class="progress-item" bindtap="onCompletedDetail" data-id="{{item.id}}" data-type="borrow">
+            <view class="progress-avatar">
+              <image class="progress-avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
+            </view>
+            <view class="progress-info">
+              <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
+              <view class="progress-name progress-name-secondary">借出住户：{{item.personName}}</view>
+              <view class="progress-meta progress-meta-secondary">{{item.metaText}}</view>
+            </view>
+            <view class="progress-status {{item.statusTagClass}}">{{item.statusText}}</view>
+          </view>
+        </block>
+        <view class="empty-state" wx:if="{{completedBorrows.length === 0}}">
+          <text class="empty-text">暂无已完成的借入</text>
+        </view>
+      </view>
+
+      <!-- 已完成 - 借出 -->
+      <view wx:if="{{completedSubTab === 'lend'}}">
+        <block wx:for="{{completedLends}}" wx:key="id">
+          <view class="progress-item" bindtap="onCompletedDetail" data-id="{{item.id}}" data-type="lend">
+            <view class="progress-avatar">
+              <image class="progress-avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
+            </view>
+            <view class="progress-info">
+              <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
+              <view class="progress-name progress-name-secondary">借走住户：{{item.personName}}</view>
+              <view class="progress-meta progress-meta-secondary">{{item.metaText}}</view>
+            </view>
+            <view class="progress-status {{item.statusTagClass}}">{{item.statusText}}</view>
+          </view>
+        </block>
+        <view class="empty-state" wx:if="{{completedLends.length === 0}}">
+          <text class="empty-text">暂无已完成的借出</text>
+        </view>
+      </view>
+
+      <!-- 已完成 - 求助 -->
+      <view wx:if="{{completedSubTab === 'helpReq'}}">
+        <block wx:for="{{completedHelpReqs}}" wx:key="id">
+          <view class="progress-item" bindtap="onCompletedDetail" data-id="{{item.id}}" data-type="helpReq">
+            <view class="progress-avatar">
+              <image class="progress-avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
+            </view>
+            <view class="progress-info">
+              <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
+              <view class="progress-name progress-name-secondary">帮忙用户：{{item.personName}}</view>
+              <view class="progress-meta progress-meta-secondary">{{item.metaText}}</view>
+            </view>
+            <view class="progress-status {{item.statusTagClass}}">{{item.statusText}}</view>
+          </view>
+        </block>
+        <view class="empty-state" wx:if="{{completedHelpReqs.length === 0}}">
+          <text class="empty-text">暂无已完成的求助</text>
+        </view>
+      </view>
+
+      <!-- 已完成 - 帮助 -->
+      <view wx:if="{{completedSubTab === 'helpPro'}}">
+        <block wx:for="{{completedHelpPros}}" wx:key="id">
+          <view class="progress-item" bindtap="onCompletedDetail" data-id="{{item.id}}" data-type="helpPro">
+            <view class="progress-avatar">
+              <image class="progress-avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
+            </view>
+            <view class="progress-info">
+              <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
+              <view class="progress-name progress-name-secondary">求助住户：{{item.personName}}</view>
+              <view class="progress-meta progress-meta-secondary">{{item.metaText}}</view>
+            </view>
+            <view class="progress-status {{item.statusTagClass}}">{{item.statusText}}</view>
+          </view>
+        </block>
+        <view class="empty-state" wx:if="{{completedHelpPros.length === 0}}">
+          <text class="empty-text">暂无已完成的帮助</text>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+</view>
+
+<!-- ===== Drawer (slide-down from top) ===== -->
+<view class="drawer-overlay" wx:if="{{showDrawer}}" catchtouchmove="preventTouchMove" bindtap="onCloseDrawer"></view>
+<view class="drawer" wx:if="{{showDrawer}}">
+  <view class="drawer-header">
+    <text class="drawer-title">快捷入口</text>
+    <view class="drawer-close" bindtap="onCloseDrawer">
+      <text class="drawer-close-icon" style="font-size:28rpx;line-height:1;">✕</text>
+    </view>
+  </view>
+  <view class="drawer-body">
+    <view class="drawer-grid">
+      <view class="drawer-entry" bindtap="onFeedBack">
+        <view class="entry-icon">
+          <image class="drawer-entry-img" src="../../images/icon-edit.svg" mode="aspectFit" />
+        </view>
+        <text class="entry-label">功能反馈</text>
+      </view>
+    </view>
+  </view>
+</view>
+
+<!-- ===== Offline Confirm Alert ===== -->
+<view class="alert-overlay" wx:if="{{showOfflineAlert}}" catchtap="onCloseOfflineAlert">
+  <view class="alert" catchtap="">
+    <view class="alert-title">确认下架</view>
+    <view class="alert-body">下架后该内容将不再公开展示，确定继续？</view>
+    <view class="alert-actions">
+      <view class="alert-btn" bindtap="onCancelOffline">取消</view>
+      <view class="alert-btn alert-btn-bold alert-btn-danger" bindtap="onDoOffline">确认下架</view>
+    </view>
+  </view>
+</view>
+
+<!-- ===== Edit Sheet (bottom sheet — flex column: fixed header + scroll body + fixed footer) ===== -->
+<view class="edit-sheet-overlay" wx:if="{{showEditSheet}}" catchtouchmove="preventTouchMove" bindtap="onCloseEdit"></view>
+<view class="edit-sheet" wx:if="{{showEditSheet}}">
+  <view class="edit-sheet-header">
+    <view class="edit-sheet-handle"></view>
+    <view class="edit-sheet-title">编辑发布</view>
+  </view>
+
+  <scroll-view class="edit-sheet-body" scroll-y enhanced show-scrollbar="{{false}}">
+
+    <!-- Post Type (read-only display) -->
+    <view class="input-group">
+      <text class="edit-input-label">发布类型</text>
+      <view class="segment" style="margin:0;">
+        <view class="segment-item {{editPostType === 'LEND' ? 'active' : ''}}">闲置借出</view>
+        <view class="segment-item {{editPostType === 'WANTED' ? 'active' : ''}}">需求借入</view>
+        <view class="segment-item {{editPostType === 'HELP' ? 'active' : ''}}">技能求助</view>
+      </view>
+    </view>
+
+    <!-- ===== LEND: 闲置借出 ===== -->
+    <block wx:if="{{editPostType === 'LEND'}}">
+
+      <view class="input-group">
+        <text class="edit-input-label">物品标题</text>
+        <input class="edit-input" type="text" value="{{editTitle}}" bindinput="onEditInput" data-field="editTitle" placeholder="例：博世冲击钻套装 GBH 2-20" />
+      </view>
+
+      <view class="input-group">
+        <text class="edit-input-label">物品类型</text>
+        <view class="pill-row">
+          <view class="pill {{editCategory === '工具' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="工具">
+            <image class="pill-icon" src="../../images/icon-wrench.svg" mode="aspectFit" />
+            <text>工具</text>
+          </view>
+          <view class="pill {{editCategory === '电子产品' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="电子产品">
+            <image class="pill-icon" src="../../images/icon-phone.svg" mode="aspectFit" />
+            <text>电子产品</text>
+          </view>
+          <view class="pill {{editCategory === '书籍' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="书籍">
+            <image class="pill-icon" src="../../images/icon-book.svg" mode="aspectFit" />
+            <text>书籍</text>
+          </view>
+          <view class="pill {{editCategory === '家居' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="家居">
+            <image class="pill-icon" src="../../images/icon-home.svg" mode="aspectFit" />
+            <text>家居</text>
+          </view>
+          <view class="pill {{editCategory === '运动' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="运动">
+            <image class="pill-icon" src="../../images/icon-ball.svg" mode="aspectFit" />
+            <text>运动</text>
+          </view>
+          <view class="pill {{editCategory === '玩具' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="玩具">
+            <image class="pill-icon" src="../../images/icon-gamepad.svg" mode="aspectFit" />
+            <text>玩具</text>
+          </view>
+          <view class="pill {{editCategory === '服饰' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="服饰">
+            <image class="pill-icon" src="../../images/icon-shirt.svg" mode="aspectFit" />
+            <text>服饰</text>
+          </view>
+          <view class="pill {{editCategory === '其他' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="其他">
+            <image class="pill-icon" src="../../images/icon-info.svg" mode="aspectFit" />
+            <text>其他</text>
+          </view>
+        </view>
+        <input class="edit-input" wx:if="{{editCategory === '其他'}}" type="text" value="{{editCustomType}}" bindinput="onEditInput" data-field="editCustomType" placeholder="手动输入类型" style="margin-top:16rpx;" />
+      </view>
+
+      <view class="input-group">
+        <text class="edit-input-label">参考价格（人民币）</text>
+        <input class="edit-input" type="digit" value="{{editPrice}}" bindinput="onEditInput" data-field="editPrice" placeholder="用于损坏赔偿基准" />
+      </view>
+
+      <view class="input-group">
+        <text class="edit-input-label">物品详细描述</text>
+        <textarea class="edit-textarea" value="{{editDesc}}" bindinput="onEditInput" data-field="editDesc" placeholder="描述物品现状、使用痕迹、附件清单、借用注意事项等" />
+      </view>
+
+      <view class="input-group">
+        <text class="edit-input-label">借出时长</text>
+        <view class="segment" style="margin:0;">
+          <view class="segment-item {{editDurationUnit === 'day' ? 'active' : ''}}" bindtap="onEditUnitTap" data-value="day">按天</view>
+          <view class="segment-item {{editDurationUnit === 'hour' ? 'active' : ''}}" bindtap="onEditUnitTap" data-value="hour">按小时</view>
+        </view>
+        <picker class="select-wrap" mode="selector" range="{{editDurationOptions}}" value="{{editDurationIndex}}" bindchange="onEditDurationChange">
+          <view class="select">{{editDurationOptions[editDurationIndex]}}</view>
+        </picker>
+      </view>
+
+      <view class="input-group">
+        <text class="edit-input-label">借出形式</text>
+        <view class="segment" style="margin:0;">
+          <view class="segment-item {{editPickupMethod === 'self_pickup' ? 'active' : ''}}" bindtap="onEditPickupTap" data-value="self_pickup">需自提</view>
+          <view class="segment-item {{editPickupMethod === 'both' ? 'active' : ''}}" bindtap="onEditPickupTap" data-value="both">自提 / 可送上门</view>
+        </view>
+      </view>
+
+      <view class="input-group" style="margin-bottom:0;">
+        <text class="edit-input-label">物品状况（可选）</text>
+        <view class="segment" style="margin:0;">
+          <view class="segment-item {{editCondition === 'like-new' ? 'active' : ''}}" bindtap="onEditConditionTap" data-value="like-new">几乎全新</view>
+          <view class="segment-item {{editCondition === 'normal' ? 'active' : ''}}" bindtap="onEditConditionTap" data-value="normal">正常使用痕迹</view>
+          <view class="segment-item {{editCondition === 'worn' ? 'active' : ''}}" bindtap="onEditConditionTap" data-value="worn">有明显磨损</view>
+        </view>
+      </view>
+
+    </block>
+
+    <!-- ===== WANTED: 需求借入 ===== -->
+    <block wx:if="{{editPostType === 'WANTED'}}">
+
+      <view class="input-group">
+        <text class="edit-input-label">物品名称</text>
+        <input class="edit-input" type="text" value="{{editTitle}}" bindinput="onEditInput" data-field="editTitle" placeholder="例：博世冲击钻套装 GBH 2-20" />
+      </view>
+
+      <view class="input-group">
+        <text class="edit-input-label">物品类型</text>
+        <view class="pill-row">
+          <view class="pill {{editCategory === '工具' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="工具">
+            <image class="pill-icon" src="../../images/icon-wrench.svg" mode="aspectFit" />
+            <text>工具</text>
+          </view>
+          <view class="pill {{editCategory === '电子产品' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="电子产品">
+            <image class="pill-icon" src="../../images/icon-phone.svg" mode="aspectFit" />
+            <text>电子产品</text>
+          </view>
+          <view class="pill {{editCategory === '书籍' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="书籍">
+            <image class="pill-icon" src="../../images/icon-book.svg" mode="aspectFit" />
+            <text>书籍</text>
+          </view>
+          <view class="pill {{editCategory === '家居' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="家居">
+            <image class="pill-icon" src="../../images/icon-home.svg" mode="aspectFit" />
+            <text>家居</text>
+          </view>
+          <view class="pill {{editCategory === '运动' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="运动">
+            <image class="pill-icon" src="../../images/icon-ball.svg" mode="aspectFit" />
+            <text>运动</text>
+          </view>
+          <view class="pill {{editCategory === '玩具' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="玩具">
+            <image class="pill-icon" src="../../images/icon-gamepad.svg" mode="aspectFit" />
+            <text>玩具</text>
+          </view>
+          <view class="pill {{editCategory === '服饰' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="服饰">
+            <image class="pill-icon" src="../../images/icon-shirt.svg" mode="aspectFit" />
+            <text>服饰</text>
+          </view>
+          <view class="pill {{editCategory === '其他' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="其他">
+            <image class="pill-icon" src="../../images/icon-info.svg" mode="aspectFit" />
+            <text>其他</text>
+          </view>
+        </view>
+        <input class="edit-input" wx:if="{{editCategory === '其他'}}" type="text" value="{{editCustomType}}" bindinput="onEditInput" data-field="editCustomType" placeholder="手动输入类型" style="margin-top:16rpx;" />
+      </view>
+
+      <view class="input-group">
+        <text class="edit-input-label">用途说明</text>
+        <textarea class="edit-textarea" value="{{editDesc}}" bindinput="onEditInput" data-field="editDesc" placeholder="请描述您需要借用此物品的原因和用途，让出借人更好地了解您的需求" />
+      </view>
+
+      <view class="input-group" style="margin-bottom:0;">
+        <text class="edit-input-label">期望借用时长</text>
+        <view class="segment" style="margin:0;">
+          <view class="segment-item {{editDurationUnit === 'day' ? 'active' : ''}}" bindtap="onEditUnitTap" data-value="day">按天</view>
+          <view class="segment-item {{editDurationUnit === 'hour' ? 'active' : ''}}" bindtap="onEditUnitTap" data-value="hour">按小时</view>
+        </view>
+        <picker class="select-wrap" mode="selector" range="{{editDurationOptions}}" value="{{editDurationIndex}}" bindchange="onEditDurationChange">
+          <view class="select">{{editDurationOptions[editDurationIndex]}}</view>
+        </picker>
+      </view>
+
+    </block>
+
+    <!-- ===== HELP: 技能求助 ===== -->
+    <block wx:if="{{editPostType === 'HELP'}}">
+
+      <view class="input-group">
+        <text class="edit-input-label">求助标题</text>
+        <input class="edit-input" type="text" value="{{editTitle}}" bindinput="onEditInput" data-field="editTitle" placeholder="简要描述你需要的帮助" />
+      </view>
+
+      <view class="input-group">
+        <text class="edit-input-label">求助类型</text>
+        <view class="pill-row">
+          <view class="pill {{editCategory === '维修' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="维修">
+            <image class="pill-icon" src="../../images/icon-wrench.svg" mode="aspectFit" />
+            <text>维修</text>
+          </view>
+          <view class="pill {{editCategory === '陪护' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="陪护">
+            <image class="pill-icon" src="../../images/icon-users.svg" mode="aspectFit" />
+            <text>陪护</text>
+          </view>
+          <view class="pill {{editCategory === '代取' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="代取">
+            <image class="pill-icon" src="../../images/icon-download.svg" mode="aspectFit" />
+            <text>代取</text>
+          </view>
+          <view class="pill {{editCategory === '搬运' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="搬运">
+            <image class="pill-icon" src="../../images/icon-download.svg" mode="aspectFit" />
+            <text>搬运</text>
+          </view>
+          <view class="pill {{editCategory === '辅导' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="辅导">
+            <image class="pill-icon" src="../../images/icon-book.svg" mode="aspectFit" />
+            <text>辅导</text>
+          </view>
+          <view class="pill {{editCategory === '遛宠' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="遛宠">
+            <image class="pill-icon" src="../../images/icon-heart.svg" mode="aspectFit" />
+            <text>遛宠</text>
+          </view>
+          <view class="pill {{editCategory === '烹饪' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="烹饪">
+            <image class="pill-icon" src="../../images/icon-heart.svg" mode="aspectFit" />
+            <text>烹饪</text>
+          </view>
+          <view class="pill {{editCategory === '其他' ? 'selected' : ''}}" bindtap="onEditCategoryTap" data-value="其他">
+            <image class="pill-icon" src="../../images/icon-info.svg" mode="aspectFit" />
+            <text>其他</text>
+          </view>
+        </view>
+        <input class="edit-input" wx:if="{{editCategory === '其他'}}" type="text" value="{{editCustomType}}" bindinput="onEditInput" data-field="editCustomType" placeholder="手动输入求助类型" style="margin-top:16rpx;" />
+      </view>
+
+      <view class="input-group">
+        <text class="edit-input-label">详细描述</text>
+        <textarea class="edit-textarea" value="{{editDesc}}" bindinput="onEditInput" data-field="editDesc" placeholder="描述具体情况、需要什么帮助、大概需要多长时间等" />
+      </view>
+
+      <view class="input-group" style="margin-bottom:0;">
+        <text class="edit-input-label">紧急程度</text>
+        <view class="segment" style="margin:0;">
+          <view class="segment-item {{editUrgency === 'normal' ? 'active' : ''}}" bindtap="onEditUrgencyTap" data-value="normal">一般</view>
+          <view class="segment-item {{editUrgency === 'urgent' ? 'active' : ''}}" bindtap="onEditUrgencyTap" data-value="urgent">紧急</view>
+        </view>
+      </view>
+
+    </block>
+
+  </scroll-view>
+
+  <view class="edit-sheet-footer">
+    <view class="edit-save-btn" bindtap="onSaveEdit">{{editSource === 'offline' ? '重新发布' : '保存'}}</view>
+  </view>
+</view>
+
+<!-- ===== Approval Sheet (bottom sheet: fixed header + scroll body + fixed footer) ===== -->
+<view class="approval-sheet-overlay" wx:if="{{showApprovalSheet}}" catchtouchmove="preventTouchMove" bindtap="onCloseApprovalSheet"></view>
+<view class="approval-sheet" wx:if="{{showApprovalSheet}}">
+  <view class="approval-sheet-header">
+    <view class="approval-sheet-handle"></view>
+    <view class="approval-sheet-title">审批</view>
+  </view>
+
+  <scroll-view class="approval-sheet-body" scroll-y enhanced show-scrollbar="{{false}}">
+    <!-- Item title -->
+    <view class="approval-section">
+      <text class="approval-section-label">物品</text>
+      <text class="approval-item-title">{{approvalSheetItem.itemTitle}}</text>
+    </view>
+
+    <!-- Applicant info -->
+    <view class="approval-section">
+      <text class="approval-section-label">申请住户</text>
+      <view class="approval-resident-card">
+        <view class="approval-resident-row">
+          <text class="approval-resident-addr">{{approvalSheetItem.applicantAddress}}（{{approvalSheetItem.applicantType}}）</text>
+          <view class="approval-rating-inline">
+            <text class="approval-rating-label">综合评分</text>
+            <view class="approval-rating-score-row">
+              <text class="approval-rating-value">{{approvalSheetItem.applicantRating}}</text>
+              <text class="approval-rating-unit">/ 5.0</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- Stats -->
+    <view class="approval-section">
+      <text class="approval-section-label">互助记录</text>
+      <view class="approval-stats-grid">
+        <view class="approval-stat-item approval-stat-half">
+          <text class="approval-stat-value">{{approvalSheetItem.borrowCount}} 次</text>
+          <text class="approval-stat-label">借入</text>
+        </view>
+        <view class="approval-stat-item approval-stat-half">
+          <text class="approval-stat-value">{{approvalSheetItem.borrowReturnRate}}%</text>
+          <text class="approval-stat-label">按时归还率</text>
+        </view>
+        <view class="approval-stat-item">
+          <text class="approval-stat-value">{{approvalSheetItem.lendCount}} 次</text>
+          <text class="approval-stat-label">借出</text>
+        </view>
+        <view class="approval-stat-item">
+          <text class="approval-stat-value">{{approvalSheetItem.helpReqCount}} 次</text>
+          <text class="approval-stat-label">求助</text>
+        </view>
+        <view class="approval-stat-item">
+          <text class="approval-stat-value">{{approvalSheetItem.helpProCount}} 次</text>
+          <text class="approval-stat-label">帮助他人</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- Friendly reminder -->
+    <view class="approval-tip">
+      <view class="approval-tip-header">
+        <text class="approval-tip-icon">💡</text>
+        <text class="approval-tip-title">温馨提示</text>
+      </view>
+      <text class="approval-tip-text">您可以根据对方的过往记录来判断是否{{approvalSheetItem.approvalType === 'help' ? '帮助' : '借给'}}申请的住户，良好的互助记录通常意味着更可靠的合作体验。</text>
+    </view>
+  </scroll-view>
+
+  <view class="approval-sheet-footer">
+    <view class="approval-footer-row">
+      <view class="approval-confirm-btn" bindtap="onConfirmApproval">同意</view>
+      <view class="approval-reject-btn" bindtap="onRejectClick">拒绝</view>
+    </view>
+  </view>
+</view>
+
+<!-- ===== Progress Sheet (进行中 detail: fixed header + scroll body + fixed footer) ===== -->
+<view class="progress-sheet-overlay" wx:if="{{showProgressSheet}}" catchtouchmove="preventTouchMove" bindtap="onCloseProgressSheet"></view>
+<view class="progress-sheet" wx:if="{{showProgressSheet}}">
+  <view class="progress-sheet-header">
+    <view class="progress-sheet-handle"></view>
+    <view class="progress-sheet-title">{{progressSheetType === 'helpReq' || progressSheetType === 'helpPro' ? '结束' : '归还'}}</view>
+  </view>
+
+  <scroll-view class="progress-sheet-body" scroll-y enhanced show-scrollbar="{{false}}">
+    <!-- Item title -->
+    <view class="approval-section">
+      <text class="approval-section-label">物品</text>
+      <text class="approval-item-title">{{progressSheetItem.itemTitle}}</text>
+    </view>
+
+    <!-- Resident info -->
+    <view class="approval-section">
+      <text class="approval-section-label">{{progressSheetItem.roleLabel}}</text>
+      <view class="approval-resident-card">
+        <view class="approval-resident-row">
+          <text class="approval-resident-addr">{{progressSheetItem.personAddress}}（{{progressSheetItem.personType}}）</text>
+          <view class="approval-rating-inline">
+            <text class="approval-rating-label">综合评分</text>
+            <view class="approval-rating-score-row">
+              <text class="approval-rating-value">{{progressSheetItem.personRating}}</text>
+              <text class="approval-rating-unit">/ 5.0</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- Return time (only for borrow/lend) -->
+    <view class="approval-section" wx:if="{{progressSheetType === 'borrow' || progressSheetType === 'lend'}}">
+      <text class="approval-section-label">归还时间</text>
+      <view class="progress-return-time {{progressSheetItem.isOverdue ? 'overdue' : ''}}">
+        <text wx:if="{{progressSheetItem.isOverdue}}">已超出归还时间 {{progressSheetItem.remainingDays < 0 ? -progressSheetItem.remainingDays : 0}} 天</text>
+        <text wx:else>剩余 {{progressSheetItem.remainingDays}} 天归还</text>
+      </view>
+    </view>
+
+    <!-- Star Rating (required) -->
+    <view class="approval-section">
+      <text class="approval-section-label">请为此次互助评分 <text style="color:var(--red);">*</text></text>
+      <view class="progress-stars-row">
+        <view class="progress-star {{progressSheetRating >= 1 ? 'active' : ''}}" bindtap="onProgressRatingTap" data-star="1">★</view>
+        <view class="progress-star {{progressSheetRating >= 2 ? 'active' : ''}}" bindtap="onProgressRatingTap" data-star="2">★</view>
+        <view class="progress-star {{progressSheetRating >= 3 ? 'active' : ''}}" bindtap="onProgressRatingTap" data-star="3">★</view>
+        <view class="progress-star {{progressSheetRating >= 4 ? 'active' : ''}}" bindtap="onProgressRatingTap" data-star="4">★</view>
+        <view class="progress-star {{progressSheetRating >= 5 ? 'active' : ''}}" bindtap="onProgressRatingTap" data-star="5">★</view>
+      </view>
+    </view>
+
+    <!-- Feedback (optional) -->
+    <view class="approval-section">
+      <text class="approval-section-label">互助感想（选填）</text>
+      <textarea class="progress-feedback-input" value="{{progressSheetFeedback}}" bindinput="onProgressFeedbackInput" placeholder="分享一下此次互助的感受…" maxlength="200" />
+    </view>
+  </scroll-view>
+
+  <view class="progress-sheet-footer">
+    <view class="progress-confirm-btn" bindtap="onConfirmReturn">{{progressSheetType === 'helpReq' || progressSheetType === 'helpPro' ? '结束' : '归还'}}</view>
+  </view>
+</view>
+
+<!-- ===== Completed Sheet (已完成 detail — fixed header + scroll body) ===== -->
+<view class="completed-sheet-overlay" wx:if="{{showCompletedSheet}}" catchtouchmove="preventTouchMove" bindtap="onCloseCompletedSheet"></view>
+<view class="completed-sheet" wx:if="{{showCompletedSheet}}">
+  <view class="completed-sheet-header">
+    <view class="completed-sheet-handle"></view>
+    <view class="completed-sheet-title">互助详情</view>
+  </view>
+
+  <scroll-view class="completed-sheet-body" scroll-y enhanced show-scrollbar="{{false}}">
+    <!-- Item title -->
+    <view class="approval-section">
+      <text class="approval-section-label">物品</text>
+      <text class="approval-item-title">{{completedSheetItem.itemTitle}}</text>
+    </view>
+
+    <!-- Person info -->
+    <view class="approval-section">
+      <text class="approval-section-label">{{completedSheetItem.roleLabel}}</text>
+      <view class="approval-resident-card">
+        <view class="approval-resident-row">
+          <text class="approval-resident-addr">{{completedSheetItem.personAddress}}（{{completedSheetItem.personType}}）</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 互助评分 (both sides) -->
+    <view class="approval-section">
+      <text class="approval-section-label">互助评分</text>
+      <view class="completed-rating-grid">
+        <view class="completed-rating-card">
+          <text class="completed-rating-card-label">我给对方的评分</text>
+          <view wx:if="{{completedSheetItem.myRating !== null}}" class="completed-rating-value-row">
+            <text class="completed-rating-score">{{completedSheetItem.myRating}}</text>
+            <text class="completed-rating-unit">/ 5.0</text>
+          </view>
+          <text wx:else class="completed-rating-pending">未评分</text>
+        </view>
+        <view class="completed-rating-card">
+          <text class="completed-rating-card-label">对方给我的评分</text>
+          <view wx:if="{{completedSheetItem.theirRating !== null}}" class="completed-rating-value-row">
+            <text class="completed-rating-score">{{completedSheetItem.theirRating}}</text>
+            <text class="completed-rating-unit">/ 5.0</text>
+          </view>
+          <text wx:else class="completed-rating-pending">未评分</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 互助感想 (both sides) -->
+    <view class="approval-section">
+      <text class="approval-section-label">互助感想</text>
+      <view class="completed-feedback-list">
+        <view class="completed-feedback-card">
+          <text class="completed-feedback-card-label">我的感想</text>
+          <text class="completed-feedback-text">{{completedSheetItem.myFeedback || '无'}}</text>
+        </view>
+        <view class="completed-feedback-card">
+          <text class="completed-feedback-card-label">对方感想</text>
+          <text class="completed-feedback-text">{{completedSheetItem.theirFeedback || '无'}}</text>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+</view>
+
+<!-- ===== Confirm Alert (approve / reject) ===== -->
+<view class="alert-overlay" wx:if="{{showConfirmAlert}}" catchtap="onCancelConfirm">
+  <view class="alert" catchtap="">
+    <view class="alert-title">{{confirmAlertTitle}}</view>
+    <view class="alert-body">{{confirmAlertBody}}</view>
+    <view class="alert-actions">
+      <view class="alert-btn" bindtap="onCancelConfirm">取消</view>
+      <view class="alert-btn alert-btn-bold" bindtap="onDoConfirm">确认</view>
+    </view>
+  </view>
+</view>
+
+<!-- ===== Return Confirm Alert ===== -->
+<view class="alert-overlay" wx:if="{{showReturnConfirmAlert}}" catchtap="onCancelReturnConfirm">
+  <view class="alert" catchtap="">
+    <view class="alert-title">确认{{returnConfirmData.type === 'helpReq' || returnConfirmData.type === 'helpPro' ? '结束' : '归还'}}</view>
+    <view class="alert-body">{{returnConfirmData.type === 'helpReq' || returnConfirmData.type === 'helpPro' ? '确认结束此次互助？' : '确认物品已归还？'}}</view>
+    <view class="alert-actions">
+      <view class="alert-btn" bindtap="onCancelReturnConfirm">取消</view>
+      <view class="alert-btn alert-btn-bold" bindtap="onDoReturn">确认</view>
+    </view>
+  </view>
+</view>
+
+<!-- ===== Overdue Tip Alert ===== -->
+<view class="alert-overlay" wx:if="{{showOverdueTipAlert}}" catchtap="onCloseOverdueTip">
+  <view class="alert" catchtap="">
+    <view class="alert-title">温馨提示</view>
+    <view class="alert-body">本次归还已超时，请下次务必按时归还。良好的信用记录有助于您在社区中获得更多互助机会。</view>
+    <view class="alert-actions">
+      <view class="alert-btn alert-btn-bold" bindtap="onCloseOverdueTip">我知道了</view>
+    </view>
+  </view>
+</view>
+
+<!-- ===== Save Confirm Alert (Edit Sheet) ===== -->
+<view class="alert-overlay" wx:if="{{showSaveConfirmAlert}}" catchtap="onCancelSaveConfirm">
+  <view class="alert" catchtap="">
+    <view class="alert-title">{{editSource === 'offline' ? '确认重新发布' : '确认保存'}}</view>
+    <view class="alert-body">{{editSource === 'offline' ? '重新发布后该内容将重新公开展示，确定继续？' : '确定保存此次编辑？'}}</view>
+    <view class="alert-actions">
+      <view class="alert-btn" bindtap="onCancelSaveConfirm">取消</view>
+      <view class="alert-btn alert-btn-bold" bindtap="onDoSave">确认</view>
+    </view>
+  </view>
+</view>

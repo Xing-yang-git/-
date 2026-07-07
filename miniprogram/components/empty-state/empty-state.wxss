@@ -1,0 +1,10 @@
+/* empty-state component — extends global .empty-state from app.wxss */
+.empty-icon {
+  background: var(--fill-tertiary);
+}
+
+.empty-text {
+  color: var(--text-secondary);
+}
+
+.empty-action { margin-top: 20px; }

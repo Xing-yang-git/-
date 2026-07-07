@@ -1,0 +1,44 @@
+# ===== Build & Output =====
+target/
+dist/
+build/
+out/
+*.class
+*.jar
+*.war
+*.log
+
+# ===== Dependencies =====
+node_modules/
+.sass-cache/
+
+# ===== IDE =====
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== Environment =====
+.env
+.env.local
+.env.*.local
+
+# ===== Coverage =====
+coverage/
+*.lcov
+*.coveragerc
+
+# ===== Temp =====
+*.tmp
+*.temp
+.cache/

@@ -1,0 +1,95 @@
+<view class="detail-page">
+  <scroll-view class="page-content" scroll-y enhanced show-scrollbar="{{false}}">
+    <!-- Basic info -->
+    <view class="section-ios">
+      <view class="detail-title">
+        <text class="urgent-badge" wx:if="{{item.isUrgent}}">急</text>
+        {{item.title}}
+      </view>
+      <view class="detail-desc">{{item.description}}</view>
+
+      <view class="detail-tags">
+        <text class="tag tag-blue">{{item.category || '求助'}}</text>
+      </view>
+
+      <!-- Urgent warning -->
+      <view class="callout callout-red" wx:if="{{item.isUrgent}}" style="margin-top:12px;">
+        <text>⚠️ 紧急求助 — 求助者希望尽快得到帮助。如果你有相关技能，请优先联系TA。</text>
+      </view>
+
+      <view class="info-row" style="margin-top:12px;">
+        <text class="info-label">发布时间</text>
+        <text class="info-value">{{item.timeAgo || ''}}</text>
+      </view>
+      <view class="info-row" wx:if="{{item.location}}">
+        <text class="info-label">地点</text>
+        <text class="info-value">{{item.location}}</text>
+      </view>
+      <view class="info-row" wx:if="{{item.rewardType}}">
+        <text class="info-label">酬谢方式</text>
+        <text class="info-value">{{item.rewardLabel || '无偿互助'}}</text>
+      </view>
+    </view>
+
+    <!-- Publisher info -->
+    <view class="section-ios">
+      <view class="pub-header">
+        <view class="avatar">👤</view>
+        <view class="pub-info">
+          <view class="pub-name">{{item.userRoom || item.userName || ''}}</view>
+          <view class="pub-meta">
+            综合评分 {{item.rating != null ? '★' + item.rating : '暂无'}} · 已求助 {{item.helpCount || 0}} 次 · 已帮助 {{item.helpedCount || 0}} 次
+          </view>
+        </view>
+        <text class="link-text" bindtap="onViewProfile">以往记录 ›</text>
+      </view>
+    </view>
+
+    <!-- Applications (if any) -->
+    <view class="section-ios" wx:if="{{item.helperCount > 0}}">
+      <view class="section-header-text">已有 {{item.helperCount}} 位邻居愿意帮忙</view>
+    </view>
+
+    <!-- Bottom spacing -->
+    <view style="height: 80px;"></view>
+  </scroll-view>
+
+  <!-- Bottom action bar -->
+  <view class="action-bar">
+    <button class="action-btn action-btn-outline" bindtap="onContactTap">
+      <text>💬 联系TA</text>
+    </button>
+    <button class="action-btn action-btn-primary" bindtap="onHelpTap">
+      <text>🤝 我来帮忙</text>
+    </button>
+  </view>
+
+  <!-- Help confirmation sheet -->
+  <view class="sheet-overlay" wx:if="{{showSheet}}" bindtap="onCloseSheet">
+    <view class="sheet" catchtap="">
+      <view class="sheet-handle"></view>
+      <view class="sheet-header">确认帮助</view>
+      <view class="sheet-body">
+        <view class="info-row"><text class="info-label">求助事项</text><text class="info-value">{{item.title}}</text></view>
+        <view class="info-row"><text class="info-label">求助者</text><text class="info-value">{{item.userRoom}}</text></view>
+        <view class="info-row" wx:if="{{item.isUrgent}}">
+          <text class="info-label">紧急程度</text>
+          <text class="info-value" style="color:#FF3B30;">紧急</text>
+        </view>
+
+        <view class="input-group" style="margin-top:12px;">
+          <view class="input-label">备注（选填）</view>
+          <textarea class="textarea" placeholder="选填：说明你能提供的帮助、方便的时间等" value="{{helpNote}}" bindinput="onHelpNoteInput" maxlength="500" auto-height />
+        </view>
+
+        <view class="callout" style="margin-top:12px;font-size:12px;">
+          <text>🤝 确认后将进入聊天页面，具体时间、地点在聊天中协商。</text>
+        </view>
+      </view>
+      <view class="sheet-footer">
+        <button class="btn btn-secondary" bindtap="onCloseSheet">取消</button>
+        <button class="btn btn-primary" bindtap="onSubmitHelp">确认帮助</button>
+      </view>
+    </view>
+  </view>
+</view>

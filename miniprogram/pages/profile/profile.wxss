@@ -1,0 +1,394 @@
+/* ============================================================
+   profile 个人主页 — 像素级对齐原型 profile.html
+   原型路径: c-end/pages/profile.html
+   单位换算: prototype px × 2 = rpx
+   CSS变量: --ios-* → --* (映射自 app.wxss page {} 块)
+   ============================================================ */
+
+.container {
+  min-height: 100vh;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ============================================================
+   Nav Bar
+   ============================================================ */
+.nav-wrap {
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.nav-bar {
+  height: 88rpx;
+  background: rgba(255, 255, 255, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 var(--margin);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.logout-icon {
+  padding: 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logout-icon-img {
+  width: 40rpx;
+  height: 40rpx;
+  color: var(--text-secondary);
+}
+
+/* ============================================================
+   Page Content (scrollable, with tab bar padding)
+   ============================================================ */
+.page-content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* ============================================================
+   Profile Card
+   ============================================================ */
+.profile-card {
+  background: var(--surface);
+  padding: 32rpx var(--margin);
+  display: flex;
+  align-items: center;
+  gap: 28rpx;
+}
+
+.profile-card .avatar {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 50%;
+  background: var(--fill-tertiary);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar-icon {
+  width: 44rpx;
+  height: 44rpx;
+}
+
+.profile-card .info {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-card .name {
+  font-size: var(--text-base);
+  font-weight: 400;
+  color: var(--text);
+}
+
+.profile-card .meta {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-top: 4rpx;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.profile-card .rate {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-top: 4rpx;
+}
+
+.auth-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 40rpx;
+  padding: 0 16rpx;
+  border-radius: 8rpx;
+  font-size: 22rpx;
+  font-weight: 500;
+}
+
+.auth-tag.authed {
+  background: rgba(0, 113, 227, 0.1);
+  color: var(--blue);
+}
+
+.auth-tag.unauthed {
+  background: var(--fill-tertiary);
+  color: var(--text-secondary);
+}
+
+/* ============================================================
+   Separator
+   ============================================================ */
+.profile-sep {
+  border-bottom: 1rpx solid var(--separator);
+  margin: 0;
+}
+
+/* ============================================================
+   Record Section
+   ============================================================ */
+.record-header {
+  background: var(--surface);
+  padding: 16rpx var(--margin);
+}
+
+.record-header .segment {
+  margin: 0;
+}
+
+.segment {
+  display: flex;
+  background: var(--bg);
+  border-radius: 16rpx;
+  padding: 4rpx;
+}
+
+.segment-item {
+  flex: 1;
+  text-align: center;
+  padding: 12rpx 0;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-radius: 14rpx;
+  transition: all var(--motion-fast) var(--ease);
+}
+
+.segment-item.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ============================================================
+   Record List Rows
+   ============================================================ */
+.list-row {
+  display: flex;
+  align-items: center;
+  padding: 24rpx var(--margin);
+  min-height: 88rpx;
+  gap: 24rpx;
+  background: var(--surface);
+}
+
+.list-row:active {
+  background: var(--fill-quaternary);
+}
+
+.list-row + .list-row {
+  border-top: none;
+  background-image: linear-gradient(
+    to right,
+    transparent 8%,
+    var(--separator) 25%,
+    var(--separator) 75%,
+    transparent 92%
+  );
+  background-repeat: no-repeat;
+  background-size: 100% 1rpx;
+  background-position: top;
+}
+
+.list-row .list-bd {
+  flex: 1;
+  min-width: 0;
+}
+
+.list-title {
+  font-size: var(--text-sm);
+  color: var(--text);
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-desc {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-top: 4rpx;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-row .list-ft {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+/* ============================================================
+   Record Tags
+   ============================================================ */
+.record-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 40rpx;
+  padding: 0 16rpx;
+  border-radius: 8rpx;
+  font-size: 22rpx;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.record-tag.lend {
+  background: rgba(52, 199, 89, 0.1);
+  color: var(--green);
+}
+
+.record-tag.help {
+  background: rgba(52, 199, 89, 0.1);
+  color: var(--green);
+}
+
+.record-tag.borrow {
+  background: rgba(255, 149, 0, 0.1);
+  color: var(--orange);
+}
+
+.record-tag.seek {
+  background: rgba(255, 149, 0, 0.1);
+  color: var(--orange);
+}
+
+/* ============================================================
+   Empty State
+   ============================================================ */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 120rpx 80rpx;
+  text-align: center;
+  background: var(--bg);
+}
+
+.empty-text {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* ============================================================
+   Alert (iOS style center modal)
+   ============================================================ */
+.alert-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn var(--motion-base) var(--ease);
+}
+
+.alert {
+  width: 540rpx;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  animation: scaleIn var(--motion-base) var(--ease);
+  overflow: hidden;
+}
+
+.alert-title {
+  padding: 40rpx 32rpx 4rpx;
+  text-align: center;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.alert-body {
+  padding: 16rpx 32rpx 40rpx;
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.alert-actions {
+  display: flex;
+  border-top: 1rpx solid var(--separator);
+}
+
+.alert-actions .alert-btn {
+  flex: 1;
+  height: 88rpx;
+  border-radius: 0;
+  font-size: var(--text-base);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  color: var(--blue);
+}
+
+.alert-actions .alert-btn::after {
+  border: none;
+}
+
+.alert-actions .alert-btn:active {
+  background: var(--fill-quaternary);
+  transform: none;
+  opacity: 1;
+}
+
+.alert-actions .alert-btn + .alert-btn {
+  border-left: 1rpx solid var(--separator);
+}
+
+.alert-actions .alert-btn-bold {
+  font-weight: 600;
+}
+
+.alert-actions .alert-btn-danger {
+  color: var(--red);
+}
+
+/* ============================================================
+   Record Detail Info Rows
+   ============================================================ */
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 16rpx 0;
+  font-size: var(--text-base);
+}
+
+.info-row .info-label {
+  color: var(--text-secondary);
+}
+
+.info-row .info-value {
+  color: var(--text);
+  text-align: right;
+}
+
+/* ============================================================
+   List End
+   ============================================================ */
+.list-end {
+  text-align: center;
+  padding: 40rpx;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  background: var(--bg);
+}

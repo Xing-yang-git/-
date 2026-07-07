@@ -1,0 +1,91 @@
+<view class="container">
+  <!-- Item Summary Card -->
+  <view class="card">
+    <view class="card-title">借出物品</view>
+    <view class="summary-row">
+      <image class="item-img" src="{{itemImage}}" mode="aspectFill" wx:if="{{itemImage}}" />
+      <view class="item-placeholder" wx:else>📦</view>
+      <view class="item-info">
+        <text class="item-title">{{itemTitle}}</text>
+        <text class="borrower-name">借用人：{{borrowerName}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- On Time -->
+  <view class="card">
+    <view class="card-title">是否准时归还</view>
+    <view class="toggle-row">
+      <view class="toggle-item {{isOnTime === true ? 'active positive' : ''}}" bindtap="onOnTimeTap" data-value="{{true}}">是</view>
+      <view class="toggle-item {{isOnTime === false ? 'active negative' : ''}}" bindtap="onOnTimeTap" data-value="{{false}}">否</view>
+    </view>
+  </view>
+
+  <!-- Return Status -->
+  <view class="card">
+    <view class="card-title">归还状态</view>
+    <view class="status-cards">
+      <view class="status-card {{returnStatus === 'ontime' ? 'selected green' : ''}}" bindtap="onReturnStatusTap" data-value="ontime">
+        <text class="status-icon">✅</text>
+        <text class="status-label">准时</text>
+      </view>
+      <view class="status-card {{returnStatus === 'delayed' ? 'selected yellow' : ''}}" bindtap="onReturnStatusTap" data-value="delayed">
+        <text class="status-icon">⚠️</text>
+        <text class="status-label">延迟</text>
+      </view>
+      <view class="status-card {{returnStatus === 'not_returned' ? 'selected red' : ''}}" bindtap="onReturnStatusTap" data-value="not_returned">
+        <text class="status-icon">❌</text>
+        <text class="status-label">未归还</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- Damage Type -->
+  <view class="card">
+    <view class="card-title">物品状况</view>
+    <view class="damage-options">
+      <view class="damage-item {{damageType === 'none' ? 'selected green-bg' : ''}}" bindtap="onDamageTap" data-value="none">
+        <text>无损坏</text>
+      </view>
+      <view class="damage-item {{damageType === 'minor' ? 'selected yellow-bg' : ''}}" bindtap="onDamageTap" data-value="minor">
+        <text>轻微损坏</text>
+      </view>
+      <view class="damage-item {{damageType === 'severe' ? 'selected red-bg' : ''}}" bindtap="onDamageTap" data-value="severe">
+        <text>严重损坏</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- Damage Note (conditional) -->
+  <view class="card" wx:if="{{damageType !== 'none' && damageType}}">
+    <view class="card-title">损坏说明</view>
+    <textarea class="textarea" placeholder="请描述物品损坏情况" value="{{damageNote}}" bindinput="onInput" data-field="damageNote" />
+  </view>
+
+  <!-- Return Note -->
+  <view class="card">
+    <view class="card-title">归还备注</view>
+    <textarea class="textarea" placeholder="有什么想说的..." value="{{returnNote}}" bindinput="onInput" data-field="returnNote" />
+  </view>
+
+  <!-- Photo Upload -->
+  <view class="card">
+    <view class="card-title">照片凭证（选填）</view>
+    <view class="image-grid">
+      <block wx:for="{{images}}" wx:key="*this">
+        <view class="image-item">
+          <image class="upload-img" src="{{item}}" mode="aspectFill" />
+          <view class="remove-btn" bindtap="onRemoveImage" data-index="{{index}}">×</view>
+        </view>
+      </block>
+      <view class="add-btn" wx:if="{{images.length < 9}}" bindtap="onChooseImage">
+        <text class="add-icon">+</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- Submit Button -->
+  <view class="submit-bar">
+    <button class="submit-btn" bindtap="onSubmit">提交归还确认</button>
+  </view>
+</view>

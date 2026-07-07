@@ -1,0 +1,11 @@
+/* star-rating component — extends global .stars/.star from app.wxss */
+.star {
+  color: var(--fill-primary);
+  transition: color var(--motion-fast) var(--ease), transform var(--motion-fast) var(--ease);
+}
+
+.star-md { font-size: 32px; }
+.star-lg { font-size: 40px; }
+.star:active { transform: scale(1.2); }
+.star.active { color: var(--orange); }
+.star.readonly { pointer-events: none; }
