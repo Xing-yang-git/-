@@ -7,56 +7,60 @@
 | 层 | 技术 |
 |---|---|
 | C端 | 微信小程序原生 (WXML + WXSS + JS) |
-| B端 | Vue 3 + Element Plus + ECharts + Pinia |
+| B端 | Vue 3 + Vite + Element Plus + ECharts + Pinia (JavaScript) |
 | 后端 | Spring Boot 3.2 + JPA + PostgreSQL |
-| 实时 | WebSocket (聊天 + 看板推送) |
-| 认证 | JWT (C端 wx.login / B端 账号密码) |
+| 实时 | WebSocket 聊天中继（纯转发不落库，握手 JWT 鉴权） |
+| 认证 | JWT（C端 手机号+密码 / B端 账号密码；后端另提供微信 code 登录接口） |
 
 ## 项目结构
 
 ```
 community-platform/
-├── server/                    # Spring Boot 后端 (85 文件)
+├── server/                    # Spring Boot 后端
 │   ├── pom.xml
-│   └── src/main/
-│       ├── java/com/platform/
-│       │   ├── config/        # CORS, Security, WebSocket
-│       │   ├── security/      # JWT Token + Filter
-│       │   ├── model/entity/  # 15 JPA 实体
-│       │   ├── model/dto/     # 25 DTO
-│       │   ├── repository/    # 15 Repository
-│       │   ├── service/       # 9 Service
-│       │   ├── controller/    # 9 Controller
-│       │   ├── websocket/     # Chat + Dashboard Handler
+│   └── src/
+│       ├── main/java/com/platform/
+│       │   ├── config/        # CORS, Security, WebSocket, DataInitializer, SchemaMigration
+│       │   ├── security/      # JwtTokenProvider, JwtAuthenticationFilter, JwtHandshakeInterceptor
+│       │   ├── model/entity/  # 12 JPA 实体（Tenant, Building, Unit, Room, User,
+│       │   │                  #   IdleItem, HelpRequest, HelpApplication,
+│       │   │                  #   BorrowRequest, Notification, OperationLog, Rating）
+│       │   ├── model/dto/     # DTO
+│       │   ├── repository/    # 12 Repository
+│       │   ├── service/       # 11 Service（含 WeChatService）
+│       │   ├── controller/    # 10 Controller
+│       │   ├── websocket/     # ChatWebSocketHandler, DashboardWebSocketHandler
 │       │   └── common/        # Result + Exception
-│       └── resources/
-│           ├── application.yml
-│           └── db/
-│               ├── schema.sql # 15 张表 DDL
-│               └── seed.sql   # 翠湖花园种子数据
+│       ├── main/resources/
+│       │   ├── application.yml
+│       │   └── db/            # schema.sql（12 张表）+ seed-*.sql
+│       └── test/java/com/platform/service/   # 8 个 Service 单元测试
 │
-├── miniprogram/               # C端微信小程序 (84 文件)
+├── miniprogram/               # C端微信小程序
 │   ├── app.js / app.json / app.wxss
-│   ├── utils/                 # api.js, ws.js, auth.js
+│   ├── utils/                 # api.js, auth.js, ws.js
 │   ├── components/            # nav-bar, star-rating, empty-state, image-uploader
-│   └── pages/                 # 15 个页面
+│   └── pages/                 # 14 个页面
 │       ├── login/ register/ review-status/
 │       ├── home/ search/
 │       ├── idle-detail/ help-detail/
-│       ├── publish-idle/ publish-help/
+│       ├── publish-idle/      # 双模式表单：闲置发布 + 求助发布
 │       ├── chat/ messages/
 │       ├── return-detail/ rating/
 │       └── my-posts/ profile/
 │
-├── admin/                     # B端 Vue 3 后台 (20 文件)
+├── admin/                     # B端 Vue 3 后台
 │   └── src/
-│       ├── views/             # 8 页面 + 登录
+│       ├── views/             # 8 个视图（Dashboard, Audit, Content, Records,
+│       │                      #   Export, Settings, Home, Login）
 │       ├── components/        # AppSidebar, StatCard
-│       ├── stores/            # Pinia auth store
+│       ├── stores/            # Pinia：auth, community
 │       ├── router/            # Vue Router + auth guard
 │       ├── utils/             # api.js (axios), ws.js
 │       └── styles/            # b-end.css
 │
+├── reviews/                   # 质量审查报告归档
+├── CLAUDE.md                  # 项目约定与协作机制
 └── README.md
 ```
 
@@ -76,9 +80,16 @@ psql -U postgres -c "CREATE DATABASE community_platform;"
 
 ```bash
 cd server
-./mvnw spring-boot:run
+mvn spring-boot:run
 # 启动在 http://localhost:8080
-# schema.sql + seed.sql 自动执行建表和种子数据
+# schema.sql 自动建表；DataInitializer 播种管理员账号与小区/楼栋/单元/房号数据
+```
+
+运行单元测试：
+
+```bash
+cd server
+mvn test    # service 层 8 个测试类
 ```
 
 ### 3. B端管理后台 (Vue 3)
@@ -98,27 +109,30 @@ npm run dev
 3. 填入测试 AppID（或使用测试号）
 4. 开发者工具中模拟器即见效果
 
+> 真机调试时后端跑在本地局域网 IP（如 `192.168.31.64:8080`），改后端代码后必须重启服务才能生效。
+
 ## 测试账号
 
 | 角色 | 用户名 | 密码 |
 |---|---|---|
 | 超级管理员 | admin | admin123 |
-| 普通管理员 | admin2 | admin123 |
 
-C端用户通过"微信一键登录"自动注册（开发模式下 code 即 openid）。
+C端用户通过手机号 + 密码注册登录（`register` 页注册，`login` 页登录）；后端保留 `/api/auth/wx-login` 微信 code 登录接口。
 
 ## API 接口概览
 
 | 模块 | 路径 | 说明 |
 |---|---|---|
 | 公共 | GET /api/common/* | 小区/楼栋/单元/房号查询 |
-| 认证 | POST /api/auth/* | 微信登录/管理登录/注册/审核状态 |
+| 认证 | POST /api/auth/* | wx-login / login / phone-login / register / appeal，GET status |
 | 闲置 | /api/idle/** | 发布/列表/详情/搜索/下架 |
 | 借入 | /api/borrow/** | 申请/审批/归还确认 |
-| 技能 | /api/help/** | 发布/列表/申请/审批 |
-| 评分 | POST/GET /api/rating/** | 提交评分/查看评分 |
-| 聊天 | /api/chat/** | 会话列表/消息/已读 |
+| 技能求助 | /api/help/** | 发布/列表/申请/审批 |
+| 评分 | /api/rating/** | 提交评分/查看评分 |
+| 聊天 | POST /api/chat/relay | 消息中继（WebSocket 转发，不持久化） |
 | 通知 | /api/notification/** | 列表/未读数/全部已读 |
+| 用户活动 | GET /api/user/* | profile / posts / approvals / in-progress / completed |
 | 管理 | /api/admin/** | 看板/审核/内容管理/代发/记录/导出/日志 |
-| WebSocket | /ws/chat | 聊天实时消息 |
-| WebSocket | /ws/dashboard | B端看板实时推送 |
+| WebSocket | /ws/chat | 聊天实时消息（JwtHandshakeInterceptor 握手鉴权） |
+
+> 注：`DashboardWebSocketHandler`（B端看板推送 `/ws/dashboard`）已有实现且 admin 前端有连接代码，但当前未在 `WebSocketConfig` 中注册。
