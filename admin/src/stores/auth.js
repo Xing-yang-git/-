@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import { useCommunityStore } from './community';
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -16,11 +17,20 @@ export const useAuthStore = defineStore('auth', {
       localStorage.setItem('admin_token', token);
       localStorage.setItem('admin_user', JSON.stringify(user));
     },
+    /**
+     * 登录后获取小区数据，在 LoginView 中的 login() 之后调用。
+     */
+    async initCommunity() {
+      const communityStore = useCommunityStore();
+      await communityStore.fetchCommunityData();
+    },
     logout() {
       this.token = '';
       this.user = null;
       localStorage.removeItem('admin_token');
       localStorage.removeItem('admin_user');
+      const communityStore = useCommunityStore();
+      communityStore.clear();
     }
   }
 });

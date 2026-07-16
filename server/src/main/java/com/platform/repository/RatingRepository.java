@@ -7,18 +7,17 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
-public interface RatingRepository extends JpaRepository<Rating, UUID> {
+public interface RatingRepository extends JpaRepository<Rating, Long> {
 
-    List<Rating> findByToUserId(UUID toUserId);
+    List<Rating> findByToUserId(Long toUserId);
 
-    Optional<Rating> findByBorrowIdAndFromUserId(UUID borrowId, UUID fromUserId);
+    Optional<Rating> findByBorrowIdAndFromUserId(Long borrowId, Long fromUserId);
 
-    Optional<Rating> findByHelpApplicationIdAndFromUserId(UUID helpApplicationId, UUID fromUserId);
+    Optional<Rating> findByHelpApplicationIdAndFromUserId(Long helpApplicationId, Long fromUserId);
 
     @Query("SELECT AVG(r.score) FROM Rating r WHERE r.toUserId = :userId")
-    Double getAverageScore(@Param("userId") UUID userId);
+    Double getAverageScore(@Param("userId") Long userId);
 
-    long countByToUserId(UUID userId);
+    long countByToUserId(Long userId);
 }

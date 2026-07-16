@@ -7,15 +7,14 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class IdleItemDTO {
-    private UUID id;
-    private UUID userId;
+    private Long id;
+    private Long userId;
     private String userName;
     private String userRoom;
     private String postType;
@@ -35,4 +34,7 @@ public class IdleItemDTO {
     private Double rating;
     private Long lendCount;
     private String returnRate;
+
+    // 当前用户对该物品的借用申请状态（null = 未申请）
+    private String userBorrowStatus;  // null | "pending" | "approved" | "returned"
 }

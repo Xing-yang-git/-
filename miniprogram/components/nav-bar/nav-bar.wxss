@@ -44,15 +44,10 @@
 }
 
 .nav-back-icon {
-  font-size: 28px;
+  font-size: 36px;
   line-height: 1;
-  font-weight: 400;
-  color: var(--blue);
-}
-
-.nav-back-text {
-  font-size: 17px;
-  color: var(--blue);
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 .nav-right {

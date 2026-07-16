@@ -29,7 +29,7 @@ public class DashboardWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) {
-        // Dashboard is push-only; clients don't send messages
+        // 仪表盘只做服务端推送；客户端不发送消息
         log.debug("Dashboard received message from {}: {}", session.getId(), message.getPayload());
     }
 

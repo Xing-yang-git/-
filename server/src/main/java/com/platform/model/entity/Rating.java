@@ -3,7 +3,6 @@ package com.platform.model.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Entity
 @Table(name = "ratings")
@@ -13,26 +12,24 @@ import java.util.UUID;
 @Builder
 public class Rating {
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @Column(name = "borrow_id")
-    private UUID borrowId;
+    private Long borrowId;
 
     @Column(name = "help_application_id")
-    private UUID helpApplicationId;
+    private Long helpApplicationId;
 
     @Column(name = "from_user_id", nullable = false)
-    private UUID fromUserId;
+    private Long fromUserId;
 
     @Column(name = "to_user_id", nullable = false)
-    private UUID toUserId;
+    private Long toUserId;
 
     @Column(nullable = false)
-    private Integer score;
-
-    @Column(name = "dimension_scores", columnDefinition = "TEXT")
-    private String dimensionScores;
+    @Builder.Default
+    private Integer score = 5;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

@@ -1,42 +1,44 @@
-<view class="container">
-  <!-- Top Bar -->
-  <view class="top-bar">
-    <view class="top-info">
-      <view class="top-name">{{otherName}}</view>
-      <view class="top-room">{{roomInfo}}</view>
-    </view>
-    <view class="top-about" bindtap="onAboutTap" wx:if="{{aboutTitle}}">关于：{{aboutTitle}}</view>
-  </view>
+<!-- 聊天页 — 对齐设计原型 chat.html -->
+<view class="chat-page">
 
-  <!-- Message List -->
-  <scroll-view class="msg-list" scroll-y scroll-into-view="{{scrollToView}}" scroll-with-animation>
-    <view class="msg-group" wx:for="{{messages}}" wx:key="id">
-      <!-- Time Divider -->
-      <view class="time-divider" wx:if="{{item.showTime}}">{{item.timeText}}</view>
+  <!-- 聊天消息区 -->
+  <scroll-view class="chat-area" scroll-y scroll-into-view="{{scrollToView}}" scroll-with-animation enhanced show-scrollbar="{{false}}">
 
-      <!-- Other's Message -->
-      <view class="msg-row msg-left" wx:if="{{!item.isMine}}">
-        <view class="avatar other-avatar">{{item.avatarText}}</view>
-        <view class="bubble bubble-other">{{item.content}}</view>
+    <block wx:for="{{messages}}" wx:key="id">
+
+      <!-- 时间分割线 -->
+      <view class="chat-time-divider" wx:if="{{item.showTime}}">{{item.timeText}}</view>
+
+      <!-- 系统消息（居中胶囊） -->
+      <view class="chat-bubble-system" wx:if="{{item.type === 'system'}}">
+        <text class="system-icon" wx:if="{{item.systemIcon}}">{{item.systemIcon}}</text>
+        {{item.content}}
       </view>
 
-      <!-- My Message -->
-      <view class="msg-row msg-right" wx:if="{{item.isMine}}">
-        <view class="bubble bubble-mine">{{item.content}}</view>
-        <view class="avatar my-avatar">{{item.avatarText}}</view>
+      <!-- 对方消息（左气泡，无头像） -->
+      <view class="chat-bubble chat-bubble-left" wx:if="{{!item.isMine && item.type !== 'system'}}">
+        {{item.content}}
       </view>
-    </view>
+
+      <!-- 我的消息（右气泡，无头像） -->
+      <view class="chat-bubble chat-bubble-right" wx:if="{{item.isMine && item.type !== 'system'}}">
+        {{item.content}}
+      </view>
+
+    </block>
     <view id="msg-bottom"></view>
   </scroll-view>
 
-  <!-- Quick Templates -->
-  <view class="templates">
-    <view class="template-chip" wx:for="{{templates}}" wx:key="*this" bindtap="onTemplateTap" data-text="{{item}}">{{item}}</view>
+  <!-- 输入栏（全宽，纸飞机发送图标内置右侧） -->
+  <view class="chat-input-bar">
+    <view class="chat-input-wrapper">
+      <input class="chat-input" placeholder="输入消息..." placeholder-style="font-size:28rpx;color:rgba(120,120,128,0.6);" value="{{inputText}}"
+             bindinput="onInputChange" confirm-type="send" bindconfirm="onSend"
+             maxlength="1000" adjust-position="{{false}}" />
+      <view class="chat-send-icon" bindtap="onSend">
+        <image class="send-icon-plane" src="../../images/icon-send.svg" mode="aspectFit"></image>
+      </view>
+    </view>
   </view>
 
-  <!-- Input Bar -->
-  <view class="input-bar">
-    <input class="msg-input" placeholder="输入消息..." value="{{inputText}}" bindinput="onInputChange" confirm-type="send" bindconfirm="onSend" />
-    <button class="send-btn" bindtap="onSend">发送</button>
-  </view>
 </view>

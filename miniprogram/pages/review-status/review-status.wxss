@@ -7,7 +7,7 @@ page {
   background: var(--bg);
 }
 
-/* --- Page content (= prototype .page-content flex-center) --- */
+/* --- 页面内容（= 原型 .page-content flex-center） --- */
 .review-page {
   min-height: 100vh;
   background: var(--bg);
@@ -15,6 +15,7 @@ page {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
 }
 
 /* --- Loading --- */
@@ -156,6 +157,11 @@ page {
 .btn-primary {
   background: var(--blue);
   color: var(--surface);
+}
+
+.btn-full {
+  width: 100%;
+  margin-top: 50px;
 }
 
 .btn-secondary {

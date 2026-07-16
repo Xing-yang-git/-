@@ -1,86 +1,104 @@
 .container {
   min-height: 100vh;
   background: var(--bg);
+  display: flex;
+  flex-direction: column;
 }
 
-/* Session List */
+/* 会话列表 — flex-fill 使白色背景延伸到底部，即使会话较少时也填满（list-end 提示区随之保持同色白底） */
 .session-list {
+  flex: 1;
   background: var(--surface);
 }
 
+/* 行 — 对齐原型 .msg-item */
 .session-item {
   display: flex;
   align-items: center;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--fill-quaternary);
+  padding: 10px var(--margin);
+  gap: 12px;
+  min-height: 60px;
+  background: var(--surface);
 }
 
 .session-item:active {
   background: var(--fill-quaternary);
 }
 
-/* Content */
-.session-content {
+/* 渐变极细分割线（两端淡出），对齐原型 .msg-item + .msg-item */
+.session-item + .session-item {
+  background-image: linear-gradient(to right, transparent 8%, var(--separator) 25%, var(--separator) 75%, transparent 92%);
+  background-repeat: no-repeat;
+  background-size: 100% 0.5px;
+  background-position: top;
+}
+
+/* Avatar — 40px circle from app.wxss；统一用 👤 emoji（与求助详情页一致） */
+.avatar {
+  background: var(--fill-tertiary);
+}
+
+/* 信息列 */
+.msg-info {
   flex: 1;
   min-width: 0;
 }
 
-.session-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 6px;
-}
-
-.session-name {
-  font-size: 16px;
-  font-weight: 500;
+.msg-name {
+  font-size: var(--text-sm);
+  font-weight: 400;
   color: var(--text);
-}
-
-.session-time {
-  font-size: 12px;
-  color: var(--text-tertiary);
-  flex-shrink: 0;
-  margin-left: 8px;
-}
-
-.session-bottom {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.session-preview {
-  font-size: 13px;
-  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 220px;
 }
 
-.session-preview.read {
+.msg-name.unread {
+  font-weight: 500;
+}
+
+.msg-preview {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 元数据列（右对齐时间 + 徽标） */
+.msg-meta {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.msg-time {
+  font-size: var(--text-xs);
   color: var(--text-tertiary);
 }
 
-/* Unread Badge */
-.unread-badge {
-  background: var(--red);
-  color: var(--surface);
-  font-size: 11px;
+.msg-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 18px;
   height: 18px;
   border-radius: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: var(--red);
+  color: #FFF;
+  font-size: 11px;
+  font-weight: 600;
   padding: 0 5px;
-  flex-shrink: 0;
-  margin-left: 8px;
+  margin-top: 4px;
+}
+
+/* 空状态 */
+.empty-state {
+  flex: 1;
+  justify-content: center;
 }
 
 .empty-hint {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--text-quaternary);
 }

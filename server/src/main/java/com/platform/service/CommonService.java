@@ -17,10 +17,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
-import java.util.UUID;
+import java.util.Set;
 
 @Service
 public class CommonService {
+
+    /** 允许上传的图片扩展名白名单（含前导点，小写比较） */
+    private static final Set<String> ALLOWED_IMAGE_EXTENSIONS =
+            Set.of(".jpg", ".jpeg", ".png", ".gif", ".webp");
 
     private final TenantRepository tenantRepository;
     private final BuildingRepository buildingRepository;
@@ -44,15 +48,15 @@ public class CommonService {
         return tenantRepository.findAll();
     }
 
-    public List<Building> getBuildingsByTenantId(UUID tenantId) {
+    public List<Building> getBuildingsByTenantId(Long tenantId) {
         return buildingRepository.findByTenantId(tenantId);
     }
 
-    public List<Unit> getUnitsByBuildingId(UUID buildingId) {
+    public List<Unit> getUnitsByBuildingId(Long buildingId) {
         return unitRepository.findByBuildingId(buildingId);
     }
 
-    public List<Room> getRoomsByUnitId(UUID unitId) {
+    public List<Room> getRoomsByUnitId(Long unitId) {
         return roomRepository.findByUnitId(unitId);
     }
 
@@ -61,16 +65,26 @@ public class CommonService {
             throw new RuntimeException("文件为空");
         }
 
+        // 上传端点匿名可访问（注册流程需上传证件照）且 /uploads/** 被静态托管，
+        // 必须用白名单挡住 html/svg 等可被浏览器执行的类型，防止存储型 XSS
+        String originalName = file.getOriginalFilename();
+        String ext = "";
+        if (originalName != null && originalName.contains(".")) {
+            ext = originalName.substring(originalName.lastIndexOf(".")).toLowerCase();
+        }
+        if (!ALLOWED_IMAGE_EXTENSIONS.contains(ext)) {
+            throw new RuntimeException("仅支持上传 jpg/jpeg/png/gif/webp 图片");
+        }
+        String contentType = file.getContentType();
+        if (contentType == null || !contentType.toLowerCase().startsWith("image/")) {
+            throw new RuntimeException("仅支持上传图片文件");
+        }
+
         try {
             Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
             Files.createDirectories(uploadPath);
 
-            String originalName = file.getOriginalFilename();
-            String ext = "";
-            if (originalName != null && originalName.contains(".")) {
-                ext = originalName.substring(originalName.lastIndexOf("."));
-            }
-            String filename = UUID.randomUUID().toString() + ext;
+            String filename = java.util.UUID.randomUUID().toString() + ext;
             Path targetPath = uploadPath.resolve(filename);
             file.transferTo(targetPath.toFile());
 

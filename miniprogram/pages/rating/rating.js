@@ -1,4 +1,5 @@
 const api = require('../../utils/api');
+const auth = require('../../utils/auth');
 
 Page({
   data: {
@@ -6,43 +7,32 @@ Page({
     targetName: '',
     ratingType: 'borrow', // 'borrow' or 'help'
     ratingTypeText: '',
-    overallScore: 0,
-    dimScores: [0, 0],
-    dimLabels: ['物品完好度', '沟通态度']
+    overallScore: 0
   },
 
   onLoad(options) {
+    if (!auth.ensureAccess()) return;   // 登录/审核门禁：未通过则已跳转
     const borrowId = options.id || '';
     const targetName = decodeURIComponent(options.name || '用户');
     const ratingType = options.type || 'borrow';
 
-    let dimLabels = ['物品完好度', '沟通态度'];
-    let ratingTypeText = '借出评价';
-    if (ratingType === 'help') {
-      dimLabels = ['帮助质量', '响应速度'];
-      ratingTypeText = '帮助评价';
-    }
+    const ratingTypeText = ratingType === 'help' ? '帮助评价' : '借出评价';
 
     this.setData({
       borrowId,
       targetName,
       ratingType,
-      ratingTypeText,
-      dimLabels
+      ratingTypeText
     });
+  },
+
+  onShow() {
+    if (!auth.ensureAccess()) return; // 登录/审核门禁：覆盖 tab 切换与后台切回
   },
 
   onOverallTap(e) {
     const score = parseInt(e.currentTarget.dataset.score);
     this.setData({ overallScore: score });
-  },
-
-  onDimTap(e) {
-    const dim = parseInt(e.currentTarget.dataset.dim);
-    const score = parseInt(e.currentTarget.dataset.score);
-    const dimScores = [...this.data.dimScores];
-    dimScores[dim] = score;
-    this.setData({ dimScores });
   },
 
   async onSubmit() {
@@ -55,9 +45,7 @@ Page({
       await api.post('/api/rating', {
         targetId: this.data.borrowId,
         ratingType: this.data.ratingType,
-        overallScore: this.data.overallScore,
-        dimScores: JSON.stringify(this.data.dimScores),
-        dimLabels: JSON.stringify(this.data.dimLabels)
+        overallScore: this.data.overallScore
       });
       wx.hideLoading();
       wx.showToast({ title: '评价成功' });

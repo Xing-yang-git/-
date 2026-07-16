@@ -40,21 +40,22 @@ class RatingServiceTest {
     @InjectMocks
     private RatingService ratingService;
 
-    private UUID fromUserId;
-    private UUID ownerId;
-    private UUID borrowId;
-    private UUID helpApplicationId;
-    private UUID idleId;
-    private UUID helpId;
+    private Long fromUserId;
+    private Long ownerId;
+    private Long borrowId;
+    private Long helpApplicationId;
+    private Long idleId;
+    private Long helpId;
 
     @BeforeEach
     void setUp() {
-        fromUserId = UUID.randomUUID();
-        ownerId = UUID.randomUUID();
-        borrowId = UUID.randomUUID();
-        helpApplicationId = UUID.randomUUID();
-        idleId = UUID.randomUUID();
-        helpId = UUID.randomUUID();
+        // 各实体使用不同的 Long 字面量，保证测试内 ID 互不冲突
+        fromUserId = 1L;
+        ownerId = 2L;
+        borrowId = 100L;
+        helpApplicationId = 200L;
+        idleId = 300L;
+        helpId = 400L;
     }
 
     // ==================== submitRating - borrow ====================
@@ -62,7 +63,7 @@ class RatingServiceTest {
     @Test
     @DisplayName("提交借入评价 - 正常评价成功")
     void should_submitBorrowRating_when_validBorrow() {
-        // Arrange
+        // 准备
         RatingRequest req = new RatingRequest();
         req.setBorrowId(borrowId);
         req.setScore(5);
@@ -84,10 +85,10 @@ class RatingServiceTest {
         when(idleItemRepository.findById(idleId)).thenReturn(Optional.of(idleItem));
         when(ratingRepository.save(any(Rating.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        // Act
+        // 执行
         Map<String, Object> result = ratingService.submitRating(fromUserId, req);
 
-        // Assert
+        // 断言
         assertThat(result).containsEntry("success", true);
         assertThat(result).containsEntry("message", "评价成功");
         verify(ratingRepository).save(any(Rating.class));
@@ -96,14 +97,14 @@ class RatingServiceTest {
     @Test
     @DisplayName("提交借入评价 - 借入记录不存在时抛出异常")
     void should_throwException_when_borrowNotFound() {
-        // Arrange
+        // 准备
         RatingRequest req = new RatingRequest();
         req.setBorrowId(borrowId);
         req.setScore(5);
 
         when(borrowRequestRepository.findById(borrowId)).thenReturn(Optional.empty());
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> ratingService.submitRating(fromUserId, req))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("借入记录不存在");
@@ -112,7 +113,7 @@ class RatingServiceTest {
     @Test
     @DisplayName("提交借入评价 - 借入未归还时抛出异常")
     void should_throwException_when_borrowNotReturned() {
-        // Arrange
+        // 准备
         RatingRequest req = new RatingRequest();
         req.setBorrowId(borrowId);
         req.setScore(5);
@@ -125,21 +126,21 @@ class RatingServiceTest {
 
         when(borrowRequestRepository.findById(borrowId)).thenReturn(Optional.of(borrowRequest));
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> ratingService.submitRating(fromUserId, req))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("只能对已归还的借入记录进行评价");
     }
 
     @Test
-    @DisplayName("提交借入评价 - 非借入方评价时抛出异常")
+    @DisplayName("提交借入评价 - 非借入双方评价时抛出异常")
     void should_throwException_when_notBorrower() {
-        // Arrange
+        // 准备
         RatingRequest req = new RatingRequest();
         req.setBorrowId(borrowId);
         req.setScore(5);
 
-        UUID otherUserId = UUID.randomUUID();
+        Long otherUserId = 99L;
         BorrowRequest borrowRequest = BorrowRequest.builder()
                 .id(borrowId)
                 .borrowerId(otherUserId)
@@ -148,16 +149,16 @@ class RatingServiceTest {
 
         when(borrowRequestRepository.findById(borrowId)).thenReturn(Optional.of(borrowRequest));
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> ratingService.submitRating(fromUserId, req))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessage("只有借入方可以进行评价");
+                .hasMessage("无权评价该借入记录");
     }
 
     @Test
     @DisplayName("提交借入评价 - 重复评价时抛出异常")
     void should_throwException_when_alreadyRatedBorrow() {
-        // Arrange
+        // 准备
         RatingRequest req = new RatingRequest();
         req.setBorrowId(borrowId);
         req.setScore(5);
@@ -170,19 +171,47 @@ class RatingServiceTest {
                 .build();
 
         when(borrowRequestRepository.findById(borrowId)).thenReturn(Optional.of(borrowRequest));
+        // 物品必须存在，否则会先触发"对方用户信息缺失"防御而到不了重复评价检查
+        when(idleItemRepository.findById(idleId)).thenReturn(Optional.of(
+                IdleItem.builder().id(idleId).userId(ownerId).build()));
         when(ratingRepository.findByBorrowIdAndFromUserId(borrowId, fromUserId))
                 .thenReturn(Optional.of(new Rating()));
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> ratingService.submitRating(fromUserId, req))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("您已经评价过该借入记录");
     }
 
     @Test
+    @DisplayName("提交借入评价 - 物品已删除导致对方缺失时抛出异常")
+    void should_throwException_when_ownerMissing() {
+        // 准备
+        RatingRequest req = new RatingRequest();
+        req.setBorrowId(borrowId);
+        req.setScore(5);
+
+        BorrowRequest borrowRequest = BorrowRequest.builder()
+                .id(borrowId)
+                .idleId(idleId)
+                .borrowerId(fromUserId)
+                .status("returned")
+                .build();
+
+        when(borrowRequestRepository.findById(borrowId)).thenReturn(Optional.of(borrowRequest));
+        // 物品已被删除——评价目标用户无法解析，应给出业务报错而非数据库约束异常
+        when(idleItemRepository.findById(idleId)).thenReturn(Optional.empty());
+
+        // 执行 & 断言
+        assertThatThrownBy(() -> ratingService.submitRating(fromUserId, req))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("对方用户信息缺失，无法评价");
+    }
+
+    @Test
     @DisplayName("提交借入评价 - 通过targetId和ratingType别名提交")
     void should_submitRating_when_usingTargetIdAlias() {
-        // Arrange
+        // 准备
         RatingRequest req = new RatingRequest();
         req.setTargetId(borrowId);
         req.setRatingType("borrow");
@@ -205,10 +234,10 @@ class RatingServiceTest {
         when(idleItemRepository.findById(idleId)).thenReturn(Optional.of(idleItem));
         when(ratingRepository.save(any(Rating.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        // Act
+        // 执行
         Map<String, Object> result = ratingService.submitRating(fromUserId, req);
 
-        // Assert
+        // 断言
         assertThat(result).containsEntry("success", true);
         assertThat(req.getScore()).isEqualTo(4);
     }
@@ -218,7 +247,7 @@ class RatingServiceTest {
     @Test
     @DisplayName("提交帮助评价 - 正常评价成功")
     void should_submitHelpRating_when_validHelp() {
-        // Arrange
+        // 准备
         RatingRequest req = new RatingRequest();
         req.setHelpApplicationId(helpApplicationId);
         req.setScore(5);
@@ -241,10 +270,10 @@ class RatingServiceTest {
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
         when(ratingRepository.save(any(Rating.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        // Act
+        // 执行
         Map<String, Object> result = ratingService.submitRating(fromUserId, req);
 
-        // Assert
+        // 断言
         assertThat(result).containsEntry("success", true);
         assertThat(result).containsEntry("message", "评价成功");
     }
@@ -252,14 +281,14 @@ class RatingServiceTest {
     @Test
     @DisplayName("提交帮助评价 - 帮助申请不存在时抛出异常")
     void should_throwException_when_helpApplicationNotFound() {
-        // Arrange
+        // 准备
         RatingRequest req = new RatingRequest();
         req.setHelpApplicationId(helpApplicationId);
         req.setScore(5);
 
         when(helpApplicationRepository.findById(helpApplicationId)).thenReturn(Optional.empty());
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> ratingService.submitRating(fromUserId, req))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("帮助申请不存在");
@@ -268,7 +297,7 @@ class RatingServiceTest {
     @Test
     @DisplayName("提交帮助评价 - 帮助未完成时抛出异常")
     void should_throwException_when_helpNotCompleted() {
-        // Arrange
+        // 准备
         RatingRequest req = new RatingRequest();
         req.setHelpApplicationId(helpApplicationId);
         req.setScore(5);
@@ -281,21 +310,21 @@ class RatingServiceTest {
 
         when(helpApplicationRepository.findById(helpApplicationId)).thenReturn(Optional.of(application));
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> ratingService.submitRating(fromUserId, req))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("只能对已完成的帮助进行评价");
     }
 
     @Test
-    @DisplayName("提交帮助评价 - 非帮助方评价时抛出异常")
+    @DisplayName("提交帮助评价 - 非互助双方评价时抛出异常")
     void should_throwException_when_notHelper() {
-        // Arrange
+        // 准备
         RatingRequest req = new RatingRequest();
         req.setHelpApplicationId(helpApplicationId);
         req.setScore(5);
 
-        UUID otherUserId = UUID.randomUUID();
+        Long otherUserId = 99L;
         HelpApplication application = HelpApplication.builder()
                 .id(helpApplicationId)
                 .helperId(otherUserId)
@@ -304,20 +333,20 @@ class RatingServiceTest {
 
         when(helpApplicationRepository.findById(helpApplicationId)).thenReturn(Optional.of(application));
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> ratingService.submitRating(fromUserId, req))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessage("只有帮助方可以进行评价");
+                .hasMessage("无权评价该帮助");
     }
 
     @Test
     @DisplayName("提交评价 - 既没有borrowId也没有helpApplicationId时抛出异常")
     void should_throwException_when_noTargetSpecified() {
-        // Arrange
+        // 准备
         RatingRequest req = new RatingRequest();
         req.setScore(5);
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> ratingService.submitRating(fromUserId, req))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("请指定要评价的借入记录或帮助申请");
@@ -328,30 +357,30 @@ class RatingServiceTest {
     @Test
     @DisplayName("获取用户评分 - 正常返回评分列表和平均分")
     void should_returnUserRatings_when_userHasRatings() {
-        // Arrange
+        // 准备
         Rating rating1 = Rating.builder()
-                .id(UUID.randomUUID())
-                .fromUserId(UUID.randomUUID())
+                .id(500L)
+                .fromUserId(5L)
                 .toUserId(ownerId)
                 .score(5)
                 .createdAt(LocalDateTime.now())
                 .build();
         Rating rating2 = Rating.builder()
-                .id(UUID.randomUUID())
-                .fromUserId(UUID.randomUUID())
+                .id(501L)
+                .fromUserId(6L)
                 .toUserId(ownerId)
                 .score(4)
                 .createdAt(LocalDateTime.now())
                 .build();
 
         when(ratingRepository.findByToUserId(ownerId)).thenReturn(List.of(rating1, rating2));
-        when(userRepository.findById(any(UUID.class))).thenReturn(Optional.of(
+        when(userRepository.findById(any(Long.class))).thenReturn(Optional.of(
                 User.builder().name("评分者").build()));
 
-        // Act
+        // 执行
         Map<String, Object> result = ratingService.getUserRatings(ownerId);
 
-        // Assert
+        // 断言
         assertThat(result.get("ratings")).isInstanceOf(List.class);
         @SuppressWarnings("unchecked")
         List<RatingDTO> ratings = (List<RatingDTO>) result.get("ratings");
@@ -363,13 +392,13 @@ class RatingServiceTest {
     @Test
     @DisplayName("获取用户评分 - 用户没有评分时返回空列表和0分")
     void should_returnEmptyRatings_when_userHasNoRatings() {
-        // Arrange
+        // 准备
         when(ratingRepository.findByToUserId(ownerId)).thenReturn(Collections.emptyList());
 
-        // Act
+        // 执行
         Map<String, Object> result = ratingService.getUserRatings(ownerId);
 
-        // Assert
+        // 断言
         @SuppressWarnings("unchecked")
         List<RatingDTO> ratings = (List<RatingDTO>) result.get("ratings");
         assertThat(ratings).isEmpty();

@@ -31,17 +31,24 @@
   position: relative;
 }
 
+/* ── Name row with logout icon ── */
+.name-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .logout-icon {
-  padding: 12rpx;
+  padding: 16rpx;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .logout-icon-img {
   width: 40rpx;
   height: 40rpx;
-  color: var(--text-secondary);
 }
 
 /* ============================================================
@@ -50,6 +57,8 @@
 .page-content {
   flex: 1;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ============================================================
@@ -61,6 +70,7 @@
   display: flex;
   align-items: center;
   gap: 28rpx;
+  flex-shrink: 0;
 }
 
 .profile-card .avatar {
@@ -72,11 +82,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.avatar-icon {
-  width: 44rpx;
-  height: 44rpx;
 }
 
 .profile-card .info {
@@ -126,11 +131,34 @@
 }
 
 /* ============================================================
-   Separator
+   Profile Stats Grid
    ============================================================ */
-.profile-sep {
-  border-bottom: 1rpx solid var(--separator);
-  margin: 0;
+.profile-stats-grid {
+  display: flex;
+  flex-wrap: wrap;
+  background: var(--surface);
+  padding: 16rpx var(--margin) 24rpx;
+  flex-shrink: 0;
+}
+
+.profile-stat-item {
+  width: 33.33%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16rpx 0;
+}
+
+.profile-stat-value {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.profile-stat-label {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-top: 4rpx;
 }
 
 /* ============================================================
@@ -139,6 +167,18 @@
 .record-header {
   background: var(--surface);
   padding: 16rpx var(--margin);
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   记录列表 — flex-fill 使白色背景填满剩余空间：数据少时下方空白同为白色，
+   list-end 提示区随之保持同色白底（不再露出灰底）
+   ============================================================ */
+.record-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
 }
 
 .record-header .segment {
@@ -179,6 +219,7 @@
   min-height: 88rpx;
   gap: 24rpx;
   background: var(--surface);
+  flex-shrink: 0;
 }
 
 .list-row:active {
@@ -267,13 +308,14 @@
    Empty State
    ============================================================ */
 .empty-state {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 120rpx 80rpx;
   text-align: center;
-  background: var(--bg);
+  background: transparent;
 }
 
 .empty-text {
@@ -390,5 +432,5 @@
   padding: 40rpx;
   font-size: var(--text-xs);
   color: var(--text-tertiary);
-  background: var(--bg);
+  background: var(--surface);
 }

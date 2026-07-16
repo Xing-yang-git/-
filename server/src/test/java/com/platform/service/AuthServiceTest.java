@@ -3,20 +3,18 @@ package com.platform.service;
 import com.platform.model.dto.LoginRequest;
 import com.platform.model.dto.RegisterRequest;
 import com.platform.model.dto.UserDTO;
-import com.platform.model.dto.VerificationSubmitRequest;
 import com.platform.model.dto.WxLoginRequest;
 import com.platform.model.entity.Building;
 import com.platform.model.entity.Room;
 import com.platform.model.entity.Unit;
 import com.platform.model.entity.User;
-import com.platform.model.entity.Verification;
 import com.platform.repository.BuildingRepository;
 import com.platform.repository.RoomRepository;
 import com.platform.repository.TenantRepository;
 import com.platform.repository.UnitRepository;
 import com.platform.repository.UserRepository;
-import com.platform.repository.VerificationRepository;
 import com.platform.security.JwtTokenProvider;
+import com.platform.websocket.ChatWebSocketHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -40,8 +38,6 @@ class AuthServiceTest {
     @Mock
     private UserRepository userRepository;
     @Mock
-    private VerificationRepository verificationRepository;
-    @Mock
     private RoomRepository roomRepository;
     @Mock
     private BuildingRepository buildingRepository;
@@ -53,18 +49,22 @@ class AuthServiceTest {
     private JwtTokenProvider jwtTokenProvider;
     @Mock
     private PasswordEncoder passwordEncoder;
+    @Mock
+    private WeChatService weChatService;
+    @Mock
+    private ChatWebSocketHandler chatWebSocketHandler;
 
     @InjectMocks
     private AuthService authService;
 
-    private UUID userId;
+    private Long userId;
     private User user;
     private String openid;
     private String token;
 
     @BeforeEach
     void setUp() {
-        userId = UUID.randomUUID();
+        userId = 1L;
         openid = "wx_openid_test";
         token = "mock.jwt.token";
 
@@ -83,65 +83,73 @@ class AuthServiceTest {
     @Test
     @DisplayName("微信登录 - 新用户自动注册并返回token和needRegister")
     void should_registerNewUser_when_wxLoginWithNewOpenid() {
-        // Arrange
+        // 准备
         WxLoginRequest req = new WxLoginRequest();
         req.setCode(openid);
         req.setName("新用户");
 
+        // 本地开发模式下 code 即 openid
+        when(weChatService.code2Session(openid)).thenReturn(openid);
         when(userRepository.findByOpenid(openid)).thenReturn(Optional.empty());
         when(userRepository.save(any(User.class))).thenAnswer(inv -> {
             User u = inv.getArgument(0);
             u.setId(userId);
             return u;
         });
-        when(jwtTokenProvider.generateToken(userId.toString(), "业主")).thenReturn(token);
+        // 发新令牌时版本 +1，首次登录版本为 1
+        when(jwtTokenProvider.generateToken(userId.toString(), "业主", 1)).thenReturn(token);
 
-        // Act
+        // 执行
         Map<String, Object> result = authService.wxLogin(req);
 
-        // Assert
+        // 断言
         assertThat(result.get("token")).isEqualTo(token);
         assertThat(result.get("user")).isNotNull();
         assertThat(result.get("needRegister")).isEqualTo(true);
-        verify(userRepository).save(any(User.class));
+        // 创建用户 + issueUserToken 各保存一次
+        verify(userRepository, times(2)).save(any(User.class));
     }
 
     @Test
     @DisplayName("微信登录 - 已注册用户直接返回token")
     void should_returnToken_when_userExists() {
-        // Arrange
+        // 准备
         WxLoginRequest req = new WxLoginRequest();
         req.setCode(openid);
 
+        when(weChatService.code2Session(openid)).thenReturn(openid);
         when(userRepository.findByOpenid(openid)).thenReturn(Optional.of(user));
-        when(jwtTokenProvider.generateToken(userId.toString(), "业主")).thenReturn(token);
+        when(userRepository.save(any(User.class))).thenReturn(user);
+        when(jwtTokenProvider.generateToken(userId.toString(), "业主", 1)).thenReturn(token);
 
-        // Act
+        // 执行
         Map<String, Object> result = authService.wxLogin(req);
 
-        // Assert
+        // 断言
         assertThat(result.get("token")).isEqualTo(token);
         assertThat(result.get("needRegister")).isNull();
-        verify(userRepository, never()).save(any(User.class));
+        // issueUserToken 会更新 tokenVersion 保存一次
+        verify(userRepository, times(1)).save(any(User.class));
     }
 
     @Test
     @DisplayName("微信登录 - pending状态且无房间的用户触发重注册")
     void should_triggerReRegistration_when_pendingAndNoRoom() {
-        // Arrange
+        // 准备
         user.setAuthStatus("pending");
         user.setRoom(null);
         WxLoginRequest req = new WxLoginRequest();
         req.setCode(openid);
 
+        when(weChatService.code2Session(openid)).thenReturn(openid);
         when(userRepository.findByOpenid(openid)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenReturn(user);
-        when(jwtTokenProvider.generateToken(userId.toString(), "业主")).thenReturn(token);
+        when(jwtTokenProvider.generateToken(userId.toString(), "业主", 1)).thenReturn(token);
 
-        // Act
+        // 执行
         Map<String, Object> result = authService.wxLogin(req);
 
-        // Assert
+        // 断言
         assertThat(result.get("needRegister")).isEqualTo(true);
         assertThat(user.getAuthStatus()).isEqualTo("registering");
     }
@@ -149,24 +157,24 @@ class AuthServiceTest {
     @Test
     @DisplayName("微信登录 - 用户名null时默认使用'微信用户'")
     void should_useDefaultName_when_nameIsNull() {
-        // Arrange
+        // 准备
         WxLoginRequest req = new WxLoginRequest();
         req.setCode(openid);
         req.setName(null);
 
+        when(weChatService.code2Session(openid)).thenReturn(openid);
         when(userRepository.findByOpenid(openid)).thenReturn(Optional.empty());
         when(userRepository.save(any(User.class))).thenAnswer(inv -> {
             User u = inv.getArgument(0);
             u.setId(userId);
-            u.setName("微信用户");
             return u;
         });
-        when(jwtTokenProvider.generateToken(userId.toString(), "业主")).thenReturn(token);
+        when(jwtTokenProvider.generateToken(userId.toString(), "业主", 1)).thenReturn(token);
 
-        // Act
+        // 执行
         Map<String, Object> result = authService.wxLogin(req);
 
-        // Assert
+        // 断言
         UserDTO dto = (UserDTO) result.get("user");
         assertThat(dto.getName()).isEqualTo("微信用户");
     }
@@ -176,7 +184,7 @@ class AuthServiceTest {
     @Test
     @DisplayName("管理员登录 - 正常登录成功返回token")
     void should_adminLogin_when_validCredentials() {
-        // Arrange
+        // 准备
         LoginRequest req = new LoginRequest();
         req.setUsername("admin");
         req.setPassword("admin123");
@@ -194,10 +202,10 @@ class AuthServiceTest {
         when(passwordEncoder.matches("admin123", "hashed_password")).thenReturn(true);
         when(jwtTokenProvider.generateToken(userId.toString(), "admin")).thenReturn(token);
 
-        // Act
+        // 执行
         Map<String, Object> result = authService.adminLogin(req);
 
-        // Assert
+        // 断言
         assertThat(result.get("token")).isEqualTo(token);
         assertThat(result.get("user")).isNotNull();
     }
@@ -205,14 +213,14 @@ class AuthServiceTest {
     @Test
     @DisplayName("管理员登录 - 用户不存在时抛出异常")
     void should_throwException_when_usernameNotFound() {
-        // Arrange
+        // 准备
         LoginRequest req = new LoginRequest();
         req.setUsername("nonexistent");
         req.setPassword("password");
 
         when(userRepository.findByUsername("nonexistent")).thenReturn(Optional.empty());
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> authService.adminLogin(req))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("账号或密码错误");
@@ -221,7 +229,7 @@ class AuthServiceTest {
     @Test
     @DisplayName("管理员登录 - 非管理员用户登录时抛出异常")
     void should_throwException_when_notAdmin() {
-        // Arrange
+        // 准备
         LoginRequest req = new LoginRequest();
         req.setUsername("user1");
         req.setPassword("password");
@@ -234,7 +242,7 @@ class AuthServiceTest {
 
         when(userRepository.findByUsername("user1")).thenReturn(Optional.of(normalUser));
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> authService.adminLogin(req))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("账号或密码错误");
@@ -243,7 +251,7 @@ class AuthServiceTest {
     @Test
     @DisplayName("管理员登录 - 密码不匹配时抛出异常")
     void should_throwException_when_passwordMismatch() {
-        // Arrange
+        // 准备
         LoginRequest req = new LoginRequest();
         req.setUsername("admin");
         req.setPassword("wrongpassword");
@@ -258,7 +266,7 @@ class AuthServiceTest {
         when(userRepository.findByUsername("admin")).thenReturn(Optional.of(adminUser));
         when(passwordEncoder.matches("wrongpassword", "hashed_password")).thenReturn(false);
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> authService.adminLogin(req))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("账号或密码错误");
@@ -267,7 +275,7 @@ class AuthServiceTest {
     @Test
     @DisplayName("管理员登录 - super_admin用户也可登录")
     void should_allowSuperAdminLogin() {
-        // Arrange
+        // 准备
         LoginRequest req = new LoginRequest();
         req.setUsername("superadmin");
         req.setPassword("pass");
@@ -284,10 +292,10 @@ class AuthServiceTest {
         when(passwordEncoder.matches("pass", "hash")).thenReturn(true);
         when(jwtTokenProvider.generateToken(userId.toString(), "super_admin")).thenReturn(token);
 
-        // Act
+        // 执行
         Map<String, Object> result = authService.adminLogin(req);
 
-        // Assert
+        // 断言
         assertThat(result.get("token")).isEqualTo(token);
     }
 
@@ -296,8 +304,8 @@ class AuthServiceTest {
     @Test
     @DisplayName("用户注册 - 正常注册并解析房间信息")
     void should_registerUser_when_validInput() {
-        // Arrange
-        UUID tenantId = UUID.randomUUID();
+        // 准备
+        Long tenantId = 10L;
         RegisterRequest req = new RegisterRequest();
         req.setTenantId(tenantId);
         req.setBuilding("3");
@@ -308,35 +316,55 @@ class AuthServiceTest {
         req.setUserType("业主");
         req.setDocImages(List.of("http://img1.jpg"));
 
-        Building building = Building.builder().id(UUID.randomUUID()).tenantId(tenantId).name("3栋").build();
-        Unit unit = Unit.builder().id(UUID.randomUUID()).buildingId(building.getId()).name("2单元").build();
-        Room room = Room.builder().id(UUID.randomUUID()).unitId(unit.getId()).roomNumber("1502").build();
+        Building building = Building.builder().id(100L).tenantId(tenantId).name("3栋").build();
+        Unit unit = Unit.builder().id(200L).buildingId(building.getId()).name("2单元").build();
+        Room room = Room.builder().id(300L).unitId(unit.getId()).roomNumber("1502").build();
 
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(buildingRepository.findByTenantIdAndName(tenantId, "3栋")).thenReturn(Optional.of(building));
         when(unitRepository.findByBuildingIdAndName(building.getId(), "2单元")).thenReturn(Optional.of(unit));
         when(roomRepository.findByUnitIdAndRoomNumber(unit.getId(), "1502")).thenReturn(Optional.of(room));
+        // 唯一性校验：手机号与房间均未被占用
+        when(userRepository.findByPhoneAndTenantId("13800138000", tenantId)).thenReturn(Optional.empty());
+        when(userRepository.findByRoomId(room.getId())).thenReturn(Optional.empty());
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenReturn(user);
+        when(jwtTokenProvider.generateToken(userId.toString(), "业主", 1)).thenReturn("mock-token");
 
-        // Act
-        UserDTO result = authService.register(req, userId);
+        // 执行
+        Map<String, Object> result = authService.register(req, userId);
+        UserDTO resultUser = (UserDTO) result.get("user");
 
-        // Assert
+        // 断言
         assertThat(result).isNotNull();
-        assertThat(result.getName()).isEqualTo("张三");
+        assertThat(result.get("token")).isEqualTo("mock-token");
+        assertThat(resultUser.getName()).isEqualTo("张三");
         assertThat(user.getAuthStatus()).isEqualTo("pending");
         assertThat(user.getRoomId()).isEqualTo(room.getId());
-        verify(userRepository).save(any(User.class));
+        // 注册保存 + issueUserToken 更新版本各一次
+        verify(userRepository, atLeastOnce()).save(any(User.class));
     }
 
     @Test
     @DisplayName("用户注册 - 用户不存在时抛出异常")
     void should_throwException_when_userNotFound() {
-        // Arrange
+        // 准备（房间信息完整但 userId 对应的用户不存在；不填手机号以跳过唯一性校验）
+        Long tenantId = 10L;
         RegisterRequest req = new RegisterRequest();
+        req.setTenantId(tenantId);
+        req.setBuilding("3");
+        req.setUnit("2");
+        req.setRoom("1502");
+
+        Building building = Building.builder().id(100L).tenantId(tenantId).name("3栋").build();
+        Unit unit = Unit.builder().id(200L).buildingId(building.getId()).name("2单元").build();
+        Room room = Room.builder().id(300L).unitId(unit.getId()).roomNumber("1502").build();
+
+        when(buildingRepository.findByTenantIdAndName(tenantId, "3栋")).thenReturn(Optional.of(building));
+        when(unitRepository.findByBuildingIdAndName(building.getId(), "2单元")).thenReturn(Optional.of(unit));
+        when(roomRepository.findByUnitIdAndRoomNumber(unit.getId(), "1502")).thenReturn(Optional.of(room));
         when(userRepository.findById(userId)).thenReturn(Optional.empty());
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> authService.register(req, userId))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("用户不存在");
@@ -345,14 +373,12 @@ class AuthServiceTest {
     @Test
     @DisplayName("用户注册 - 房间信息不完整时抛出异常")
     void should_throwException_when_roomInfoIncomplete() {
-        // Arrange
+        // 准备（解析房间先于用户查询执行，因此无需 stub 用户查询）
         RegisterRequest req = new RegisterRequest();
         req.setBuilding("3");
-        // unit and room are null
+        // tenantId、unit 和 room 为空
 
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> authService.register(req, userId))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("请完整填写小区、栋号、单元号和房号");
@@ -361,32 +387,34 @@ class AuthServiceTest {
     @Test
     @DisplayName("用户注册 - 创建新的Building/Unit/Room当不存在时")
     void should_createNewBuildingUnitRoom_when_notExist() {
-        // Arrange
-        UUID tenantId = UUID.randomUUID();
+        // 准备
+        Long tenantId = 10L;
         RegisterRequest req = new RegisterRequest();
         req.setTenantId(tenantId);
         req.setBuilding("5");
         req.setUnit("1");
         req.setRoom("101");
 
-        Building newBuilding = Building.builder().id(UUID.randomUUID()).tenantId(tenantId).name("5栋").build();
-        Unit newUnit = Unit.builder().id(UUID.randomUUID()).buildingId(newBuilding.getId()).name("1单元").build();
-        Room newRoom = Room.builder().id(UUID.randomUUID()).unitId(newUnit.getId()).roomNumber("101").build();
+        Building newBuilding = Building.builder().id(101L).tenantId(tenantId).name("5栋").build();
+        Unit newUnit = Unit.builder().id(201L).buildingId(newBuilding.getId()).name("1单元").build();
+        Room newRoom = Room.builder().id(301L).unitId(newUnit.getId()).roomNumber("101").build();
 
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(buildingRepository.findByTenantIdAndName(tenantId, "5栋")).thenReturn(Optional.empty());
         when(buildingRepository.save(any(Building.class))).thenReturn(newBuilding);
         when(unitRepository.findByBuildingIdAndName(newBuilding.getId(), "1单元")).thenReturn(Optional.empty());
         when(unitRepository.save(any(Unit.class))).thenReturn(newUnit);
         when(roomRepository.findByUnitIdAndRoomNumber(newUnit.getId(), "101")).thenReturn(Optional.empty());
         when(roomRepository.save(any(Room.class))).thenReturn(newRoom);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenReturn(user);
+        when(jwtTokenProvider.generateToken(userId.toString(), "业主", 1)).thenReturn("mock-token");
 
-        // Act
-        UserDTO result = authService.register(req, userId);
+        // 执行
+        Map<String, Object> result = authService.register(req, userId);
 
-        // Assert
+        // 断言
         assertThat(result).isNotNull();
+        assertThat(result.get("token")).isEqualTo("mock-token");
         assertThat(user.getRoomId()).isEqualTo(newRoom.getId());
         verify(buildingRepository).save(any(Building.class));
         verify(unitRepository).save(any(Unit.class));
@@ -398,16 +426,16 @@ class AuthServiceTest {
     @Test
     @DisplayName("获取认证状态 - 正常返回认证状态")
     void should_returnAuthStatus_when_userExists() {
-        // Arrange
+        // 准备
         user.setAuthStatus("pending");
         user.setRejectReason(null);
         user.setBannedReason(null);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
+        // 执行
         Map<String, Object> result = authService.getAuthStatus(userId);
 
-        // Assert
+        // 断言
         assertThat(result).containsEntry("authStatus", "pending");
         assertThat(result.get("rejectReason")).isNull();
     }
@@ -415,10 +443,10 @@ class AuthServiceTest {
     @Test
     @DisplayName("获取认证状态 - 用户不存在时抛出异常")
     void should_throwException_when_userNotFoundInStatus() {
-        // Arrange
+        // 准备
         when(userRepository.findById(userId)).thenReturn(Optional.empty());
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> authService.getAuthStatus(userId))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("用户不存在");
@@ -429,15 +457,15 @@ class AuthServiceTest {
     @Test
     @DisplayName("申诉 - banned用户申诉成功")
     void should_appeal_when_userIsBanned() {
-        // Arrange
+        // 准备
         user.setAuthStatus("banned");
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenReturn(user);
 
-        // Act
+        // 执行
         Map<String, Object> result = authService.appeal(userId);
 
-        // Assert
+        // 断言
         assertThat(result.get("success")).isEqualTo(true);
         assertThat(user.getAuthStatus()).isEqualTo("pending");
         assertThat(user.getRejectReason()).isNull();
@@ -446,36 +474,13 @@ class AuthServiceTest {
     @Test
     @DisplayName("申诉 - 非banned用户申诉时抛出异常")
     void should_throwException_when_userNotBanned() {
-        // Arrange
+        // 准备
         user.setAuthStatus("approved");
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> authService.appeal(userId))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("当前状态不支持申诉");
-    }
-
-    // ==================== submitVerification ====================
-
-    @Test
-    @DisplayName("提交验证 - 正常提交实名验证")
-    void should_submitVerification_when_validInput() {
-        // Arrange
-        VerificationSubmitRequest req = new VerificationSubmitRequest();
-        req.setRealName("张三");
-        req.setIdCard("110101199001011234");
-        req.setIdCardFront("http://front.jpg");
-        req.setIdCardBack("http://back.jpg");
-
-        when(verificationRepository.save(any(Verification.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        // Act
-        Map<String, Object> result = authService.submitVerification(userId, req);
-
-        // Assert
-        assertThat(result.get("success")).isEqualTo(true);
-        assertThat(result.get("message")).isEqualTo("验证信息已提交，请等待审核");
-        verify(verificationRepository).save(any(Verification.class));
     }
 }

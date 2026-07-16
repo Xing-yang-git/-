@@ -24,9 +24,10 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -60,17 +61,66 @@ public class UserActivityService {
     }
 
     // ============================================================
-    // 发布 tab — my published posts (idle + help)
+    // 个人资料 — 我的 tab
     // ============================================================
 
     /**
-     * Get my posts (combined idle + help) for the 发布 tab.
-     * @param statusFilter "online" | "offline" | "completed" — filters items by status
+     * 获取当前用户的个人资料及统计数据，用于"我的" tab。
      */
-    public List<MyPostItemDTO> getMyPosts(UUID userId, String statusFilter) {
+    public java.util.Map<String, Object> getProfile(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("用户不存在"));
+
+        java.util.Map<String, Object> profile = new java.util.HashMap<>();
+
+        // 基本信息
+        profile.put("id", user.getId());
+        profile.put("name", user.getName());
+        profile.put("userType", user.getUserType());
+        profile.put("userTypeText", getUserTypeLabel(user.getUserType()));
+        profile.put("roomInfo", formatRoom(user));
+        profile.put("isAuth", "approved".equals(user.getAuthStatus()));
+
+        // 评分
+        Double avgScore = ratingRepository.getAverageScore(userId);
+        profile.put("score", avgScore != null ? Math.round(avgScore * 10.0) / 10.0 : 0.0);
+        long ratingCount = ratingRepository.countByToUserId(userId);
+        profile.put("ratingCount", (int) ratingCount);
+
+        // 统计数据
+        long lendCount = idleItemRepository.findByUserId(userId).stream()
+                .filter(i -> "LEND".equals(i.getPostType())).count();
+        profile.put("lendCount", (int) lendCount);
+
+        // 借入次数按"真实角色"统计：WANTED 帖里发布者才是借入方，响应者其实是出借方，
+        // 直接用 borrowerId 会把方向算反，故统一走 borrowRoleCounts。
+        int[] bl = borrowRoleCounts(userId);
+        profile.put("borrowCount", bl[0]);
+        // 尚无已归还的互借记录时默认 100%（新用户无扣分依据）
+        profile.put("borrowReturnRate", bl[1] > 0
+                ? Math.round((double) bl[2] / bl[1] * 1000.0) / 10.0 : 100.0);
+
+        List<HelpRequest> helpReqs = helpRequestRepository.findByUserId(userId);
+        profile.put("helpReqCount", helpReqs != null ? helpReqs.size() : 0);
+
+        long helpProCount = helpApplicationRepository.countByHelperIdAndStatus(userId, "approved");
+        profile.put("helpProCount", (int) helpProCount);
+
+        return profile;
+    }
+
+    // ============================================================
+    // 发布 tab — 我发布的帖子（闲置 + 求助）
+    // ============================================================
+
+    /**
+     * 获取我发布的帖子（闲置 + 求助合并），用于"发布" tab。
+     * @param statusFilter "online" | "offline" | "completed" — 按状态过滤
+     */
+    public List<MyPostItemDTO> getMyPosts(Long userId, String statusFilter) {
         List<MyPostItemDTO> result = new ArrayList<>();
 
-        // 1. Idle items (all postTypes: LEND + WANTED)
+        // 1. 闲置物品（所有 postType：LEND + WANTED）
         List<IdleItem> idleItems = idleItemRepository.findByUserId(userId);
         for (IdleItem item : idleItems) {
             if (statusFilter != null && !statusFilter.isEmpty() && !statusFilter.equals(item.getStatus())) {
@@ -79,7 +129,7 @@ public class UserActivityService {
             result.add(toMyPostItemDTO(item));
         }
 
-        // 2. Help requests
+        // 2. 求助信息
         List<HelpRequest> helpRequests = helpRequestRepository.findByUserId(userId);
         for (HelpRequest hr : helpRequests) {
             if (statusFilter != null && !statusFilter.isEmpty() && !statusFilter.equals(hr.getStatus())) {
@@ -88,7 +138,7 @@ public class UserActivityService {
             result.add(toMyPostItemDTO(hr));
         }
 
-        // 3. Sort by createdAt DESC
+        // 3. 按 createdAt 降序排序
         result.sort(Comparator.comparing(MyPostItemDTO::getCreatedAt,
                 Comparator.nullsLast(Comparator.reverseOrder())));
 
@@ -96,49 +146,57 @@ public class UserActivityService {
     }
 
     // ============================================================
-    // 审批 tab — pending approvals
+    // 审批 tab — 待审批事项
     // ============================================================
 
     /**
-     * Get pending approvals (items awaiting my approval as owner).
-     * @param type "borrow" | "help"
+     * 获取待审批事项（等待我作为物品发布者审批的申请）。
+     * @param type "borrow" | "lend" | "help"
+     *   - borrow: 别人申请借入我发布的 LEND 物品（我是出借方，审批是否借出）
+     *   - lend:   别人愿意借出给我发布的 WANTED 需求（我是借入方，确认是否借入）
+     *   - help:   别人申请帮助我发布的求助
      */
-    public List<MyPostItemDTO> getApprovals(UUID userId, String type) {
+    public List<MyPostItemDTO> getApprovals(Long userId, String type) {
         List<MyPostItemDTO> result = new ArrayList<>();
 
-        if ("borrow".equals(type)) {
-            // Borrow requests on my idle items with status=pending
+        if ("borrow".equals(type) || "lend".equals(type)) {
+            // 两者都是"我作为物品 owner 的待处理申请"，仅 postType 不同：
+            // borrow → LEND 帖；lend → WANTED 帖（需求借入的借出意向）。
+            boolean wantWanted = "lend".equals(type);
             List<BorrowRequest> pendingBorrows = borrowRequestRepository
                     .findByOwnerIdAndStatus(userId, "pending");
             for (BorrowRequest br : pendingBorrows) {
+                IdleItem item = resolveIdleItem(br);
+                boolean wanted = item != null && "WANTED".equals(item.getPostType());
+                if (wanted != wantWanted) continue;
                 MyPostItemDTO dto = borrowRequestToDTO(br);
-                // Populate borrower (peer) info — this was missing, causing blank 住户名
-                User borrower = userRepository.findById(br.getBorrowerId()).orElse(null);
-                if (borrower != null) {
-                    dto.setPersonName(formatPersonName(borrower));
-                    dto.setPersonRoom(formatRoom(borrower));
-                    dto.setPersonType(getUserTypeLabel(borrower.getUserType()));
+                // 对方（申请人 = borrowerId）：borrow 里是借入者，lend 里是出借者
+                User applicant = userRepository.findById(br.getBorrowerId()).orElse(null);
+                if (applicant != null) {
+                    dto.setPersonName(formatPersonName(applicant));
+                    dto.setPersonRoom(formatRoom(applicant));
+                    dto.setPersonType(getUserTypeLabel(applicant.getUserType()));
                 }
                 enrichUserStats(dto, br.getBorrowerId());
                 dto.setType("idle");
-                dto.setSubType("borrow");
-                dto.setPostType("LEND");
+                dto.setSubType(type);
                 result.add(dto);
             }
         } else if ("help".equals(type)) {
-            // Help applications on my help requests with status=pending
+            // 我发布的求助下 status=pending 的帮助申请
             List<HelpRequest> myHelpRequests = helpRequestRepository.findByUserId(userId);
             for (HelpRequest hr : myHelpRequests) {
                 List<HelpApplication> pendingApps = helpApplicationRepository
                         .findByHelpIdAndStatus(hr.getId(), "pending");
                 for (HelpApplication app : pendingApps) {
                     MyPostItemDTO dto = helpRequestToDTO(hr);
-                    dto.setId(app.getId()); // use application id as the primary id
+                    dto.setId(app.getId()); // 使用申请 ID 作为主 ID
                     dto.setType("help");
                     dto.setSubType("helpReq");
                     dto.setPostType("HELP");
+                    dto.setNote(app.getNote()); // 帮助说明（帮助者申请时填写）
 
-                    // Peer (helper) info
+                    // 对方（帮助者）信息
                     User helper = userRepository.findById(app.getHelperId()).orElse(null);
                     if (helper != null) {
                         dto.setPersonName(formatPersonName(helper));
@@ -157,55 +215,40 @@ public class UserActivityService {
     }
 
     // ============================================================
-    // 进行中 tab — in-progress transactions
+    // 进行中 tab — 进行中的交易
     // ============================================================
 
     /**
-     * Get in-progress transactions.
+     * 获取进行中的交易。
      * @param role "borrow" | "lend" | "helpReq" | "helpPro"
      */
-    public List<MyPostItemDTO> getInProgress(UUID userId, String role) {
+    public List<MyPostItemDTO> getInProgress(Long userId, String role) {
         List<MyPostItemDTO> result = new ArrayList<>();
 
         switch (role) {
-            case "borrow" -> {
-                // I am borrowing someone else's item
-                List<BorrowRequest> borrows = borrowRequestRepository
-                        .findByBorrowerIdAndStatus(userId, "approved");
-                for (BorrowRequest br : borrows) {
+            case "borrow", "lend" -> {
+                // 借入与借出是同一批 BorrowRequest 的两个视角。收集所有与我相关（我是
+                // 物品 owner 或 borrower）且已通过的记录，按"真实角色"分流到对应子 tab。
+                // WANTED 帖会把 owner/borrower 的借入借出关系反转，故必须用 resolveBorrowRole。
+                List<BorrowRequest> pool = new ArrayList<>();
+                pool.addAll(borrowRequestRepository.findByBorrowerIdAndStatus(userId, "approved"));
+                pool.addAll(borrowRequestRepository.findByOwnerIdAndStatus(userId, "approved"));
+                Set<Long> seen = new HashSet<>();
+                for (BorrowRequest br : pool) {
+                    if (!seen.add(br.getId())) continue;
+                    if (!role.equals(resolveBorrowRole(br, userId))) continue;
                     MyPostItemDTO dto = borrowRequestToDTO(br);
                     dto.setType("idle");
-                    dto.setSubType("borrow");
-                    dto.setPostType("LEND");
-                    dto.setRoleLabel("借走住户");
-                    populatePeerFromIdleOwner(dto, br);
-                    calculateRemaining(dto, br);
-                    result.add(dto);
-                }
-            }
-            case "lend" -> {
-                // Someone is borrowing my item
-                List<BorrowRequest> lends = borrowRequestRepository
-                        .findByOwnerIdAndStatus(userId, "approved");
-                for (BorrowRequest br : lends) {
-                    MyPostItemDTO dto = borrowRequestToDTO(br);
-                    dto.setType("idle");
-                    dto.setSubType("lend");
-                    dto.setPostType("LEND");
-                    dto.setRoleLabel("借出住户");
-                    // Peer is the borrower
-                    User borrower = userRepository.findById(br.getBorrowerId()).orElse(null);
-                    if (borrower != null) {
-                        dto.setPersonName(formatPersonName(borrower));
-                        dto.setPersonRoom(formatRoom(borrower));
-                        dto.setPersonType(getUserTypeLabel(borrower.getUserType()));
-                    }
+                    dto.setSubType(role);
+                    // borrow：对方是出借住户；lend：对方是借走住户
+                    dto.setRoleLabel(role.equals("borrow") ? "借出住户" : "借走住户");
+                    populateBorrowPeer(dto, br, userId);
                     calculateRemaining(dto, br);
                     result.add(dto);
                 }
             }
             case "helpReq" -> {
-                // I requested help and someone is helping me
+                // 我发起求助且有人正在帮我
                 List<HelpRequest> myHelpRequests = helpRequestRepository.findByUserId(userId);
                 for (HelpRequest hr : myHelpRequests) {
                     List<HelpApplication> approvedApps = helpApplicationRepository
@@ -218,6 +261,7 @@ public class UserActivityService {
                         dto.setPostType("HELP");
                         dto.setRoleLabel("求助住户");
                         dto.setDisplayStatus("进行中");
+                        dto.setNote(app.getNote()); // 帮助说明
                         User helper = userRepository.findById(app.getHelperId()).orElse(null);
                         if (helper != null) {
                             dto.setPersonName(formatPersonName(helper));
@@ -230,7 +274,7 @@ public class UserActivityService {
                 }
             }
             case "helpPro" -> {
-                // I am helping someone
+                // 我正在帮助别人
                 List<HelpApplication> myApps = helpApplicationRepository.findByHelperId(userId);
                 for (HelpApplication app : myApps) {
                     if (!"approved".equals(app.getStatus())) continue;
@@ -246,7 +290,8 @@ public class UserActivityService {
                     dto.setPostType("HELP");
                     dto.setRoleLabel("帮助住户");
                     dto.setDisplayStatus("进行中");
-                    // Peer is the help requester
+                    dto.setNote(app.getNote()); // 帮助说明
+                    // 对方是求助发起者
                     User requester = userRepository.findById(hr.getUserId()).orElse(null);
                     if (requester != null) {
                         dto.setPersonName(formatPersonName(requester));
@@ -266,56 +311,38 @@ public class UserActivityService {
     }
 
     // ============================================================
-    // 已完成 tab — completed transactions
+    // 已完成 tab — 已完成的交易
     // ============================================================
 
     /**
-     * Get completed transactions.
+     * 获取已完成的交易。
      * @param role "borrow" | "lend" | "helpReq" | "helpPro"
      */
-    public List<MyPostItemDTO> getCompleted(UUID userId, String role) {
+    public List<MyPostItemDTO> getCompleted(Long userId, String role) {
         List<MyPostItemDTO> result = new ArrayList<>();
 
         switch (role) {
-            case "borrow" -> {
-                // I borrowed and returned
-                List<BorrowRequest> borrows = borrowRequestRepository
-                        .findByBorrowerIdAndStatus(userId, "returned");
-                for (BorrowRequest br : borrows) {
+            case "borrow", "lend" -> {
+                // 已归还的互借记录，按真实角色分流（含 WANTED 角色反转）。
+                List<BorrowRequest> pool = new ArrayList<>();
+                pool.addAll(borrowRequestRepository.findByBorrowerIdAndStatus(userId, "returned"));
+                pool.addAll(borrowRequestRepository.findByOwnerIdAndStatus(userId, "returned"));
+                Set<Long> seen = new HashSet<>();
+                for (BorrowRequest br : pool) {
+                    if (!seen.add(br.getId())) continue;
+                    if (!role.equals(resolveBorrowRole(br, userId))) continue;
                     MyPostItemDTO dto = borrowRequestToDTO(br);
                     dto.setType("idle");
-                    dto.setSubType("borrow");
-                    dto.setPostType("LEND");
-                    dto.setRoleLabel("借走住户");
+                    dto.setSubType(role);
+                    dto.setRoleLabel(role.equals("borrow") ? "借出住户" : "借走住户");
                     dto.setCompletedAt(br.getUpdatedAt());
-                    populatePeerFromIdleOwner(dto, br);
-                    loadBorrowRatings(dto, br, userId);
-                    result.add(dto);
-                }
-            }
-            case "lend" -> {
-                // Someone borrowed my item and returned
-                List<BorrowRequest> lends = borrowRequestRepository
-                        .findByOwnerIdAndStatus(userId, "returned");
-                for (BorrowRequest br : lends) {
-                    MyPostItemDTO dto = borrowRequestToDTO(br);
-                    dto.setType("idle");
-                    dto.setSubType("lend");
-                    dto.setPostType("LEND");
-                    dto.setRoleLabel("借出住户");
-                    dto.setCompletedAt(br.getUpdatedAt());
-                    User borrower = userRepository.findById(br.getBorrowerId()).orElse(null);
-                    if (borrower != null) {
-                        dto.setPersonName(formatPersonName(borrower));
-                        dto.setPersonRoom(formatRoom(borrower));
-                        dto.setPersonType(getUserTypeLabel(borrower.getUserType()));
-                    }
+                    populateBorrowPeer(dto, br, userId);
                     loadBorrowRatings(dto, br, userId);
                     result.add(dto);
                 }
             }
             case "helpReq" -> {
-                // My help request was completed
+                // 我发布的求助已完成
                 List<HelpRequest> myHelpRequests = helpRequestRepository.findByUserId(userId);
                 for (HelpRequest hr : myHelpRequests) {
                     List<HelpApplication> completedApps = helpApplicationRepository
@@ -328,6 +355,7 @@ public class UserActivityService {
                         dto.setPostType("HELP");
                         dto.setRoleLabel("求助住户");
                         dto.setCompletedAt(app.getCompletedAt());
+                        dto.setNote(app.getNote()); // 帮助说明
                         User helper = userRepository.findById(app.getHelperId()).orElse(null);
                         if (helper != null) {
                             dto.setPersonName(formatPersonName(helper));
@@ -340,7 +368,7 @@ public class UserActivityService {
                 }
             }
             case "helpPro" -> {
-                // I helped and it was completed
+                // 我提供的帮助已完成
                 List<HelpApplication> myApps = helpApplicationRepository.findByHelperId(userId);
                 for (HelpApplication app : myApps) {
                     if (!"completed".equals(app.getStatus())) continue;
@@ -356,6 +384,7 @@ public class UserActivityService {
                     dto.setPostType("HELP");
                     dto.setRoleLabel("帮助住户");
                     dto.setCompletedAt(app.getCompletedAt());
+                    dto.setNote(app.getNote()); // 帮助说明
                     User requester = userRepository.findById(hr.getUserId()).orElse(null);
                     if (requester != null) {
                         dto.setPersonName(formatPersonName(requester));
@@ -375,11 +404,11 @@ public class UserActivityService {
     }
 
     // ============================================================
-    // Private conversion helpers
+    // 私有转换辅助方法
     // ============================================================
 
     /**
-     * Convert an IdleItem to MyPostItemDTO (for 发布 tab).
+     * 将 IdleItem 转换为 MyPostItemDTO（用于"发布" tab）。
      */
     private MyPostItemDTO toMyPostItemDTO(IdleItem item) {
         String displayStatus = mapIdleDisplayStatus(item.getStatus());
@@ -412,7 +441,7 @@ public class UserActivityService {
     }
 
     /**
-     * Convert a HelpRequest to MyPostItemDTO (for 发布 tab).
+     * 将 HelpRequest 转换为 MyPostItemDTO（用于"发布" tab）。
      */
     private MyPostItemDTO toMyPostItemDTO(HelpRequest hr) {
         String displayStatus = mapHelpDisplayStatus(hr.getStatus());
@@ -441,7 +470,7 @@ public class UserActivityService {
     }
 
     /**
-     * Base DTO from a HelpRequest (without type/subType — caller sets those).
+     * 由 HelpRequest 构建基础 DTO（不含 type/subType，由调用方设置）。
      */
     private MyPostItemDTO helpRequestToDTO(HelpRequest hr) {
         return MyPostItemDTO.builder()
@@ -457,7 +486,7 @@ public class UserActivityService {
     }
 
     /**
-     * Base DTO from a BorrowRequest (without type/subType — caller sets those).
+     * 由 BorrowRequest 构建基础 DTO（不含 type/subType，由调用方设置）。
      */
     private MyPostItemDTO borrowRequestToDTO(BorrowRequest br) {
         IdleItem idleItem = br.getIdleItem();
@@ -468,22 +497,26 @@ public class UserActivityService {
         String title = idleItem != null ? idleItem.getTitle() : "未知物品";
         String category = idleItem != null ? idleItem.getCategory() : null;
         String description = idleItem != null ? idleItem.getDescription() : null;
+        // postType 取自原始闲置帖：LEND → 借入说明, WANTED → 借出说明
+        String postType = idleItem != null ? idleItem.getPostType() : "LEND";
 
         return MyPostItemDTO.builder()
                 .id(br.getId())
                 .title(title)
                 .category(category)
                 .description(description)
+                .postType(postType)
                 .price(idleItem != null ? idleItem.getPrice() : null)
                 .condition(idleItem != null ? idleItem.getCondition() : null)
                 .maxDuration(br.getDurationDays())
                 .durationUnit(br.getDurationType())
+                .note(br.getNote())
                 .createdAt(br.getCreatedAt())
                 .build();
     }
 
     // ============================================================
-    // Display status mapping
+    // 显示状态映射
     // ============================================================
 
     private String mapIdleDisplayStatus(String status) {
@@ -509,7 +542,7 @@ public class UserActivityService {
     }
 
     // ============================================================
-    // Remaining days calculation
+    // 剩余天数计算
     // ============================================================
 
     private void calculateRemaining(MyPostItemDTO dto, BorrowRequest br) {
@@ -548,11 +581,11 @@ public class UserActivityService {
     }
 
     // ============================================================
-    // Peer info population
+    // 对方信息填充
     // ============================================================
 
     /**
-     * Populate peer info from the owner of the idle item in a borrow request.
+     * 用借用申请对应闲置物品的发布者信息填充对方信息。
      */
     private void populatePeerFromIdleOwner(MyPostItemDTO dto, BorrowRequest br) {
         IdleItem idleItem = br.getIdleItem();
@@ -573,109 +606,175 @@ public class UserActivityService {
     }
 
     // ============================================================
-    // Rating loading
+    // 借用角色判定 — 处理 WANTED(需求借入) 的角色反转
+    //
+    // 一条 BorrowRequest 涉及两方：物品 owner(idleItem.userId) 与 borrowerId。
+    //  - LEND 帖：owner 是出借方，borrowerId 是借入方（与模型一致）。
+    //  - WANTED 帖：发布者(owner) 其实是"借入方"，响应者(borrowerId) 才是"出借方"，
+    //    真实角色相对模型反转。
+    // 因此判断"当前用户在这笔交易里到底是借入还是借出"必须结合 postType。
     // ============================================================
 
-    private void loadBorrowRatings(MyPostItemDTO dto, BorrowRequest br, UUID currentUserId) {
-        // My rating of the other party
+    private IdleItem resolveIdleItem(BorrowRequest br) {
+        IdleItem item = br.getIdleItem();
+        if (item == null) {
+            item = idleItemRepository.findById(br.getIdleId()).orElse(null);
+        }
+        return item;
+    }
+
+    /**
+     * 计算当前用户在这笔 BorrowRequest 中的真实角色。
+     * @return "borrow"（我是借入方）或 "lend"（我是出借方）
+     */
+    private String resolveBorrowRole(BorrowRequest br, Long me) {
+        IdleItem item = resolveIdleItem(br);
+        boolean wanted = item != null && "WANTED".equals(item.getPostType());
+        boolean iAmOwner = item != null && me.equals(item.getUserId());
+        // LEND+owner→lend, LEND+borrower→borrow, WANTED+owner→borrow, WANTED+borrower→lend
+        if (iAmOwner) {
+            return wanted ? "borrow" : "lend";
+        }
+        return wanted ? "lend" : "borrow";
+    }
+
+    /**
+     * 把 DTO 的 person* 字段填成"对方"（这笔交易里非当前用户的另一方）。
+     */
+    private void populateBorrowPeer(MyPostItemDTO dto, BorrowRequest br, Long me) {
+        IdleItem item = resolveIdleItem(br);
+        Long ownerId = item != null ? item.getUserId() : null;
+        Long peerId = me.equals(br.getBorrowerId()) ? ownerId : br.getBorrowerId();
+        if (peerId == null) return;
+        User peer = userRepository.findById(peerId).orElse(null);
+        if (peer != null) {
+            dto.setPersonName(formatPersonName(peer));
+            dto.setPersonRoom(formatRoom(peer));
+            dto.setPersonType(getUserTypeLabel(peer.getUserType()));
+        }
+    }
+
+    /**
+     * 按真实角色统计当前用户的"借入"交易。
+     * @return [borrowCount(approved+returned), returnedCount, onTimeCount]
+     */
+    private int[] borrowRoleCounts(Long userId) {
+        List<BorrowRequest> pool = new ArrayList<>();
+        pool.addAll(borrowRequestRepository.findByBorrowerId(userId));
+        pool.addAll(borrowRequestRepository.findByOwnerIdAndStatus(userId, "approved"));
+        pool.addAll(borrowRequestRepository.findByOwnerIdAndStatus(userId, "returned"));
+
+        Set<Long> seen = new HashSet<>();
+        int borrowCount = 0, returnedCount = 0, onTimeCount = 0;
+        for (BorrowRequest br : pool) {
+            if (!seen.add(br.getId())) continue;
+            if (!"borrow".equals(resolveBorrowRole(br, userId))) continue;
+            String st = br.getStatus();
+            if ("approved".equals(st) || "returned".equals(st)) borrowCount++;
+            if ("returned".equals(st)) {
+                returnedCount++;
+                if (Boolean.TRUE.equals(br.getIsOnTime())) onTimeCount++;
+            }
+        }
+        return new int[]{borrowCount, returnedCount, onTimeCount};
+    }
+
+    // ============================================================
+    // 评价加载
+    // ============================================================
+
+    private void loadBorrowRatings(MyPostItemDTO dto, BorrowRequest br, Long currentUserId) {
+        // 我对对方的评价
         Optional<Rating> myRating = ratingRepository.findByBorrowIdAndFromUserId(br.getId(), currentUserId);
         myRating.ifPresent(r -> {
             dto.setMyRating(r.getScore().doubleValue());
-            dto.setMyFeedback(r.getDimensionScores());
+            dto.setMyFeedback(null);
         });
 
-        // Other party's rating of me
-        UUID idleOwnerId = br.getIdleItem() != null ? br.getIdleItem().getUserId() : null;
+        // 对方对我的评价
+        Long idleOwnerId = br.getIdleItem() != null ? br.getIdleItem().getUserId() : null;
         if (idleOwnerId == null) {
-            // Lazy-loading fallback
+            // 懒加载失败时的兜底查询
             idleOwnerId = idleItemRepository.findById(br.getIdleId())
                     .map(IdleItem::getUserId).orElse(null);
         }
-        UUID otherUserId = currentUserId.equals(br.getBorrowerId())
+        Long otherUserId = currentUserId.equals(br.getBorrowerId())
                 ? idleOwnerId
                 : br.getBorrowerId();
         if (otherUserId != null) {
             Optional<Rating> theirRating = ratingRepository.findByBorrowIdAndFromUserId(br.getId(), otherUserId);
             theirRating.ifPresent(r -> {
                 dto.setTheirRating(r.getScore().doubleValue());
-                dto.setTheirFeedback(r.getDimensionScores());
+                dto.setTheirFeedback(null);
             });
         }
     }
 
-    private void loadHelpRatings(MyPostItemDTO dto, HelpApplication app, UUID currentUserId) {
-        // My rating of the other party
+    private void loadHelpRatings(MyPostItemDTO dto, HelpApplication app, Long currentUserId) {
+        // 我对对方的评价
         Optional<Rating> myRating = ratingRepository.findByHelpApplicationIdAndFromUserId(app.getId(), currentUserId);
         myRating.ifPresent(r -> {
             dto.setMyRating(r.getScore().doubleValue());
-            dto.setMyFeedback(r.getDimensionScores());
+            dto.setMyFeedback(null);
         });
 
-        // Other party's rating of me
+        // 对方对我的评价
         HelpRequest hr = app.getHelpRequest();
         if (hr == null) {
             hr = helpRequestRepository.findById(app.getHelpId()).orElse(null);
         }
-        UUID otherUserId = currentUserId.equals(app.getHelperId())
+        Long otherUserId = currentUserId.equals(app.getHelperId())
                 ? (hr != null ? hr.getUserId() : null)
                 : app.getHelperId();
         if (otherUserId != null) {
             Optional<Rating> theirRating = ratingRepository.findByHelpApplicationIdAndFromUserId(app.getId(), otherUserId);
             theirRating.ifPresent(r -> {
                 dto.setTheirRating(r.getScore().doubleValue());
-                dto.setTheirFeedback(r.getDimensionScores());
+                dto.setTheirFeedback(null);
             });
         }
     }
 
     // ============================================================
-    // User stats enrichment
+    // 用户统计数据补充
     // ============================================================
 
     /**
-     * Enrich DTO with user stats (rating, borrow/lend/help counts).
+     * 为 DTO 补充用户统计数据（评分、借入/借出/求助次数）。
      */
-    private void enrichUserStats(MyPostItemDTO dto, UUID userId) {
+    private void enrichUserStats(MyPostItemDTO dto, Long userId) {
         if (userId == null) return;
 
-        // Rating
+        // 评分
         Double avgScore = ratingRepository.getAverageScore(userId);
         dto.setPersonRating(avgScore != null ? Math.round(avgScore * 10.0) / 10.0 : null);
 
-        // Borrow count
-        List<BorrowRequest> allBorrows = borrowRequestRepository.findByBorrowerId(userId);
-        dto.setBorrowCount(allBorrows != null ? allBorrows.size() : 0);
+        // 借入次数 / 归还率 — 按真实角色统计（含 WANTED 角色反转）
+        int[] bl = borrowRoleCounts(userId);
+        dto.setBorrowCount(bl[0]);
+        // 尚无已归还的互借记录时默认 100%
+        dto.setBorrowReturnRate(bl[1] > 0
+                ? Math.round((double) bl[2] / bl[1] * 1000.0) / 10.0
+                : 100.0);
 
-        // Borrow return rate (on-time returns / total returns)
-        if (allBorrows != null && !allBorrows.isEmpty()) {
-            long returnedCount = allBorrows.stream()
-                    .filter(b -> "returned".equals(b.getStatus())).count();
-            long onTimeCount = allBorrows.stream()
-                    .filter(b -> "returned".equals(b.getStatus()) && Boolean.TRUE.equals(b.getIsOnTime()))
-                    .count();
-            dto.setBorrowReturnRate(returnedCount > 0
-                    ? Math.round((double) onTimeCount / returnedCount * 1000.0) / 10.0
-                    : null);
-        }
-
-        // Lend count (idle items posted by this user)
+        // 借出次数（该用户发布的闲置物品）
         List<IdleItem> myIdleItems = idleItemRepository.findByUserId(userId);
         long lendCount = myIdleItems != null
                 ? myIdleItems.stream().filter(i -> "LEND".equals(i.getPostType())).count()
                 : 0;
         dto.setLendCount((int) lendCount);
 
-        // Help request count
+        // 求助次数
         List<HelpRequest> myHelpReqs = helpRequestRepository.findByUserId(userId);
         dto.setHelpReqCount(myHelpReqs != null ? myHelpReqs.size() : 0);
 
-        // Help provide count (approved help applications)
+        // 提供帮助次数（已通过的帮助申请）
         long helpProCount = helpApplicationRepository.countByHelperIdAndStatus(userId, "approved");
         dto.setHelpProCount((int) helpProCount);
     }
 
     // ============================================================
-    // Room formatting (same pattern as HelpService)
+    // 房间信息格式化（与 HelpService 相同的模式）
     // ============================================================
 
     private String formatRoom(User user) {
@@ -710,23 +809,20 @@ public class UserActivityService {
         String roomPart = formatRoom(user);
         String typeLabel = getUserTypeLabel(user.getUserType());
         if (!roomPart.isEmpty()) {
-            return roomPart + "(" + typeLabel + ")";
+            return typeLabel.isEmpty() ? roomPart : roomPart + "(" + typeLabel + ")";
         }
         String name = user.getName() != null ? user.getName() : "未知用户";
-        return name + "(" + typeLabel + ")";
+        return typeLabel.isEmpty() ? name : name + "(" + typeLabel + ")";
     }
 
     private String getUserTypeLabel(String userType) {
         if (userType == null) return "";
         return switch (userType) {
-            case "业主" -> "业主";
-            case "租客" -> "租客";
-            case "物业" -> "物业";
+            case "owner" -> "业主";
+            case "tenant" -> "租客";
             case "admin" -> "管理员";
             case "super_admin" -> "超级管理员";
-            case "owner" -> "业主";
-            case "resident", "tenant" -> "租客";
-            default -> userType;
+            default -> userType != null ? userType : "";
         };
     }
 }

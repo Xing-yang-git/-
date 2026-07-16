@@ -49,15 +49,15 @@ class IdleServiceTest {
     @InjectMocks
     private IdleService idleService;
 
-    private UUID userId;
-    private UUID itemId;
+    private Long userId;
+    private Long itemId;
     private IdleItem idleItem;
     private User user;
 
     @BeforeEach
     void setUp() {
-        userId = UUID.randomUUID();
-        itemId = UUID.randomUUID();
+        userId = 1L;
+        itemId = 100L;
 
         user = User.builder()
                 .id(userId)
@@ -88,7 +88,7 @@ class IdleServiceTest {
     @Test
     @DisplayName("发布物品 - 正常发布物品成功")
     void should_publishItem_when_validInput() {
-        // Arrange
+        // 准备
         IdleItemRequest req = new IdleItemRequest();
         req.setTitle("闲置手机");
         req.setDescription("9成新");
@@ -108,10 +108,10 @@ class IdleServiceTest {
         });
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
+        // 执行
         IdleItemDTO result = idleService.publish(userId, req);
 
-        // Assert
+        // 断言
         assertThat(result).isNotNull();
         assertThat(result.getTitle()).isEqualTo("闲置手机");
         assertThat(result.getPostType()).isEqualTo("LEND");
@@ -123,7 +123,7 @@ class IdleServiceTest {
     @Test
     @DisplayName("发布物品 - 参数为null时使用默认值")
     void should_useDefaultValues_when_requestFieldsNull() {
-        // Arrange
+        // 准备
         IdleItemRequest req = new IdleItemRequest();
         req.setTitle("最小值物品");
         req.setDescription("desc");
@@ -137,10 +137,10 @@ class IdleServiceTest {
         });
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
+        // 执行
         IdleItemDTO result = idleService.publish(userId, req);
 
-        // Assert
+        // 断言
         assertThat(result).isNotNull();
         assertThat(result.getMaxDuration()).isEqualTo(7);
         assertThat(result.getDurationUnit()).isEqualTo("day");
@@ -154,17 +154,18 @@ class IdleServiceTest {
     @Test
     @DisplayName("获取首页列表 - 正常返回分页列表")
     void should_returnHomeList_when_itemsExist() {
-        // Arrange
+        // 准备
         Page<IdleItem> itemPage = new PageImpl<>(List.of(idleItem),
                 PageRequest.of(0, 10), 1);
+        // 用户未关联小区（tenantId 为 null）时走不带 tenant 过滤的查询分支
         when(idleItemRepository.findByStatusAndPostType(eq("online"), eq("LEND"), any(PageRequest.class)))
                 .thenReturn(itemPage);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
-        PageDTO<IdleItemDTO> result = idleService.getHomeList("LEND", 0, 10);
+        // 执行
+        PageDTO<IdleItemDTO> result = idleService.getHomeList("LEND", userId, 0, 10);
 
-        // Assert
+        // 断言
         assertThat(result.getContent()).hasSize(1);
         assertThat(result.getTotalElements()).isEqualTo(1);
         assertThat(result.getTotalPages()).isEqualTo(1);
@@ -174,16 +175,17 @@ class IdleServiceTest {
     @Test
     @DisplayName("获取首页列表 - 没有物品时返回空分页")
     void should_returnEmptyHomeList_when_noItems() {
-        // Arrange
+        // 准备
         Page<IdleItem> emptyPage = new PageImpl<>(Collections.emptyList(),
                 PageRequest.of(0, 10), 0);
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
         when(idleItemRepository.findByStatusAndPostType(eq("online"), eq("WANTED"), any(PageRequest.class)))
                 .thenReturn(emptyPage);
 
-        // Act
-        PageDTO<IdleItemDTO> result = idleService.getHomeList("WANTED", 0, 10);
+        // 执行
+        PageDTO<IdleItemDTO> result = idleService.getHomeList("WANTED", userId, 0, 10);
 
-        // Assert
+        // 断言
         assertThat(result.getContent()).isEmpty();
         assertThat(result.getTotalElements()).isZero();
     }
@@ -193,17 +195,17 @@ class IdleServiceTest {
     @Test
     @DisplayName("获取物品详情 - 正常返回详情并增加用户统计")
     void should_returnDetail_when_itemExists() {
-        // Arrange
+        // 准备
         when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(idleItem));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(ratingRepository.getAverageScore(userId)).thenReturn(4.5);
         when(borrowRequestRepository.countReturnedByOwnerId(userId)).thenReturn(10L);
         when(borrowRequestRepository.countOnTimeReturnedByOwnerId(userId)).thenReturn(8L);
 
-        // Act
+        // 执行
         IdleItemDTO result = idleService.getDetail(itemId);
 
-        // Assert
+        // 断言
         assertThat(result).isNotNull();
         assertThat(result.getRating()).isEqualTo(4.5);
         assertThat(result.getLendCount()).isEqualTo(10);
@@ -213,10 +215,10 @@ class IdleServiceTest {
     @Test
     @DisplayName("获取物品详情 - 物品不存在时抛出异常")
     void should_throwException_when_itemNotFound() {
-        // Arrange
+        // 准备
         when(idleItemRepository.findById(itemId)).thenReturn(Optional.empty());
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> idleService.getDetail(itemId))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("物品不存在");
@@ -225,36 +227,37 @@ class IdleServiceTest {
     @Test
     @DisplayName("获取物品详情 - 用户无评分时默认5.0分")
     void should_defaultRatingTo5_when_noRatings() {
-        // Arrange
+        // 准备
         when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(idleItem));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(ratingRepository.getAverageScore(userId)).thenReturn(null);
         when(borrowRequestRepository.countReturnedByOwnerId(userId)).thenReturn(0L);
 
-        // Act
+        // 执行
         IdleItemDTO result = idleService.getDetail(itemId);
 
-        // Assert
+        // 断言
         assertThat(result.getRating()).isEqualTo(5.0);
     }
 
     // ==================== search ====================
 
     @Test
-    @DisplayName("搜索物品 - 返回匹配的分页结果")
+    @DisplayName("搜索物品 - 按用户所属小区隔离搜索")
     void should_searchItems_when_keywordMatches() {
-        // Arrange
+        // 准备：用户归属小区 10L，搜索必须走带 tenantId 的隔离查询（与首页列表一致）
+        User tenantUser = User.builder().id(userId).name("张三").tenantId(10L).build();
         Page<IdleItem> itemPage = new PageImpl<>(List.of(idleItem),
                 PageRequest.of(0, 10), 1);
-        when(idleItemRepository.findByStatusAndPostTypeAndTitleContainingOrDescriptionContaining(
-                eq("online"), eq("LEND"), eq("测试"), eq("测试"), any(PageRequest.class)))
+        when(userRepository.findById(userId)).thenReturn(Optional.of(tenantUser));
+        when(idleItemRepository.searchByTenant(
+                eq("online"), eq("LEND"), eq(10L), eq("测试"), eq("测试"), any(PageRequest.class)))
                 .thenReturn(itemPage);
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
-        PageDTO<IdleItemDTO> result = idleService.search("测试", "LEND", 0, 10);
+        // 执行
+        PageDTO<IdleItemDTO> result = idleService.search(userId, "测试", "LEND", 0, 10);
 
-        // Assert
+        // 断言
         assertThat(result.getContent()).hasSize(1);
         assertThat(result.getContent().get(0).getTitle()).isEqualTo("测试物品");
     }
@@ -264,16 +267,16 @@ class IdleServiceTest {
     @Test
     @DisplayName("获取我的发布 - 正常返回用户的物品列表")
     void should_returnMyPosts_when_userHasItems() {
-        // Arrange
+        // 准备
         Page<IdleItem> itemPage = new PageImpl<>(List.of(idleItem));
         when(idleItemRepository.findByUserIdAndPostType(eq(userId), eq("LEND"), any(Pageable.class)))
                 .thenReturn(itemPage);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
+        // 执行
         List<IdleItemDTO> result = idleService.getMyPosts(userId, "LEND");
 
-        // Assert
+        // 断言
         assertThat(result).hasSize(1);
     }
 
@@ -282,15 +285,15 @@ class IdleServiceTest {
     @Test
     @DisplayName("下架物品 - 正常下架物品")
     void should_delistItem_when_userOwnsItem() {
-        // Arrange
+        // 准备
         when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(idleItem));
         when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
+        // 执行
         IdleItemDTO result = idleService.delist(userId, itemId);
 
-        // Assert
+        // 断言
         assertThat(result.getStatus()).isEqualTo("offline");
         assertThat(idleItem.getStatus()).isEqualTo("offline");
     }
@@ -298,11 +301,11 @@ class IdleServiceTest {
     @Test
     @DisplayName("下架物品 - 非所有者操作时抛出异常")
     void should_throwException_when_delistNotOwner() {
-        // Arrange
-        UUID otherUserId = UUID.randomUUID();
+        // 准备
+        Long otherUserId = 99L;
         when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(idleItem));
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> idleService.delist(otherUserId, itemId))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("无权操作该物品");
@@ -313,15 +316,15 @@ class IdleServiceTest {
     @Test
     @DisplayName("删除物品 - 正常软删除物品")
     void should_deleteItem_when_userOwnsItem() {
-        // Arrange
+        // 准备
         when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(idleItem));
         when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
+        // 执行
         IdleItemDTO result = idleService.deleteItem(userId, itemId);
 
-        // Assert
+        // 断言
         assertThat(result.getStatus()).isEqualTo("deleted");
         assertThat(idleItem.getStatus()).isEqualTo("deleted");
     }
@@ -329,11 +332,11 @@ class IdleServiceTest {
     @Test
     @DisplayName("删除物品 - 非所有者操作时抛出异常")
     void should_throwException_when_deleteNotOwner() {
-        // Arrange
-        UUID otherUserId = UUID.randomUUID();
+        // 准备
+        Long otherUserId = 99L;
         when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(idleItem));
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> idleService.deleteItem(otherUserId, itemId))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("无权操作该物品");
@@ -344,7 +347,7 @@ class IdleServiceTest {
     @Test
     @DisplayName("更新物品 - 正常更新物品信息")
     void should_updateItem_when_validUpdate() {
-        // Arrange
+        // 准备
         IdleItemRequest req = new IdleItemRequest();
         req.setTitle("更新后的标题");
         req.setDescription("更新描述");
@@ -353,10 +356,10 @@ class IdleServiceTest {
         when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
+        // 执行
         IdleItemDTO result = idleService.update(userId, itemId, req);
 
-        // Assert
+        // 断言
         assertThat(result.getTitle()).isEqualTo("更新后的标题");
         assertThat(result.getDescription()).isEqualTo("更新描述");
     }
@@ -364,7 +367,7 @@ class IdleServiceTest {
     @Test
     @DisplayName("更新物品 - 请求字段null时保留原值")
     void should_keepOriginalValues_when_requestFieldsNull() {
-        // Arrange
+        // 准备
         IdleItemRequest req = new IdleItemRequest();
         req.setTitle("只更新标题");
 
@@ -372,18 +375,18 @@ class IdleServiceTest {
         when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
+        // 执行
         IdleItemDTO result = idleService.update(userId, itemId, req);
 
-        // Assert
+        // 断言
         assertThat(result.getTitle()).isEqualTo("只更新标题");
-        assertThat(result.getCategory()).isEqualTo("数码"); // original value
+        assertThat(result.getCategory()).isEqualTo("数码"); // 原始值
     }
 
     @Test
     @DisplayName("更新物品 - completed状态自动恢复为online")
     void should_autoRelist_when_statusIsCompleted() {
-        // Arrange
+        // 准备
         idleItem.setStatus("completed");
         IdleItemRequest req = new IdleItemRequest();
         req.setTitle("重新上线");
@@ -392,20 +395,20 @@ class IdleServiceTest {
         when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
+        // 执行
         IdleItemDTO result = idleService.update(userId, itemId, req);
 
-        // Assert
+        // 断言
         assertThat(result.getStatus()).isEqualTo("online");
     }
 
     @Test
     @DisplayName("更新物品 - 物品不存在时抛出异常")
     void should_throwException_when_updateItemNotFound() {
-        // Arrange
+        // 准备
         when(idleItemRepository.findById(itemId)).thenReturn(Optional.empty());
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> idleService.update(userId, itemId, new IdleItemRequest()))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("物品不存在");
@@ -414,11 +417,11 @@ class IdleServiceTest {
     @Test
     @DisplayName("更新物品 - 非所有者操作时抛出异常")
     void should_throwException_when_updateNotOwner() {
-        // Arrange
-        UUID otherUserId = UUID.randomUUID();
+        // 准备
+        Long otherUserId = 99L;
         when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(idleItem));
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> idleService.update(otherUserId, itemId, new IdleItemRequest()))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("无权操作该物品");

@@ -20,7 +20,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -45,9 +44,13 @@ public class IdleService {
         this.ratingRepository = ratingRepository;
     }
 
-    public IdleItemDTO publish(UUID userId, IdleItemRequest req) {
+    public IdleItemDTO publish(Long userId, IdleItemRequest req) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("用户不存在"));
+
         IdleItem item = new IdleItem();
         item.setUserId(userId);
+        item.setTenantId(user.getTenantId());
         item.setTitle(req.getTitle());
         item.setDescription(req.getDescription());
         item.setPostType(req.getPostType());
@@ -65,9 +68,13 @@ public class IdleService {
         return toDTO(item);
     }
 
-    public PageDTO<IdleItemDTO> getHomeList(String postType, int page, int size) {
+    public PageDTO<IdleItemDTO> getHomeList(String postType, Long userId, int page, int size) {
+        User user = userRepository.findById(userId).orElse(null);
+        Long tenantId = user != null ? user.getTenantId() : null;
         PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<IdleItem> itemPage = idleItemRepository.findByStatusAndPostType("online", postType, pageRequest);
+        Page<IdleItem> itemPage = tenantId != null
+                ? idleItemRepository.findByStatusAndPostTypeAndTenantId("online", postType, tenantId, pageRequest)
+                : idleItemRepository.findByStatusAndPostType("online", postType, pageRequest);
 
         List<IdleItemDTO> dtos = itemPage.getContent().stream()
                 .map(this::toDTO)
@@ -82,16 +89,42 @@ public class IdleService {
                 .build();
     }
 
-    public IdleItemDTO getDetail(UUID itemId) {
+    public IdleItemDTO getDetail(Long itemId) {
+        return getDetail(itemId, null);
+    }
+
+    /**
+     * 获取物品详情，可选带上当前用户的借用申请状态。
+     */
+    public IdleItemDTO getDetail(Long itemId, Long currentUserId) {
         IdleItem item = idleItemRepository.findById(itemId)
                 .orElseThrow(() -> new RuntimeException("物品不存在"));
-        return enrichWithUserStats(toDTO(item));
+        IdleItemDTO dto = enrichWithUserStats(toDTO(item));
+
+        // 检查当前用户是否对该物品提交过借用申请
+        if (currentUserId != null) {
+            List<com.platform.model.entity.BorrowRequest> userRequests =
+                    borrowRequestRepository.findByIdleId(itemId);
+            for (com.platform.model.entity.BorrowRequest br : userRequests) {
+                if (currentUserId.equals(br.getBorrowerId())) {
+                    dto.setUserBorrowStatus(br.getStatus()); // "pending" | "approved" | "rejected" | "returned"
+                    break;
+                }
+            }
+        }
+
+        return dto;
     }
 
-    public PageDTO<IdleItemDTO> search(String keyword, String postType, int page, int size) {
+    public PageDTO<IdleItemDTO> search(Long userId, String keyword, String postType, int page, int size) {
+        // 与 getHomeList 保持一致的租户隔离——不同小区的数据不得互相搜到
+        User user = userId != null ? userRepository.findById(userId).orElse(null) : null;
+        Long tenantId = user != null ? user.getTenantId() : null;
         PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<IdleItem> itemPage = idleItemRepository.findByStatusAndPostTypeAndTitleContainingOrDescriptionContaining(
-                "online", postType, keyword, keyword, pageRequest);
+        Page<IdleItem> itemPage = tenantId != null
+                ? idleItemRepository.searchByTenant("online", postType, tenantId, keyword, keyword, pageRequest)
+                : idleItemRepository.findByStatusAndPostTypeAndTitleContainingOrDescriptionContaining(
+                        "online", postType, keyword, keyword, pageRequest);
 
         List<IdleItemDTO> dtos = itemPage.getContent().stream()
                 .map(this::toDTO)
@@ -106,14 +139,14 @@ public class IdleService {
                 .build();
     }
 
-    public List<IdleItemDTO> getMyPosts(UUID userId, String postType) {
+    public List<IdleItemDTO> getMyPosts(Long userId, String postType) {
         List<IdleItem> items = idleItemRepository
                 .findByUserIdAndPostType(userId, postType, Pageable.unpaged())
                 .getContent();
         return items.stream().map(this::toDTO).collect(Collectors.toList());
     }
 
-    public IdleItemDTO delist(UUID userId, UUID itemId) {
+    public IdleItemDTO delist(Long userId, Long itemId) {
         IdleItem item = idleItemRepository.findById(itemId)
                 .orElseThrow(() -> new RuntimeException("物品不存在"));
 
@@ -126,7 +159,7 @@ public class IdleService {
         return toDTO(item);
     }
 
-    public IdleItemDTO deleteItem(UUID userId, UUID itemId) {
+    public IdleItemDTO deleteItem(Long userId, Long itemId) {
         IdleItem item = idleItemRepository.findById(itemId)
                 .orElseThrow(() -> new RuntimeException("物品不存在"));
 
@@ -140,10 +173,10 @@ public class IdleService {
     }
 
     /**
-     * Update an idle item (edit save or relist).
-     * If current status is completed/offline, auto-relists to online.
+     * 更新闲置物品（编辑保存或重新上架）。
+     * 若当前状态为 completed/offline，自动重新上架为 online。
      */
-    public IdleItemDTO update(UUID userId, UUID itemId, IdleItemRequest req) {
+    public IdleItemDTO update(Long userId, Long itemId, IdleItemRequest req) {
         IdleItem item = idleItemRepository.findById(itemId)
                 .orElseThrow(() -> new RuntimeException("物品不存在"));
 
@@ -161,7 +194,7 @@ public class IdleService {
         item.setDurationUnit(req.getDurationUnit() != null ? req.getDurationUnit() : item.getDurationUnit());
         item.setPickupMethod(req.getPickupMethod() != null ? req.getPickupMethod() : item.getPickupMethod());
 
-        // Auto-relist: completed/offline → online
+        // 自动重新上架：completed/offline → online
         if ("completed".equals(item.getStatus()) || "offline".equals(item.getStatus())) {
             item.setStatus("online");
         }
@@ -171,11 +204,11 @@ public class IdleService {
     }
 
     private IdleItemDTO enrichWithUserStats(IdleItemDTO dto) {
-        UUID userId = dto.getUserId();
+        Long userId = dto.getUserId();
         if (userId == null) return dto;
 
         Double avgScore = ratingRepository.getAverageScore(userId);
-        // Default to 5.0 when no ratings yet (new user without mutual-help history)
+        // 暂无评分时默认 5.0（无互助记录的新用户）
         dto.setRating(avgScore != null ? Math.round(avgScore * 10.0) / 10.0 : 5.0);
 
         long totalReturned = borrowRequestRepository.countReturnedByOwnerId(userId);
@@ -184,6 +217,9 @@ public class IdleService {
         if (totalReturned > 0) {
             long onTime = borrowRequestRepository.countOnTimeReturnedByOwnerId(userId);
             dto.setReturnRate(Math.round(onTime * 100.0 / totalReturned) + "%");
+        } else {
+            // 尚无归还记录时默认 100%
+            dto.setReturnRate("100%");
         }
         return dto;
     }
@@ -236,7 +272,8 @@ public class IdleService {
                     ? user.getRoom().getRoomNumber() : "";
 
             String typeLabel = getUserTypeLabel(user.getUserType());
-            return buildingName + unitName + roomNumber + "号(" + typeLabel + ")";
+            String addr = buildingName + unitName + roomNumber + "号";
+            return typeLabel.isEmpty() ? addr : addr + "(" + typeLabel + ")";
         } catch (Exception e) {
             return "";
         }
@@ -245,15 +282,11 @@ public class IdleService {
     private String getUserTypeLabel(String userType) {
         if (userType == null) return "";
         switch (userType) {
-            case "业主": return "业主";
-            case "租客": return "租客";
-            case "物业": return "物业";
+            case "owner": return "业主";
+            case "tenant": return "租客";
             case "admin": return "管理员";
             case "super_admin": return "超级管理员";
-            case "owner": return "业主";
-            case "resident":
-            case "tenant": return "租客";
-            default: return userType;
+            default: return userType != null ? userType : "";
         }
     }
 }

@@ -2,8 +2,7 @@
   <view class="nav-bar-inner">
     <view class="nav-left" wx:if="{{showBack}}">
       <view class="nav-back" bindtap="onBack">
-        <text class="nav-back-icon">&#8249;</text>
-        <text class="nav-back-text">返回</text>
+        <text class="nav-back-icon">‹</text>
       </view>
     </view>
     <view class="nav-left" wx:else></view>

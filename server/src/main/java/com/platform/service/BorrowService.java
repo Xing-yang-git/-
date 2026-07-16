@@ -18,11 +18,9 @@ import org.springframework.transaction.annotation.Transactional;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -46,13 +44,13 @@ public class BorrowService {
         this.userRepository = userRepository;
     }
 
-    public BorrowResponseDTO getDetail(UUID borrowId) {
+    public BorrowResponseDTO getDetail(Long borrowId) {
         BorrowRequest br = borrowRequestRepository.findById(borrowId)
                 .orElseThrow(() -> new RuntimeException("借入记录不存在"));
         return toDTO(br);
     }
 
-    public BorrowResponseDTO apply(UUID borrowerId, BorrowRequestDTO req) {
+    public BorrowResponseDTO apply(Long borrowerId, BorrowRequestDTO req) {
         IdleItem idleItem = idleItemRepository.findById(req.getIdleId())
                 .orElseThrow(() -> new RuntimeException("物品不存在"));
 
@@ -69,22 +67,22 @@ public class BorrowService {
         borrowRequest.setBorrowerId(borrowerId);
         borrowRequest.setDurationType(req.getDurationType() != null ? req.getDurationType() : "day");
         borrowRequest.setDurationDays(req.getDurationDays() != null ? req.getDurationDays() : 7);
-        if (req.getStartDate() != null && !req.getStartDate().isEmpty()) {
-            borrowRequest.setStartDate(LocalDate.parse(req.getStartDate()));
-        }
         borrowRequest.setNote(req.getNote());
         borrowRequest.setStatus("pending");
         borrowRequest.setCreatedAt(LocalDateTime.now());
         borrowRequest = borrowRequestRepository.save(borrowRequest);
 
+        boolean wanted = "WANTED".equals(idleItem.getPostType());
         createNotification(idleItem.getUserId(), "borrow_request",
-                "新的借入申请", "有人想借入您的物品：" + idleItem.getTitle(),
+                wanted ? "新的借出意向" : "新的借入申请",
+                wanted ? ("有人愿意借出给您：" + idleItem.getTitle())
+                        : ("有人想借入您的物品：" + idleItem.getTitle()),
                 borrowRequest.getId());
 
         return toDTO(borrowRequest);
     }
 
-    public BorrowResponseDTO approveReject(UUID ownerId, UUID borrowId, ApproveRequest req) {
+    public BorrowResponseDTO approveReject(Long ownerId, Long borrowId, ApproveRequest req) {
         BorrowRequest borrowRequest = borrowRequestRepository.findById(borrowId)
                 .orElseThrow(() -> new RuntimeException("借入申请不存在"));
 
@@ -102,42 +100,67 @@ public class BorrowService {
         borrowRequest.setStatus(req.getApproved() ? "approved" : "rejected");
         borrowRequest = borrowRequestRepository.save(borrowRequest);
 
-        // Sync IdleItem status
+        // 同步 IdleItem 状态
         if (req.getApproved()) {
             idleItem.setStatus("borrowing");
             idleItemRepository.save(idleItem);
         }
 
-        String title = req.getApproved() ? "借入申请已通过" : "借入申请被拒绝";
-        String content = req.getApproved()
-                ? "您对物品「" + idleItem.getTitle() + "」的借入申请已通过"
-                : "您对物品「" + idleItem.getTitle() + "」的借入申请被拒绝"
-                        + (req.getReason() != null ? "，原因：" + req.getReason() : "");
+        // WANTED(需求借入) 帖：对方(borrowerId) 其实是出借方，通知文案按"借出意向"表述
+        boolean wanted = "WANTED".equals(idleItem.getPostType());
+        String title = req.getApproved()
+                ? (wanted ? "借出意向已被确认" : "借入申请已通过")
+                : (wanted ? "借出意向被拒绝" : "借入申请被拒绝");
+        String content;
+        if (req.getApproved()) {
+            content = wanted
+                    ? "您对「" + idleItem.getTitle() + "」的借出意向已被确认"
+                    : "您对物品「" + idleItem.getTitle() + "」的借入申请已通过";
+        } else {
+            content = (wanted
+                    ? "您对「" + idleItem.getTitle() + "」的借出意向被拒绝"
+                    : "您对物品「" + idleItem.getTitle() + "」的借入申请被拒绝")
+                    + (req.getReason() != null ? "，原因：" + req.getReason() : "");
+        }
         createNotification(borrowRequest.getBorrowerId(), "borrow_result", title, content, borrowRequest.getId());
 
         return toDTO(borrowRequest);
     }
 
-    public List<BorrowResponseDTO> getMyApplications(UUID userId) {
+    public List<BorrowResponseDTO> getMyApplications(Long userId) {
         List<BorrowRequest> requests = borrowRequestRepository.findByBorrowerId(userId);
         return requests.stream().map(this::toDTO).collect(Collectors.toList());
     }
 
-    public List<BorrowResponseDTO> getPendingApprovals(UUID userId) {
+    public List<BorrowResponseDTO> getPendingApprovals(Long userId) {
         List<IdleItem> myItems = idleItemRepository.findByUserId(userId);
-        List<UUID> myItemIds = myItems.stream().map(IdleItem::getId).collect(Collectors.toList());
+        List<Long> myItemIds = myItems.stream().map(IdleItem::getId).collect(Collectors.toList());
         if (myItemIds.isEmpty()) return new ArrayList<>();
         List<BorrowRequest> pendingRequests = borrowRequestRepository
                 .findByIdleIdInAndStatus(myItemIds, "pending");
         return pendingRequests.stream().map(this::toDTO).collect(Collectors.toList());
     }
 
-    public BorrowResponseDTO confirmReturn(UUID borrowerId, UUID borrowId, ReturnRequest req) {
+    /**
+     * 确认归还 —— 借出双方（借入方 / 物品所有者）任意一方均可发起。
+     * 借入(borrow)与借出(lend)是同一条 BorrowRequest 的两个视角，状态共享，
+     * 因此任意一方确认归还后，双方的该笔记录都会从「进行中」进入「已完成」。
+     */
+    public BorrowResponseDTO confirmReturn(Long actorId, Long borrowId, ReturnRequest req) {
         BorrowRequest borrowRequest = borrowRequestRepository.findById(borrowId)
                 .orElseThrow(() -> new RuntimeException("借入记录不存在"));
 
-        if (!borrowRequest.getBorrowerId().equals(borrowerId)) {
+        IdleItem idleItem = idleItemRepository.findById(borrowRequest.getIdleId()).orElse(null);
+        Long ownerId = idleItem != null ? idleItem.getUserId() : null;
+
+        boolean isBorrower = borrowRequest.getBorrowerId().equals(actorId);
+        boolean isOwner = ownerId != null && ownerId.equals(actorId);
+        if (!isBorrower && !isOwner) {
             throw new RuntimeException("无权操作该记录");
+        }
+
+        if (!"approved".equals(borrowRequest.getStatus())) {
+            throw new RuntimeException("该借入不在进行中，无法归还");
         }
 
         borrowRequest.setReturnStatus(req.getReturnStatus());
@@ -149,16 +172,18 @@ public class BorrowService {
         borrowRequest.setStatus("returned");
         borrowRequest = borrowRequestRepository.save(borrowRequest);
 
-        IdleItem idleItem = idleItemRepository.findById(borrowRequest.getIdleId()).orElse(null);
         if (idleItem != null) {
             idleItem.setStatus("completed");
             idleItemRepository.save(idleItem);
-            UUID ownerId = idleItem.getUserId();
-            if (ownerId != null) {
-                createNotification(ownerId, "return_confirm",
-                        "物品已归还", "借出的物品已被归还",
-                        borrowRequest.getId());
-            }
+        }
+
+        // 通知对方（发起人是借入方则通知所有者，反之亦然）
+        Long peerId = isBorrower ? ownerId : borrowRequest.getBorrowerId();
+        if (peerId != null) {
+            String itemTitle = idleItem != null ? idleItem.getTitle() : "物品";
+            createNotification(peerId, "return_confirm",
+                    "物品已归还", "「" + itemTitle + "」的借用已归还，交易完成",
+                    borrowRequest.getId());
         }
 
         return toDTO(borrowRequest);
@@ -166,7 +191,7 @@ public class BorrowService {
 
     private BorrowResponseDTO toDTO(BorrowRequest br) {
         IdleItem idleItem = idleItemRepository.findById(br.getIdleId()).orElse(null);
-        UUID ownerId = idleItem != null ? idleItem.getUserId() : null;
+        Long ownerId = idleItem != null ? idleItem.getUserId() : null;
         User owner = ownerId != null ? userRepository.findById(ownerId).orElse(null) : null;
         User borrower = userRepository.findById(br.getBorrowerId()).orElse(null);
 
@@ -181,7 +206,6 @@ public class BorrowService {
                 .borrowerName(borrower != null ? borrower.getName() : "未知用户")
                 .durationType(br.getDurationType())
                 .durationDays(br.getDurationDays())
-                .startDate(br.getStartDate())
                 .note(br.getNote())
                 .status(br.getStatus())
                 .returnStatus(br.getReturnStatus())
@@ -204,7 +228,7 @@ public class BorrowService {
         }
     }
 
-    private void createNotification(UUID userId, String type, String title, String content, UUID relatedId) {
+    private void createNotification(Long userId, String type, String title, String content, Long relatedId) {
         Notification notification = new Notification();
         notification.setUserId(userId);
         notification.setType(type);

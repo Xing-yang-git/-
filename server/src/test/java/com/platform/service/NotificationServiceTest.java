@@ -15,7 +15,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -31,17 +30,17 @@ class NotificationServiceTest {
     @InjectMocks
     private NotificationService notificationService;
 
-    private UUID userId;
-    private UUID relatedId;
+    private Long userId;
+    private Long relatedId;
     private Notification notification;
 
     @BeforeEach
     void setUp() {
-        userId = UUID.randomUUID();
-        relatedId = UUID.randomUUID();
+        userId = 1L;
+        relatedId = 100L;
 
         notification = Notification.builder()
-                .id(UUID.randomUUID())
+                .id(1000L)
                 .userId(userId)
                 .type("system")
                 .title("测试通知")
@@ -55,14 +54,14 @@ class NotificationServiceTest {
     @Test
     @DisplayName("获取通知列表 - 正常返回用户的通知列表")
     void should_returnNotifications_when_userHasNotifications() {
-        // Arrange
+        // 准备
         when(notificationRepository.findByUserIdOrderByCreatedAtDesc(userId))
                 .thenReturn(List.of(notification));
 
-        // Act
+        // 执行
         List<NotificationDTO> result = notificationService.getNotifications(userId);
 
-        // Assert
+        // 断言
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getTitle()).isEqualTo("测试通知");
         assertThat(result.get(0).getContent()).isEqualTo("这是一条测试通知");
@@ -74,14 +73,14 @@ class NotificationServiceTest {
     @Test
     @DisplayName("获取通知列表 - 用户没有通知时返回空列表")
     void should_returnEmptyList_when_userHasNoNotifications() {
-        // Arrange
+        // 准备
         when(notificationRepository.findByUserIdOrderByCreatedAtDesc(userId))
                 .thenReturn(Collections.emptyList());
 
-        // Act
+        // 执行
         List<NotificationDTO> result = notificationService.getNotifications(userId);
 
-        // Assert
+        // 断言
         assertThat(result).isEmpty();
         verify(notificationRepository).findByUserIdOrderByCreatedAtDesc(userId);
     }
@@ -89,13 +88,13 @@ class NotificationServiceTest {
     @Test
     @DisplayName("获取未读数量 - 返回正确的未读计数")
     void should_returnUnreadCount_when_userHasUnreadNotifications() {
-        // Arrange
+        // 准备
         when(notificationRepository.countByUserIdAndIsReadFalse(userId)).thenReturn(5L);
 
-        // Act
+        // 执行
         long count = notificationService.getUnreadCount(userId);
 
-        // Assert
+        // 断言
         assertThat(count).isEqualTo(5L);
         verify(notificationRepository).countByUserIdAndIsReadFalse(userId);
     }
@@ -103,43 +102,43 @@ class NotificationServiceTest {
     @Test
     @DisplayName("获取未读数量 - 用户没有未读通知时返回0")
     void should_returnZero_when_userHasNoUnreadNotifications() {
-        // Arrange
+        // 准备
         when(notificationRepository.countByUserIdAndIsReadFalse(userId)).thenReturn(0L);
 
-        // Act
+        // 执行
         long count = notificationService.getUnreadCount(userId);
 
-        // Assert
+        // 断言
         assertThat(count).isZero();
     }
 
     @Test
     @DisplayName("全部标为已读 - 调用Repository的markAllRead方法")
     void should_markAllRead_when_called() {
-        // Arrange
+        // 准备
         doNothing().when(notificationRepository).markAllRead(userId);
 
-        // Act
+        // 执行
         notificationService.markAllRead(userId);
 
-        // Assert
+        // 断言
         verify(notificationRepository).markAllRead(userId);
     }
 
     @Test
     @DisplayName("创建通知 - 正常创建并返回DTO")
     void should_createNotification_when_validInput() {
-        // Arrange
+        // 准备
         when(notificationRepository.save(any(Notification.class))).thenAnswer(inv -> {
             Notification n = inv.getArgument(0);
-            n.setId(UUID.randomUUID());
+            n.setId(2000L);
             return n;
         });
 
-        // Act
+        // 执行
         NotificationDTO result = notificationService.create(userId, "system", "新通知", "内容", relatedId);
 
-        // Assert
+        // 断言
         assertThat(result).isNotNull();
         assertThat(result.getTitle()).isEqualTo("新通知");
         assertThat(result.getContent()).isEqualTo("内容");

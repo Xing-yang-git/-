@@ -1,6 +1,26 @@
+<!-- 求助详情页 — 布局骨架仿 idle-detail，内容参考原型 help-detail -->
 <view class="detail-page">
-  <scroll-view class="page-content" scroll-y enhanced show-scrollbar="{{false}}">
-    <!-- Basic info -->
+
+  <!-- 状态横幅（求助特有：已接单/已完成等） -->
+  <view class="status-banner" wx:if="{{item.status === 'assigned' || item.status === 'completed'}}">
+    <text wx:if="{{item.status === 'assigned'}}">🤝 已有邻居接单，正在帮助中</text>
+    <text wx:if="{{item.status === 'completed'}}">✅ 该求助已完成</text>
+  </view>
+
+  <!-- 顶部图片轮播 — 仅当发布时上传了图片才展示，形式对齐 idle-detail 顶部 -->
+  <view class="img-carousel" wx:if="{{images.length > 0}}">
+    <swiper indicator-dots="{{images.length > 1}}"
+            indicator-color="rgba(255,255,255,0.4)"
+            indicator-active-color="#FFFFFF"
+            circular="{{false}}">
+      <swiper-item wx:for="{{images}}" wx:key="index">
+        <image class="carousel-image" src="{{item}}" mode="aspectFill" />
+      </swiper-item>
+    </swiper>
+  </view>
+
+  <scroll-view class="page-content" scroll-y="{{!showSheet && !showHistorySheet}}" enhanced show-scrollbar="{{false}}">
+    <!-- 基础信息 -->
     <view class="section-ios">
       <view class="detail-title">
         <text class="urgent-badge" wx:if="{{item.isUrgent}}">急</text>
@@ -8,88 +28,150 @@
       </view>
       <view class="detail-desc">{{item.description}}</view>
 
-      <view class="detail-tags">
-        <text class="tag tag-blue">{{item.category || '求助'}}</text>
-      </view>
-
-      <!-- Urgent warning -->
+      <!-- 紧急求助 callout -->
       <view class="callout callout-red" wx:if="{{item.isUrgent}}" style="margin-top:12px;">
-        <text>⚠️ 紧急求助 — 求助者希望尽快得到帮助。如果你有相关技能，请优先联系TA。</text>
+        <text>⚠️ 紧急求助 — 求助者希望尽快得到帮助。如果你有相关技能，请优先联系他。</text>
       </view>
 
+      <!-- 非紧急时的普通提示 -->
+      <view class="callout" wx:if="{{!item.isUrgent}}">
+        <text>🤝 确认帮助后将进入聊天页面\n具体时间、地点在聊天中协商。</text>
+      </view>
+
+      <!-- 信息行 -->
       <view class="info-row" style="margin-top:12px;">
         <text class="info-label">发布时间</text>
         <text class="info-value">{{item.timeAgo || ''}}</text>
       </view>
-      <view class="info-row" wx:if="{{item.location}}">
-        <text class="info-label">地点</text>
-        <text class="info-value">{{item.location}}</text>
-      </view>
-      <view class="info-row" wx:if="{{item.rewardType}}">
-        <text class="info-label">酬谢方式</text>
-        <text class="info-value">{{item.rewardLabel || '无偿互助'}}</text>
-      </view>
     </view>
 
-    <!-- Publisher info -->
+    <!-- 发布者信息 -->
     <view class="section-ios">
       <view class="pub-header">
         <view class="avatar">👤</view>
         <view class="pub-info">
           <view class="pub-name">{{item.userRoom || item.userName || ''}}</view>
           <view class="pub-meta">
-            综合评分 {{item.rating != null ? '★' + item.rating : '暂无'}} · 已求助 {{item.helpCount || 0}} 次 · 已帮助 {{item.helpedCount || 0}} 次
+            综合评分 {{item.ratingText != null ? item.ratingText : '5.0'}}/5.0
           </view>
         </view>
-        <text class="link-text" bindtap="onViewProfile">以往记录 ›</text>
+        <text class="link-text" bindtap="onViewHistory">以往记录 ›</text>
       </view>
     </view>
 
-    <!-- Applications (if any) -->
+    <!-- 有意向的邻居（若有） -->
     <view class="section-ios" wx:if="{{item.helperCount > 0}}">
       <view class="section-header-text">已有 {{item.helperCount}} 位邻居愿意帮忙</view>
     </view>
-
-    <!-- Bottom spacing -->
-    <view style="height: 80px;"></view>
   </scroll-view>
 
-  <!-- Bottom action bar -->
+  <!-- 固定底部操作栏 — 对齐 idle-detail action-bar -->
   <view class="action-bar">
-    <button class="action-btn action-btn-outline" bindtap="onContactTap">
-      <text>💬 联系TA</text>
+    <button class="action-btn action-btn-secondary" bindtap="onContactTap">
+      <text>联系他</text>
     </button>
-    <button class="action-btn action-btn-primary" bindtap="onHelpTap">
-      <text>🤝 我来帮忙</text>
+    <button class="action-btn action-btn-primary" bindtap="onHelpTap"
+            disabled="{{hasApplied || item.status === 'assigned' || item.status === 'completed'}}">
+      <text>{{hasApplied ? '已申请，待审核' : (item.status === 'assigned' ? '已有人接单' : item.status === 'completed' ? '已完成' : '我来帮忙')}}</text>
     </button>
   </view>
 
-  <!-- Help confirmation sheet -->
-  <view class="sheet-overlay" wx:if="{{showSheet}}" bindtap="onCloseSheet">
-    <view class="sheet" catchtap="">
-      <view class="sheet-handle"></view>
-      <view class="sheet-header">确认帮助</view>
-      <view class="sheet-body">
-        <view class="info-row"><text class="info-label">求助事项</text><text class="info-value">{{item.title}}</text></view>
-        <view class="info-row"><text class="info-label">求助者</text><text class="info-value">{{item.userRoom}}</text></view>
-        <view class="info-row" wx:if="{{item.isUrgent}}">
-          <text class="info-label">紧急程度</text>
-          <text class="info-value" style="color:#FF3B30;">紧急</text>
-        </view>
+  <!-- ===== 以往记录弹层（仿 idle-detail history-sheet） ===== -->
+  <view class="history-sheet-overlay" wx:if="{{showHistorySheet}}" catchtouchmove="preventTouchMove" bindtap="onCloseHistorySheet"></view>
+  <view class="history-sheet" wx:if="{{showHistorySheet}}">
+    <view class="history-sheet-header">
+      <view class="history-sheet-handle"></view>
+      <view class="history-sheet-title">发布人信息</view>
+    </view>
 
-        <view class="input-group" style="margin-top:12px;">
-          <view class="input-label">备注（选填）</view>
-          <textarea class="textarea" placeholder="选填：说明你能提供的帮助、方便的时间等" value="{{helpNote}}" bindinput="onHelpNoteInput" maxlength="500" auto-height />
-        </view>
-
-        <view class="callout" style="margin-top:12px;font-size:12px;">
-          <text>🤝 确认后将进入聊天页面，具体时间、地点在聊天中协商。</text>
+    <scroll-view class="history-sheet-body" scroll-y enhanced show-scrollbar="{{false}}">
+      <!-- 发布住户卡片 -->
+      <view class="history-section">
+        <text class="history-section-label">发布住户</text>
+        <view class="history-resident-card">
+          <view class="history-resident-row">
+            <text class="history-resident-addr">{{historyData.address}}（{{historyData.userType}}）</text>
+            <view class="history-rating-inline">
+              <text class="history-rating-label">综合评分</text>
+              <view class="history-rating-score-row">
+                <text class="history-rating-value">{{historyData.rating}}</text>
+                <text class="history-rating-unit">/ 5.0</text>
+              </view>
+            </view>
+          </view>
         </view>
       </view>
-      <view class="sheet-footer">
-        <button class="btn btn-secondary" bindtap="onCloseSheet">取消</button>
-        <button class="btn btn-primary" bindtap="onSubmitHelp">确认帮助</button>
+
+      <!-- 互助记录 — 求助场景侧重 已求助/已帮助 -->
+      <view class="history-section">
+        <text class="history-section-label">互助记录</text>
+        <view class="history-stats-grid">
+          <view class="history-stat-item history-stat-half">
+            <text class="history-stat-value">{{historyData.helpReqCount}} 次</text>
+            <text class="history-stat-label">已求助</text>
+          </view>
+          <view class="history-stat-item history-stat-half">
+            <text class="history-stat-value">{{historyData.helpProCount}} 次</text>
+            <text class="history-stat-label">已帮助</text>
+          </view>
+          <view class="history-stat-item">
+            <text class="history-stat-value">{{historyData.borrowCount}} 次</text>
+            <text class="history-stat-label">借入</text>
+          </view>
+          <view class="history-stat-item">
+            <text class="history-stat-value">{{historyData.lendCount}} 次</text>
+            <text class="history-stat-label">借出</text>
+          </view>
+          <view class="history-stat-item" wx:if="{{historyData.borrowReturnRate !== undefined}}">
+            <text class="history-stat-value">{{historyData.borrowReturnRate}}%</text>
+            <text class="history-stat-label">按时归还率</text>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <!-- ===== 确认帮助弹层 ===== -->
+  <view class="sheet-overlay" wx:if="{{showSheet}}" bindtap="onCloseSheet" catchtouchmove="preventTouchMove">
+    <view class="sheet borrow-sheet" catchtap="preventTouchMove">
+      <view class="sheet-handle"></view>
+      <view class="sheet-header">确认帮助</view>
+      <scroll-view class="borrow-sheet-body" scroll-y enhanced show-scrollbar="{{false}}">
+        <!-- 摘要信息 -->
+        <view class="borrow-summary">
+          <view class="borrow-summary-row">
+            <text class="borrow-summary-label">求助事项</text>
+            <text class="borrow-summary-value">{{item.title}}</text>
+          </view>
+          <view class="borrow-summary-row">
+            <text class="borrow-summary-label">求助者</text>
+            <text class="borrow-summary-value">{{item.userRoom}}</text>
+          </view>
+          <view class="borrow-summary-row" wx:if="{{item.isUrgent}}">
+            <text class="borrow-summary-label">紧急程度</text>
+            <text class="borrow-summary-value" style="color:#FF3B30;">紧急</text>
+          </view>
+        </view>
+
+        <!-- 备注（选填） -->
+        <view class="input-group" style="margin-top:24rpx;">
+          <view class="input-label">备注（选填）</view>
+          <textarea class="textarea" placeholder-style="font-size:13px;color:rgba(128,128,128,0.7);"
+                    placeholder="选填：说明你能提供的帮助、方便的时间等"
+                    value="{{helpNote}}" bindinput="onHelpNoteInput"
+                    maxlength="500" auto-height />
+        </view>
+
+        <!-- 确认提示 -->
+        <view class="callout" style="margin-top:24rpx;font-size:12px;">
+          <text>🤝 确认后将进入聊天页面，具体时间、地点在聊天中协商。</text>
+        </view>
+      </scroll-view>
+      <view class="borrow-sheet-footer">
+        <button class="action-btn action-btn-secondary" bindtap="onCloseSheet">取消</button>
+        <button class="action-btn action-btn-primary" bindtap="onSubmitHelp">确认帮助</button>
       </view>
     </view>
   </view>
+
 </view>

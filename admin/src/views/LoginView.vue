@@ -2,16 +2,16 @@
   <div class="auth-wrapper">
     <div class="login-card-wrap">
       <el-card shadow="always" class="login-card">
-        <!-- Brand -->
+        <!-- 品牌标识 -->
         <div class="login-brand">
           <div class="brand-icon-el">
             <el-icon size="26"><HomeFilled /></el-icon>
           </div>
-          <div class="brand-name">社区互助闲置平台</div>
-          <div class="brand-sub">物业管理后台</div>
+          <div class="brand-name">翠湖花园物业</div>
+          <div class="brand-sub">社区互助闲置平台 · 物业运营端</div>
         </div>
 
-        <!-- Form -->
+        <!-- 表单 -->
         <el-form
           ref="formRef"
           :model="form"
@@ -57,10 +57,10 @@
           </el-form-item>
         </el-form>
 
-        <!-- Error -->
+        <!-- 错误信息 -->
         <p v-if="errorMsg" class="login-error-msg">{{ errorMsg }}</p>
 
-        <!-- Footer -->
+        <!-- 页脚 -->
         <div class="login-footer">物业运营端 v1.0 · 仅限授权物业人员使用</div>
       </el-card>
     </div>
@@ -107,13 +107,14 @@ async function handleLogin() {
   loading.value = true;
 
   try {
-    // Backend login
+    // 后端登录
     const res = await post('/api/auth/login', {
       username: form.username,
       password: form.password
     });
     const { token, user } = res.data.data;
     authStore.login(token, user);
+    await authStore.initCommunity();
     ElMessage.success('登录成功，正在跳转...');
     setTimeout(() => router.push('/home'), 300);
   } catch (err) {
@@ -133,12 +134,16 @@ async function handleLogin() {
 
 .login-card {
   border-radius: 14px;
-  padding: 8px 8px 0;
+  padding: 48px 40px 40px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
 
 .login-brand {
-  text-align: center;
-  margin-bottom: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 36px;
 }
 
 .brand-icon-el {
@@ -146,11 +151,11 @@ async function handleLogin() {
   height: 56px;
   border-radius: 16px;
   background: linear-gradient(135deg, #0071e3 0%, #2997ff 100%);
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
 .brand-name {
@@ -163,25 +168,69 @@ async function handleLogin() {
 .brand-sub {
   font-size: 13px;
   color: var(--text-secondary);
-  margin-top: 4px;
 }
 
 .btn-login {
   width: 100%;
+  height: 44px;
+  font-size: 16px;
+  font-weight: 600;
+  margin-top: 8px;
 }
 
 .login-error-msg {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--red);
-  text-align: center;
-  margin-top: -8px;
-  margin-bottom: 8px;
+  margin-top: 4px;
 }
 
 .login-footer {
   text-align: center;
+  margin-top: 24px;
   font-size: 12px;
   color: var(--text-tertiary);
   padding: 12px 0;
+}
+
+/* 覆盖 Element Plus 表单标签以对齐原型 */
+:deep(.el-form-item) {
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+:deep(.el-form-item__label) {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+}
+
+/* 覆盖输入框以对齐原型尺寸 */
+:deep(.el-input__wrapper) {
+  height: 44px;
+  padding: 0 14px;
+  background: var(--bg);
+  border-radius: 6px;
+  box-shadow: 0 0 0 0.5px var(--border-soft);
+}
+
+:deep(.el-input.is-focus .el-input__wrapper) {
+  box-shadow: 0 0 0 1px var(--accent);
+  background: var(--surface);
+}
+
+:deep(.el-input__inner) {
+  font-size: 15px;
+  color: var(--text);
+}
+
+:deep(.el-input__inner::placeholder) {
+  color: var(--text-tertiary);
+}
+
+/* 覆盖表单元素以适配提交按钮 */
+:deep(.el-form-item:last-child) {
+  margin-bottom: 0;
 }
 </style>

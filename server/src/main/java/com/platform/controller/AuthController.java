@@ -4,10 +4,11 @@ import com.platform.common.Result;
 import com.platform.model.dto.*;
 import com.platform.security.JwtTokenProvider;
 import com.platform.service.AuthService;
+import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.UUID;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -31,28 +32,27 @@ public class AuthController {
         return Result.ok(authService.adminLogin(req));
     }
 
+    @PostMapping("/phone-login")
+    public Result<?> phoneLogin(@Valid @RequestBody PhoneLoginRequest req) {
+        return Result.ok(authService.phoneLogin(req));
+    }
+
     @PostMapping("/register")
     public Result<?> register(@RequestBody RegisterRequest req, Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
+        // 公开注册：未先经过 wxLogin 时 auth 可能为 null
+        Long userId = auth != null ? Long.valueOf(auth.getName()) : null;
         return Result.ok(authService.register(req, userId));
     }
 
     @GetMapping("/status")
     public Result<?> getStatus(Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
+        Long userId = Long.valueOf(auth.getName());
         return Result.ok(authService.getAuthStatus(userId));
     }
 
     @PostMapping("/appeal")
     public Result<?> appeal(Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
+        Long userId = Long.valueOf(auth.getName());
         return Result.ok(authService.appeal(userId));
-    }
-
-    @PostMapping("/verification")
-    public Result<?> submitVerification(@RequestBody VerificationSubmitRequest req, Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
-        authService.submitVerification(userId, req);
-        return Result.ok();
     }
 }

@@ -1,10 +1,10 @@
 <template>
   <el-container class="admin-layout">
-    <el-aside width="220px">
+    <el-aside width="240px">
       <AppSidebar />
     </el-aside>
     <el-container>
-      <el-header class="topbar" height="56px">
+      <el-header class="topbar">
         <div class="topbar-left">
           <span class="topbar-title">数据导出</span>
         </div>
@@ -22,7 +22,7 @@
         </div>
       </el-header>
       <el-main>
-        <!-- Export Options -->
+        <!-- 导出选项 -->
         <div class="panel">
           <div class="panel-header">
             <span class="panel-title">导出内容（可多选）</span>
@@ -72,7 +72,7 @@
           </div>
         </div>
 
-        <!-- Auto Backup -->
+        <!-- 自动备份 -->
         <div class="panel">
           <div class="panel-header">
             <span class="panel-title">自动备份设置</span>
@@ -83,7 +83,7 @@
           </div>
         </div>
 
-        <!-- Export Log -->
+        <!-- 导出日志 -->
         <div class="panel">
           <div class="panel-header">
             <span class="panel-title">导出日志</span>
@@ -147,7 +147,7 @@ function doExport() {
     return;
   }
 
-  // Build CSV download via backend API
+  // 通过后端 API 构建 CSV 下载
   const params = new URLSearchParams();
   params.set('format', exportFormat.value);
   if (dateRange.value && dateRange.value.length === 2) {
@@ -156,12 +156,12 @@ function doExport() {
   }
   params.set('options', selected.join(','));
 
-  // Trigger download
+  // 触发下载
   const url = `/api/admin/export?${params.toString()}`;
   const token = localStorage.getItem('admin_token');
   const a = document.createElement('a');
   a.href = url;
-  // Fallback: use fetch with blob for CSV
+  // 备用方案：使用 fetch 获取 blob 进行 CSV 下载
   fetch(url, {
     headers: { Authorization: `Bearer ${token}` }
   })
@@ -177,7 +177,7 @@ function doExport() {
       URL.revokeObjectURL(downloadUrl);
     })
     .catch(() => {
-      // Backend not available — show message
+      // 后端不可用 — 显示提示消息
       ElMessage.success('导出任务已开始，完成后将自动下载');
     });
 }
@@ -199,6 +199,6 @@ async function handleLogout() {
     });
     authStore.logout();
     router.push('/login');
-  } catch { /* cancelled */ }
+  } catch { /* 已取消 */ }
 }
 </script>

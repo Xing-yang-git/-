@@ -1,6 +1,6 @@
 <view class="page-content">
 
-  <!-- Post Type Segment (3 options) -->
+  <!-- 发布类型分段（3 个选项） -->
   <view class="section">
     <view class="input-label">发布类型</view>
     <view class="segment" style="margin:0;">
@@ -15,7 +15,7 @@
   <!-- ================================================================ -->
   <block wx:if="{{postType === 'LEND'}}">
 
-    <!-- Images -->
+    <!-- 图片 -->
     <view class="section">
       <view class="input-label">物品图片 <text class="required">*</text>（至少 1 张，最多 9 张）</view>
       <view class="img-upload-grid">
@@ -31,7 +31,7 @@
       </view>
     </view>
 
-    <!-- Basic Info -->
+    <!-- 基础信息 -->
     <view class="section">
       <view class="input-group">
         <view class="input-label">物品标题 <text class="required">*</text></view>
@@ -88,7 +88,7 @@
       </view>
     </view>
 
-    <!-- Duration -->
+    <!-- 时长 -->
     <view class="section">
       <view class="input-label">借出时长 <text class="required">*</text></view>
       <view class="segment" style="margin:0;">
@@ -100,7 +100,7 @@
       </picker>
     </view>
 
-    <!-- Pickup -->
+    <!-- 取件方式 -->
     <view class="section">
       <view class="input-label">借出形式 <text class="required">*</text></view>
       <view class="segment" style="margin:0;">
@@ -109,7 +109,7 @@
       </view>
     </view>
 
-    <!-- Condition -->
+    <!-- 物品状况 -->
     <view class="section">
       <view class="input-label">物品状况（可选）</view>
       <view class="segment" style="margin:0;">
@@ -119,7 +119,7 @@
       </view>
     </view>
 
-    <!-- Notice -->
+    <!-- 注意提示 -->
     <view class="section">
       <view class="callout" style="margin:0 0 24rpx;">
         <image class="callout-icon" src="../../images/icon-heart-orange.svg" mode="aspectFit" />
@@ -136,9 +136,9 @@
       </view>
     </view>
 
-    <!-- Action Bar -->
+    <!-- 操作栏 -->
     <view class="action-bar">
-      <button class="btn btn-primary btn-block btn-lg" bindtap="onSubmit">确认发布</button>
+      <button class="btn btn-primary btn-block btn-lg" bindtap="onSubmit">发布</button>
     </view>
 
   </block>
@@ -148,7 +148,7 @@
   <!-- ================================================================ -->
   <block wx:if="{{postType === 'WANTED'}}">
 
-    <!-- Images -->
+    <!-- 图片 -->
     <view class="section">
       <view class="input-label">物品图片（可选，最多 9 张）</view>
       <view class="img-upload-grid">
@@ -164,7 +164,7 @@
       </view>
     </view>
 
-    <!-- Item Name & Category & Usage -->
+    <!-- 物品名称 & 分类 & 用途 -->
     <view class="section">
       <view class="input-group">
         <view class="input-label">物品名称 <text class="required">*</text></view>
@@ -216,7 +216,7 @@
       </view>
     </view>
 
-    <!-- Duration (same format as LEND) -->
+    <!-- 时长（与借出格式相同） -->
     <view class="section">
       <view class="input-label">期望借用时长 <text class="required">*</text></view>
       <view class="segment" style="margin:0;">
@@ -228,7 +228,7 @@
       </picker>
     </view>
 
-    <!-- Notice -->
+    <!-- 注意提示 -->
     <view class="section">
       <view class="callout" style="margin:0 0 24rpx;">
         <image class="callout-icon" src="../../images/icon-heart-orange.svg" mode="aspectFit" />
@@ -245,9 +245,9 @@
       </view>
     </view>
 
-    <!-- Action Bar -->
+    <!-- 操作栏 -->
     <view class="action-bar">
-      <button class="btn btn-primary btn-block btn-lg" bindtap="onSubmit">确认发布</button>
+      <button class="btn btn-primary btn-block btn-lg" bindtap="onSubmit">发布</button>
     </view>
 
   </block>
@@ -257,7 +257,7 @@
   <!-- ================================================================ -->
   <block wx:if="{{postType === 'HELP'}}">
 
-    <!-- Title -->
+    <!-- 标题 -->
     <view class="section">
       <view class="input-group" style="margin-bottom:0;">
         <view class="input-label">求助标题 <text class="required">*</text></view>
@@ -265,7 +265,7 @@
       </view>
     </view>
 
-    <!-- Category -->
+    <!-- 分类 -->
     <view class="section">
       <view class="input-label">求助类型 <text class="required">*</text></view>
       <view class="pill-row">
@@ -305,7 +305,7 @@
       <input class="input" wx:if="{{category === '其他'}}" placeholder="手动输入求助类型" value="{{customType}}" bindinput="onInput" data-field="customType" style="margin-top:16rpx;" />
     </view>
 
-    <!-- Description + Urgency -->
+    <!-- 描述 + 紧急程度 -->
     <view class="section">
       <view class="input-group">
         <view class="input-label">详细描述 <text class="required">*</text></view>
@@ -319,31 +319,37 @@
       </view>
     </view>
 
-    <!-- Time Range (optional) -->
+    <!-- 时间范围（选填） -->
     <view class="section">
-      <view class="input-label">时间范围（选填）</view>
-      <view class="time-row">
-        <view class="time-label">从</view>
-        <picker class="time-picker" mode="date" value="{{helpStartDate}}" bindchange="onHelpStartDateChange">
-          <view class="time-value">{{helpStartDate || '请选择日期'}}</view>
-        </picker>
-        <picker class="time-picker" mode="selector" range="{{hourOptions}}" value="{{helpStartHour}}" bindchange="onHelpStartHourChange">
-          <view class="time-value">{{hourOptions[helpStartHour]}}</view>
-        </picker>
+      <view class="label-with-switch">
+        <view class="input-label" style="margin:0;">时间范围（选填）</view>
+        <switch class="time-switch" checked="{{enableTimeRange}}" bindchange="onToggleTimeRange" color="#0071e3" />
       </view>
-      <view class="time-row">
-        <view class="time-label">至</view>
-        <picker class="time-picker" mode="date" value="{{helpEndDate}}" bindchange="onHelpEndDateChange">
-          <view class="time-value">{{helpEndDate || '请选择日期'}}</view>
-        </picker>
-        <picker class="time-picker" mode="selector" range="{{hourOptions}}" value="{{helpEndHour}}" bindchange="onHelpEndHourChange">
-          <view class="time-value">{{hourOptions[helpEndHour]}}</view>
-        </picker>
-      </view>
-      <view class="time-hint">选填，设置你希望获得帮助的时间范围</view>
+      <block wx:if="{{enableTimeRange}}">
+        <view class="time-row">
+          <view class="time-label">从</view>
+          <picker class="time-picker" mode="date" value="{{helpStartDate}}" bindchange="onHelpStartDateChange">
+            <view class="time-value">{{helpStartDate || '请选择日期'}}</view>
+          </picker>
+          <picker class="time-picker" mode="selector" range="{{hourOptions}}" value="{{helpStartHour}}" bindchange="onHelpStartHourChange">
+            <view class="time-value">{{hourOptions[helpStartHour]}}</view>
+          </picker>
+        </view>
+        <view class="time-row">
+          <view class="time-label">至</view>
+          <picker class="time-picker" mode="date" value="{{helpEndDate}}" bindchange="onHelpEndDateChange">
+            <view class="time-value">{{helpEndDate || '请选择日期'}}</view>
+          </picker>
+          <picker class="time-picker" mode="selector" range="{{hourOptions}}" value="{{helpEndHour}}" bindchange="onHelpEndHourChange">
+            <view class="time-value">{{hourOptions[helpEndHour]}}</view>
+          </picker>
+        </view>
+        <view class="time-hint">设置你希望获得帮助的时间范围</view>
+      </block>
+      <view wx:else class="time-hint">打开开关可设置期望的帮助时间范围，不设置则表示时间灵活</view>
     </view>
 
-    <!-- Images (optional) -->
+    <!-- 图片（选填） -->
     <view class="section">
       <view class="input-label">图片（选填，最多 9 张）</view>
       <view class="img-upload-grid">
@@ -359,9 +365,9 @@
       </view>
     </view>
 
-    <!-- Action Bar -->
+    <!-- 操作栏 -->
     <view class="action-bar">
-      <button class="btn btn-primary btn-block btn-lg" bindtap="onSubmit">确认发布</button>
+      <button class="btn btn-primary btn-block btn-lg" bindtap="onSubmit">发布</button>
     </view>
 
   </block>

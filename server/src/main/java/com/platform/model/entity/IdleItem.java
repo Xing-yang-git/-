@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Entity
 @Table(name = "idle_items")
@@ -14,20 +13,23 @@ import java.util.UUID;
 @Builder
 public class IdleItem {
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @Column(name = "user_id", nullable = false)
-    private UUID userId;
+    private Long userId;
+
+    @Column(name = "tenant_id", nullable = false)
+    private Long tenantId;
 
     @Column(name = "post_type", nullable = false, length = 10)
     @Builder.Default
     private String postType = "LEND";
 
-    @Column(nullable = false, length = 30)
+    @Column(nullable = false, length = 100)
     private String title;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(length = 200)
     private String description;
 
     @Column(nullable = false, length = 20)
@@ -70,11 +72,11 @@ public class IdleItem {
     @Column(name = "violation_type", length = 20)
     private String violationType;
 
-    @Column(name = "violation_reason", columnDefinition = "TEXT")
+    @Column(name = "violation_reason", length = 200)
     private String violationReason;
 
     @Column(name = "violated_by")
-    private UUID violatedBy;
+    private Long violatedBy;
 
     @Column(name = "violated_at")
     private LocalDateTime violatedAt;
@@ -88,6 +90,10 @@ public class IdleItem {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", insertable = false, updatable = false)
     private User user;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "tenant_id", insertable = false, updatable = false)
+    private Tenant tenant;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "violated_by", insertable = false, updatable = false)

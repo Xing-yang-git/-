@@ -4,7 +4,7 @@
   min-height: 100vh;
 }
 
-/* Header */
+/* 头部 */
 .rating-header {
   text-align: center;
   padding: 30px 0 20px;
@@ -24,12 +24,12 @@
   display: block;
 }
 
-/* Card title override */
+/* 卡片标题覆盖 */
 .card-title {
   text-align: center;
 }
 
-/* Star Row */
+/* 星星行 */
 .star-row {
   display: flex;
   justify-content: center;
@@ -48,7 +48,7 @@
   font-size: 24px;
 }
 
-/* Dimension */
+/* 评分维度 */
 .dimension-header {
   display: flex;
   justify-content: space-between;
@@ -61,7 +61,7 @@
   font-weight: 500;
 }
 
-/* Submit Section */
+/* 提交区域 */
 .submit-section {
   margin-top: 30px;
   text-align: center;

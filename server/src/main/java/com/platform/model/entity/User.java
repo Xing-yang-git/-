@@ -3,23 +3,28 @@ package com.platform.model.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Entity
-@Table(name = "users")
+@Table(name = "users", uniqueConstraints = {
+    @UniqueConstraint(columnNames = {"phone", "tenant_id"}),
+    @UniqueConstraint(columnNames = {"room_id"})
+})
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 public class User {
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @Column(name = "room_id")
-    private UUID roomId;
+    private Long roomId;
 
-    @Column(length = 100, unique = true)
+    @Column(name = "tenant_id")
+    private Long tenantId;
+
+    @Column(length = 64, unique = true)
     private String openid;
 
     @Column(length = 50, unique = true)
@@ -35,8 +40,12 @@ public class User {
     @Column(length = 50)
     private String name;
 
-    @Column(length = 20)
+    @Column(length = 11)
     private String phone;
+
+    @Column(name = "phone_verified", nullable = false)
+    @Builder.Default
+    private Boolean phoneVerified = false;
 
     @Column(name = "avatar_url", length = 500)
     private String avatarUrl;
@@ -45,14 +54,18 @@ public class User {
     @Builder.Default
     private String authStatus = "pending";
 
-    @Column(name = "banned_reason", columnDefinition = "TEXT")
+    @Column(name = "banned_reason", length = 200)
     private String bannedReason;
 
     @Column(name = "doc_images", columnDefinition = "TEXT")
     private String docImages;
 
-    @Column(name = "reject_reason", columnDefinition = "TEXT")
+    @Column(name = "reject_reason", length = 200)
     private String rejectReason;
+
+    @Column(name = "token_version", nullable = false)
+    @Builder.Default
+    private Integer tokenVersion = 0;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -63,6 +76,10 @@ public class User {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "room_id", insertable = false, updatable = false)
     private Room room;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "tenant_id", insertable = false, updatable = false)
+    private Tenant tenant;
 
     @PrePersist
     protected void onCreate() {

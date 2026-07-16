@@ -8,7 +8,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -21,22 +20,22 @@ public class NotificationService {
         this.notificationRepository = notificationRepository;
     }
 
-    public List<NotificationDTO> getNotifications(UUID userId) {
+    public List<NotificationDTO> getNotifications(Long userId) {
         List<Notification> notifications = notificationRepository
                 .findByUserIdOrderByCreatedAtDesc(userId);
 
         return notifications.stream().map(this::toDTO).collect(Collectors.toList());
     }
 
-    public long getUnreadCount(UUID userId) {
+    public long getUnreadCount(Long userId) {
         return notificationRepository.countByUserIdAndIsReadFalse(userId);
     }
 
-    public void markAllRead(UUID userId) {
+    public void markAllRead(Long userId) {
         notificationRepository.markAllRead(userId);
     }
 
-    public NotificationDTO create(UUID userId, String type, String title, String content, UUID relatedId) {
+    public NotificationDTO create(Long userId, String type, String title, String content, Long relatedId) {
         Notification notification = new Notification();
         notification.setUserId(userId);
         notification.setType(type);

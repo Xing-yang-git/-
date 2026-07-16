@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Entity
 @Table(name = "borrow_requests")
@@ -14,14 +13,14 @@ import java.util.UUID;
 @Builder
 public class BorrowRequest {
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @Column(name = "idle_id", nullable = false)
-    private UUID idleId;
+    private Long idleId;
 
     @Column(name = "borrower_id", nullable = false)
-    private UUID borrowerId;
+    private Long borrowerId;
 
     @Column(name = "duration_type", nullable = false, length = 10)
     private String durationType;
@@ -29,11 +28,11 @@ public class BorrowRequest {
     @Column(name = "duration_days", nullable = false)
     private Integer durationDays;
 
+    @Column(length = 200)
+    private String note;
+
     @Column(name = "start_date")
     private LocalDate startDate;
-
-    @Column(columnDefinition = "TEXT")
-    private String note;
 
     @Column(nullable = false, length = 20)
     @Builder.Default
@@ -45,13 +44,13 @@ public class BorrowRequest {
     @Column(name = "return_status", length = 20)
     private String returnStatus;
 
-    @Column(name = "return_note", columnDefinition = "TEXT")
+    @Column(name = "return_note", length = 200)
     private String returnNote;
 
     @Column(name = "damage_type", length = 20)
     private String damageType;
 
-    @Column(name = "damage_note", columnDefinition = "TEXT")
+    @Column(name = "damage_note", length = 200)
     private String damageNote;
 
     @Column(name = "is_on_time")

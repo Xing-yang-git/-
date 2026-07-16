@@ -8,11 +8,12 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
-import java.util.UUID;
 
-public interface HelpRequestRepository extends JpaRepository<HelpRequest, UUID> {
+public interface HelpRequestRepository extends JpaRepository<HelpRequest, Long> {
 
     Page<HelpRequest> findByStatus(String status, Pageable pageable);
+
+    Page<HelpRequest> findByStatusAndTenantId(String status, Long tenantId, Pageable pageable);
 
     @Query("SELECT h FROM HelpRequest h WHERE h.status = :status " +
            "AND (h.title LIKE %:title% OR h.description LIKE %:desc%)")
@@ -22,7 +23,17 @@ public interface HelpRequestRepository extends JpaRepository<HelpRequest, UUID> 
             @Param("desc") String desc,
             Pageable pageable);
 
-    List<HelpRequest> findByUserId(UUID userId);
+    /** 带租户隔离的关键词搜索——搜索必须与 getHomeList 一样限制在本小区内 */
+    @Query("SELECT h FROM HelpRequest h WHERE h.status = :status AND h.tenantId = :tenantId " +
+           "AND (h.title LIKE %:title% OR h.description LIKE %:desc%)")
+    Page<HelpRequest> searchByTenant(
+            @Param("status") String status,
+            @Param("tenantId") Long tenantId,
+            @Param("title") String title,
+            @Param("desc") String desc,
+            Pageable pageable);
+
+    List<HelpRequest> findByUserId(Long userId);
 
     Page<HelpRequest> findByStatusIn(List<String> statuses, Pageable pageable);
 

@@ -60,7 +60,7 @@ export function close() {
     reconnectTimer = null;
   }
   if (socket) {
-    socket.onclose = null; // prevent auto-reconnect
+    socket.onclose = null; // 阻止自动重连
     socket.close();
     socket = null;
   }

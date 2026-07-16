@@ -1,160 +1,120 @@
-.container {
+/* ===== 聊天页 — 对齐设计原型 chat.html + ios-ui.css ===== */
+/* 设计稿 375px → 小程序 750rpx（1px = 2rpx） */
+
+.chat-page {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: var(--bg);
+  background: var(--bg, #f2f2f7);
 }
 
-/* Top Bar */
-.top-bar {
-  background: var(--surface);
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--separator);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.top-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.top-room {
-  font-size: 12px;
-  color: var(--text-tertiary);
-}
-
-.top-about {
-  font-size: 13px;
-  color: var(--blue);
-  padding: 4px 10px;
-  background: #e8f4fd;
-  border-radius: 12px;
-}
-
-/* Message List */
-.msg-list {
+.chat-area {
   flex: 1;
-  padding: 12px 16px;
+  padding: 32rpx;           /* 16px → 32rpx */
+  overflow-y: auto;
 }
 
-/* Time Divider */
-.time-divider {
+/* 时间分割线 — 原型：无胶囊底色，居中纯文字 */
+.chat-time-divider {
   text-align: center;
-  margin: 16px 0;
+  font-size: 24rpx;         /* 12px → 24rpx */
+  color: #86868b;
+  padding: 16rpx 0;         /* 8px → 16rpx */
 }
 
-.time-divider text {
-  font-size: 12px;
-  color: var(--text-tertiary);
-  background: var(--bg);
-  padding: 4px 12px;
-  border-radius: 10px;
-}
-
-/* Message Row */
-.msg-row {
-  display: flex;
-  margin-bottom: 16px;
-  align-items: flex-start;
-}
-
-.msg-left {
-  justify-content: flex-start;
-}
-
-.msg-right {
-  justify-content: flex-end;
-}
-
-.my-avatar {
-  background: var(--blue);
-  margin-left: 8px;
-}
-
-.other-avatar {
-  background: var(--green);
-  margin-right: 8px;
-}
-
-/* Bubbles */
-.bubble {
-  max-width: 65%;
-  padding: 10px 14px;
-  border-radius: 16px;
-  font-size: 15px;
-  line-height: 1.5;
+/* ----- 气泡基础 ----- */
+.chat-bubble {
+  max-width: 75%;
+  padding: 20rpx 28rpx;     /* 10px 14px → 20rpx 28rpx */
+  border-radius: 36rpx;     /* 18px → 36rpx */
+  font-size: 34rpx;         /* 17px → 34rpx */
+  line-height: 1.4;
   word-break: break-all;
+  margin-bottom: 24rpx;     /* 12px → 24rpx */
 }
 
-.bubble-other {
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--separator);
-  border-top-left-radius: 4px;
+/* 左气泡（对方） — 灰底无边框 */
+.chat-bubble-left {
+  background: rgba(120, 120, 128, 0.12);
+  color: var(--text, #1d1d1f);
+  border-bottom-left-radius: 8rpx;   /* 4px → 8rpx */
 }
 
-.bubble-mine {
-  background: var(--blue);
-  color: var(--surface);
-  border-top-right-radius: 4px;
+/* 右气泡（我方） — 蓝底白字 */
+.chat-bubble-right {
+  margin-left: auto;
+  background: var(--blue, #0071e3);
+  color: #FFFFFF;
+  border-bottom-right-radius: 8rpx;  /* 4px → 8rpx */
 }
 
-/* Quick Templates */
-.templates {
-  display: flex;
-  gap: 8px;
-  padding: 8px 16px;
-  background: var(--surface);
-  border-top: 1px solid var(--separator-opaque);
-  overflow-x: auto;
-  white-space: nowrap;
+/* 系统消息 — 居中灰胶囊 + 图标 */
+.chat-bubble-system {
+  text-align: center;
+  font-size: 24rpx;                    /* 12px → 24rpx */
+  color: #6e6e73;
+  background: rgba(120, 120, 128, 0.08);
+  padding: 12rpx 24rpx;               /* 6px 12px → 12rpx 24rpx */
+  border-radius: 24rpx;               /* 12px → 24rpx */
+  margin-bottom: 24rpx;
+  display: inline-block;
+  align-self: center;
+  max-width: 90%;
 }
 
-.template-chip {
+.system-icon {
+  font-size: 32rpx;                   /* 16px → 32rpx */
+  margin-right: 8rpx;
+}
+
+/* ----- 输入栏（全宽，纸飞机发送图标内置右侧） ----- */
+.chat-input-bar {
+  padding: 16rpx 32rpx;               /* 8px 16px → 16rpx 32rpx */
+  padding-bottom: calc(16rpx + env(safe-area-inset-bottom));
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 0.5px solid #d2d2d7;
   flex-shrink: 0;
-  padding: 6px 14px;
-  background: var(--fill-quaternary);
-  border-radius: 16px;
-  font-size: 13px;
-  color: var(--text-secondary);
 }
 
-.template-chip:active {
-  background: var(--blue);
-  color: var(--surface);
+/* 输入框外套 — 占满宽度，发送图标悬浮在内部右侧 */
+.chat-input-wrapper {
+  position: relative;
+  width: 100%;
 }
 
-/* Input Bar */
-.input-bar {
+.chat-input {
+  width: 100%;
+  height: 72rpx;                      /* 36px → 72rpx */
+  padding: 0 80rpx 0 24rpx;           /* 右侧留空给发送图标 */
+  background: rgba(120, 120, 128, 0.12);
+  border-radius: 36rpx;               /* 18px → 36rpx */
+  font-size: 34rpx;                   /* 17px → 34rpx */
+  color: var(--text, #1d1d1f);
+  box-sizing: border-box;
+}
+
+/* 发送图标 — 悬浮在输入框内部右侧，无背景纸飞机 */
+.chat-send-icon {
+  position: absolute;
+  right: 6rpx;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 64rpx;
+  height: 64rpx;
   display: flex;
   align-items: center;
-  padding: 8px 12px;
-  padding-bottom: calc(8px + env(safe-area-inset-bottom));
-  background: var(--surface);
-  border-top: 1px solid var(--separator);
-  gap: 8px;
+  justify-content: center;
+  background: transparent;
 }
 
-.msg-input {
-  flex: 1;
-  height: 40px;
-  background: var(--bg);
-  border-radius: 20px;
-  padding: 0 16px;
-  font-size: 14px;
+.chat-send-icon:active {
+  transform: translateY(-50%) scale(0.85);
+  opacity: 0.6;
 }
 
-.send-btn {
-  width: 64px;
-  height: 40px;
-  background: var(--blue);
-  color: var(--surface);
-  font-size: 14px;
-  border-radius: 20px;
-  border: none;
-  line-height: 40px;
-  padding: 0;
+.send-icon-plane {
+  width: 48rpx;
+  height: 48rpx;
 }

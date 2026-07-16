@@ -8,7 +8,6 @@ import com.platform.service.BorrowService;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/borrow")
@@ -21,40 +20,40 @@ public class BorrowController {
     }
 
     @GetMapping("/{id}")
-    public Result<?> getDetail(@PathVariable UUID id) {
+    public Result<?> getDetail(@PathVariable Long id) {
         return Result.ok(borrowService.getDetail(id));
     }
 
     @PostMapping
     public Result<?> apply(@RequestBody BorrowRequestDTO req, Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
+        Long userId = Long.valueOf(auth.getName());
         return Result.ok(borrowService.apply(userId, req));
     }
 
     @PutMapping("/{id}/approve")
-    public Result<?> approveReject(@PathVariable UUID id, @RequestBody ApproveRequest req,
+    public Result<?> approveReject(@PathVariable Long id, @RequestBody ApproveRequest req,
                                    Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
+        Long userId = Long.valueOf(auth.getName());
         borrowService.approveReject(userId, id, req);
         return Result.ok();
     }
 
     @GetMapping("/applications/my")
     public Result<?> myApplications(Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
+        Long userId = Long.valueOf(auth.getName());
         return Result.ok(borrowService.getMyApplications(userId));
     }
 
     @GetMapping("/approvals/pending")
     public Result<?> pendingApprovals(Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
+        Long userId = Long.valueOf(auth.getName());
         return Result.ok(borrowService.getPendingApprovals(userId));
     }
 
     @PutMapping("/{id}/return")
-    public Result<?> confirmReturn(@PathVariable UUID id, @RequestBody ReturnRequest req,
+    public Result<?> confirmReturn(@PathVariable Long id, @RequestBody ReturnRequest req,
                                    Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
+        Long userId = Long.valueOf(auth.getName());
         borrowService.confirmReturn(userId, id, req);
         return Result.ok();
     }

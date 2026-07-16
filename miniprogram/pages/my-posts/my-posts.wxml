@@ -4,13 +4,29 @@
 -->
 <view class="container">
 
-  <!-- First-level Tabs (underline style) — fixed at top below system nav bar -->
+  <!-- 全局加载状态 -->
+  <view class="global-loading" wx:if="{{loading}}">
+    <view class="loading-spinner"></view>
+    <text class="loading-text">加载中...</text>
+  </view>
+
+  <!-- 全局错误状态（仅在所有请求失败时展示） -->
+  <view class="global-error" wx:elif="{{loadError}}">
+    <text class="error-icon">⚠</text>
+    <text class="error-text">{{loadErrorMsg}}</text>
+    <view class="error-retry-btn" bindtap="onRetryLoad">点击重试</view>
+  </view>
+
+  <!-- 数据正常展示 -->
+  <block wx:else>
+
+  <!-- 一级标签（下划线风格）— 固定在系统导航栏下方 -->
   <view class="seg-wrap">
     <view class="main-tabs">
       <view class="main-tab {{mainTab === 'publish' ? 'active' : ''}}" bindtap="onMainTabTap" data-tab="publish">发布</view>
       <view class="main-tab {{mainTab === 'approval' ? 'active' : ''}}" bindtap="onMainTabTap" data-tab="approval">审批</view>
       <view class="main-tab {{mainTab === 'inProgress' ? 'active' : ''}}" bindtap="onMainTabTap" data-tab="inProgress">进行中</view>
-      <view class="main-tab {{mainTab === 'completed' ? 'active' : ''}}" bindtap="onMainTabTap" data-tab="completed">已完成</view>
+      <view class="main-tab {{mainTab === 'completed' ? 'active' : ''}}" bindtap="onMainTabTap" data-tab="completed">已完成<text class="rate-dot" wx:if="{{hasPendingRating}}"></text></view>
     </view>
   </view>
 
@@ -27,8 +43,8 @@
       </view>
     </view>
 
-    <scroll-view class="page-content" scroll-y enhanced show-scrollbar="{{false}}">
-      <!-- Online Posts -->
+    <scroll-view class="page-content" scroll-y enhanced show-scrollbar="{{false}}" refresher-enabled refresher-triggered="{{refreshing}}" bindrefresherrefresh="onPullRefresh">
+      <!-- 在线发布 -->
       <view wx:if="{{publishSubTab === 'online'}}">
         <block wx:for="{{onlinePosts}}" wx:key="id">
           <view class="post-card" bindtap="onOpenEdit" data-post="{{item}}" data-type="{{item.postType === 'HELP' ? 'help' : 'idle'}}" data-source="online">
@@ -44,7 +60,7 @@
               <text class="post-time">{{item.timeText}}</text>
             </view>
             <view class="post-status {{item.statusTagClass}}">{{item.statusText}}</view>
-            <view class="post-act-btn danger" catchtap="onConfirmOffline" data-id="{{item.id}}">下架</view>
+            <view class="post-act-btn danger" catchtap="onConfirmOffline" data-id="{{item.id}}" data-post-type="{{item.postType}}">下架</view>
           </view>
         </block>
         <view class="list-end" wx:if="{{onlinePosts.length > 0}}">— 共 {{onlineCount}} 条在线发布 —</view>
@@ -53,7 +69,7 @@
         </view>
       </view>
 
-      <!-- Offline Posts -->
+      <!-- 已下架发布 -->
       <view wx:if="{{publishSubTab === 'offline'}}">
         <block wx:for="{{offlinePosts}}" wx:key="id">
           <view class="post-card" bindtap="onOpenEdit" data-post="{{item}}" data-type="{{item.postType === 'HELP' ? 'help' : 'idle'}}" data-source="offline">
@@ -85,18 +101,17 @@
     <view class="seg-sub-wrap">
       <view class="segment">
         <view class="segment-item {{approvalSubTab === 'borrow' ? 'active' : ''}}" bindtap="onApprovalSubTap" data-sub="borrow">借入</view>
+        <view class="segment-item {{approvalSubTab === 'lend' ? 'active' : ''}}" bindtap="onApprovalSubTap" data-sub="lend">借出</view>
         <view class="segment-item {{approvalSubTab === 'help' ? 'active' : ''}}" bindtap="onApprovalSubTap" data-sub="help">求助</view>
       </view>
     </view>
 
-    <scroll-view class="page-content" scroll-y enhanced show-scrollbar="{{false}}">
-      <!-- Borrow Approvals -->
+    <scroll-view class="page-content" scroll-y enhanced show-scrollbar="{{false}}" refresher-enabled refresher-triggered="{{refreshing}}" bindrefresherrefresh="onPullRefresh">
+      <!-- 借入审批 -->
       <view wx:if="{{approvalSubTab === 'borrow'}}">
         <block wx:for="{{borrowApprovals}}" wx:key="id">
           <view class="progress-item" bindtap="onApprovalDetail" data-id="{{item.id}}" data-type="borrow">
-            <view class="progress-avatar">
-              <image class="progress-avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
-            </view>
+            <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
               <view class="progress-name">借入住户：{{item.applicantName}}</view>
@@ -109,13 +124,28 @@
         </view>
       </view>
 
-      <!-- Help Approvals -->
+      <!-- 借出审批 — 别人愿意借出给我的需求（需求借入的借出意向），由我确认借入 -->
+      <view wx:if="{{approvalSubTab === 'lend'}}">
+        <block wx:for="{{lendApprovals}}" wx:key="id">
+          <view class="progress-item" bindtap="onApprovalDetail" data-id="{{item.id}}" data-type="lend">
+            <view class="progress-avatar">👤</view>
+            <view class="progress-info">
+              <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
+              <view class="progress-name">借出住户：{{item.applicantName}}</view>
+            </view>
+            <view class="progress-act-btn return-btn" catchtap="onApprovalDetail" data-id="{{item.id}}" data-type="lend">确认</view>
+          </view>
+        </block>
+        <view class="empty-state" wx:if="{{lendApprovals.length === 0}}">
+          <text class="empty-text">暂无待确认的借出</text>
+        </view>
+      </view>
+
+      <!-- 帮助审批 -->
       <view wx:if="{{approvalSubTab === 'help'}}">
         <block wx:for="{{helpApprovals}}" wx:key="id">
           <view class="progress-item" bindtap="onApprovalDetail" data-id="{{item.id}}" data-type="help">
-            <view class="progress-avatar">
-              <image class="progress-avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
-            </view>
+            <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
               <view class="progress-name">求助住户：{{item.applicantName}}</view>
@@ -141,14 +171,12 @@
       </view>
     </view>
 
-    <scroll-view class="page-content" scroll-y enhanced show-scrollbar="{{false}}">
+    <scroll-view class="page-content" scroll-y enhanced show-scrollbar="{{false}}" refresher-enabled refresher-triggered="{{refreshing}}" bindrefresherrefresh="onPullRefresh">
       <!-- 进行中 - 借入：已经借进来自己还未归还 -->
       <view wx:if="{{inProgressSubTab === 'borrow'}}">
         <block wx:for="{{inProgressBorrows}}" wx:key="id">
           <view class="progress-item" bindtap="onReturnBorrow" data-id="{{item.id}}">
-            <view class="progress-avatar">
-              <image class="progress-avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
-            </view>
+            <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
               <view class="progress-name">借出住户：{{item.personName}}</view>
@@ -166,9 +194,7 @@
       <view wx:if="{{inProgressSubTab === 'lend'}}">
         <block wx:for="{{inProgressLends}}" wx:key="id">
           <view class="progress-item" bindtap="onReturnLend" data-id="{{item.id}}">
-            <view class="progress-avatar">
-              <image class="progress-avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
-            </view>
+            <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
               <view class="progress-name">借走住户：{{item.personName}}</view>
@@ -186,9 +212,7 @@
       <view wx:if="{{inProgressSubTab === 'helpReq'}}">
         <block wx:for="{{inProgressHelpReqs}}" wx:key="id">
           <view class="progress-item" bindtap="onEndHelpReq" data-id="{{item.id}}">
-            <view class="progress-avatar">
-              <image class="progress-avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
-            </view>
+            <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
               <view class="progress-name">帮助住户：{{item.personName}}</view>
@@ -206,9 +230,7 @@
       <view wx:if="{{inProgressSubTab === 'helpPro'}}">
         <block wx:for="{{inProgressHelpPros}}" wx:key="id">
           <view class="progress-item" bindtap="onEndHelpPro" data-id="{{item.id}}">
-            <view class="progress-avatar">
-              <image class="progress-avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
-            </view>
+            <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
               <view class="progress-name">求助住户：{{item.personName}}</view>
@@ -228,27 +250,26 @@
   <view wx:if="{{mainTab === 'completed'}}" class="panel-wrap">
     <view class="seg-sub-wrap">
       <view class="segment">
-        <view class="segment-item {{completedSubTab === 'borrow' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="borrow">借入</view>
-        <view class="segment-item {{completedSubTab === 'lend' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="lend">借出</view>
-        <view class="segment-item {{completedSubTab === 'helpReq' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="helpReq">求助</view>
-        <view class="segment-item {{completedSubTab === 'helpPro' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="helpPro">帮助</view>
+        <view class="segment-item {{completedSubTab === 'borrow' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="borrow">借入<text class="rate-dot" wx:if="{{pendingRating.borrow}}"></text></view>
+        <view class="segment-item {{completedSubTab === 'lend' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="lend">借出<text class="rate-dot" wx:if="{{pendingRating.lend}}"></text></view>
+        <view class="segment-item {{completedSubTab === 'helpReq' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="helpReq">求助<text class="rate-dot" wx:if="{{pendingRating.helpReq}}"></text></view>
+        <view class="segment-item {{completedSubTab === 'helpPro' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="helpPro">帮助<text class="rate-dot" wx:if="{{pendingRating.helpPro}}"></text></view>
       </view>
     </view>
 
-    <scroll-view class="page-content" scroll-y enhanced show-scrollbar="{{false}}">
+    <scroll-view class="page-content" scroll-y enhanced show-scrollbar="{{false}}" refresher-enabled refresher-triggered="{{refreshing}}" bindrefresherrefresh="onPullRefresh">
       <!-- 已完成 - 借入 -->
       <view wx:if="{{completedSubTab === 'borrow'}}">
         <block wx:for="{{completedBorrows}}" wx:key="id">
           <view class="progress-item" bindtap="onCompletedDetail" data-id="{{item.id}}" data-type="borrow">
-            <view class="progress-avatar">
-              <image class="progress-avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
-            </view>
+            <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
               <view class="progress-name progress-name-secondary">借出住户：{{item.personName}}</view>
               <view class="progress-meta progress-meta-secondary">{{item.metaText}}</view>
             </view>
             <view class="progress-status {{item.statusTagClass}}">{{item.statusText}}</view>
+            <view class="rating-pending-tag" wx:if="{{item.myRating === null}}">待评价</view>
           </view>
         </block>
         <view class="empty-state" wx:if="{{completedBorrows.length === 0}}">
@@ -260,15 +281,14 @@
       <view wx:if="{{completedSubTab === 'lend'}}">
         <block wx:for="{{completedLends}}" wx:key="id">
           <view class="progress-item" bindtap="onCompletedDetail" data-id="{{item.id}}" data-type="lend">
-            <view class="progress-avatar">
-              <image class="progress-avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
-            </view>
+            <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
               <view class="progress-name progress-name-secondary">借走住户：{{item.personName}}</view>
               <view class="progress-meta progress-meta-secondary">{{item.metaText}}</view>
             </view>
             <view class="progress-status {{item.statusTagClass}}">{{item.statusText}}</view>
+            <view class="rating-pending-tag" wx:if="{{item.myRating === null}}">待评价</view>
           </view>
         </block>
         <view class="empty-state" wx:if="{{completedLends.length === 0}}">
@@ -280,15 +300,14 @@
       <view wx:if="{{completedSubTab === 'helpReq'}}">
         <block wx:for="{{completedHelpReqs}}" wx:key="id">
           <view class="progress-item" bindtap="onCompletedDetail" data-id="{{item.id}}" data-type="helpReq">
-            <view class="progress-avatar">
-              <image class="progress-avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
-            </view>
+            <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
               <view class="progress-name progress-name-secondary">帮忙用户：{{item.personName}}</view>
               <view class="progress-meta progress-meta-secondary">{{item.metaText}}</view>
             </view>
             <view class="progress-status {{item.statusTagClass}}">{{item.statusText}}</view>
+            <view class="rating-pending-tag" wx:if="{{item.myRating === null}}">待评价</view>
           </view>
         </block>
         <view class="empty-state" wx:if="{{completedHelpReqs.length === 0}}">
@@ -300,15 +319,14 @@
       <view wx:if="{{completedSubTab === 'helpPro'}}">
         <block wx:for="{{completedHelpPros}}" wx:key="id">
           <view class="progress-item" bindtap="onCompletedDetail" data-id="{{item.id}}" data-type="helpPro">
-            <view class="progress-avatar">
-              <image class="progress-avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
-            </view>
+            <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
               <view class="progress-name progress-name-secondary">求助住户：{{item.personName}}</view>
               <view class="progress-meta progress-meta-secondary">{{item.metaText}}</view>
             </view>
             <view class="progress-status {{item.statusTagClass}}">{{item.statusText}}</view>
+            <view class="rating-pending-tag" wx:if="{{item.myRating === null}}">待评价</view>
           </view>
         </block>
         <view class="empty-state" wx:if="{{completedHelpPros.length === 0}}">
@@ -318,6 +336,7 @@
     </scroll-view>
   </view>
 
+  </block>
 </view>
 
 <!-- ===== Drawer (slide-down from top) ===== -->
@@ -363,7 +382,7 @@
 
   <scroll-view class="edit-sheet-body" scroll-y enhanced show-scrollbar="{{false}}">
 
-    <!-- Post Type (read-only display) -->
+    <!-- 发布类型（只读展示） -->
     <view class="input-group">
       <text class="edit-input-label">发布类型</text>
       <view class="segment" style="margin:0;">
@@ -603,13 +622,19 @@
   </view>
 
   <scroll-view class="approval-sheet-body" scroll-y enhanced show-scrollbar="{{false}}">
-    <!-- Item title -->
+    <!-- 物品标题 -->
     <view class="approval-section">
       <text class="approval-section-label">物品</text>
       <text class="approval-item-title">{{approvalSheetItem.itemTitle}}</text>
     </view>
 
-    <!-- Applicant info -->
+    <!-- 申请人备注（借入说明/借出说明/求助说明） -->
+    <view class="approval-section" wx:if="{{approvalSheetItem.note}}">
+      <text class="approval-section-label">{{approvalSheetItem.approvalType === 'help' ? '求助说明' : (approvalSheetItem.postType === 'WANTED' ? '借出说明' : '借入说明')}}</text>
+      <text class="approval-note-text">{{approvalSheetItem.note}}</text>
+    </view>
+
+    <!-- 申请人信息 -->
     <view class="approval-section">
       <text class="approval-section-label">申请住户</text>
       <view class="approval-resident-card">
@@ -626,7 +651,7 @@
       </view>
     </view>
 
-    <!-- Stats -->
+    <!-- 统计数据 -->
     <view class="approval-section">
       <text class="approval-section-label">互助记录</text>
       <view class="approval-stats-grid">
@@ -653,19 +678,19 @@
       </view>
     </view>
 
-    <!-- Friendly reminder -->
+    <!-- 温馨提示 -->
     <view class="approval-tip">
       <view class="approval-tip-header">
         <text class="approval-tip-icon">💡</text>
         <text class="approval-tip-title">温馨提示</text>
       </view>
-      <text class="approval-tip-text">您可以根据对方的过往记录来判断是否{{approvalSheetItem.approvalType === 'help' ? '帮助' : '借给'}}申请的住户，良好的互助记录通常意味着更可靠的合作体验。</text>
+      <text class="approval-tip-text">您可以根据对方的过往记录来判断是否{{approvalSheetItem.approvalType === 'help' ? '帮助' : (approvalSheetItem.approvalType === 'lend' ? '借用' : '借给')}}申请的住户，良好的互助记录通常意味着更可靠的合作体验。</text>
     </view>
   </scroll-view>
 
   <view class="approval-sheet-footer">
     <view class="approval-footer-row">
-      <view class="approval-confirm-btn" bindtap="onConfirmApproval">同意</view>
+      <view class="approval-confirm-btn" bindtap="onConfirmApproval">{{approvalSheetItem.approvalType === 'lend' ? '确认借入' : '同意'}}</view>
       <view class="approval-reject-btn" bindtap="onRejectClick">拒绝</view>
     </view>
   </view>
@@ -676,17 +701,23 @@
 <view class="progress-sheet" wx:if="{{showProgressSheet}}">
   <view class="progress-sheet-header">
     <view class="progress-sheet-handle"></view>
-    <view class="progress-sheet-title">{{progressSheetType === 'helpReq' || progressSheetType === 'helpPro' ? '结束' : '归还'}}</view>
+    <view class="progress-sheet-title">{{progressSheetType === 'helpReq' || progressSheetType === 'helpPro' ? '结束' : (progressSheetType === 'lend' ? '确认归还' : '归还物品')}}</view>
   </view>
 
   <scroll-view class="progress-sheet-body" scroll-y enhanced show-scrollbar="{{false}}">
-    <!-- Item title -->
+    <!-- 物品标题 -->
     <view class="approval-section">
       <text class="approval-section-label">物品</text>
       <text class="approval-item-title">{{progressSheetItem.itemTitle}}</text>
     </view>
 
-    <!-- Resident info -->
+    <!-- 备注（借入说明/借出说明/求助说明） -->
+    <view class="approval-section" wx:if="{{progressSheetItem.note}}">
+      <text class="approval-section-label">{{progressSheetType === 'helpReq' || progressSheetType === 'helpPro' ? '求助说明' : (progressSheetItem.postType === 'WANTED' ? '借出说明' : '借入说明')}}</text>
+      <text class="approval-note-text">{{progressSheetItem.note}}</text>
+    </view>
+
+    <!-- 住户信息 -->
     <view class="approval-section">
       <text class="approval-section-label">{{progressSheetItem.roleLabel}}</text>
       <view class="approval-resident-card">
@@ -703,7 +734,7 @@
       </view>
     </view>
 
-    <!-- Return time (only for borrow/lend) -->
+    <!-- 归还时间（仅借入/借出） -->
     <view class="approval-section" wx:if="{{progressSheetType === 'borrow' || progressSheetType === 'lend'}}">
       <text class="approval-section-label">归还时间</text>
       <view class="progress-return-time {{progressSheetItem.isOverdue ? 'overdue' : ''}}">
@@ -712,7 +743,7 @@
       </view>
     </view>
 
-    <!-- Star Rating (required) -->
+    <!-- 星级评分（必填） -->
     <view class="approval-section">
       <text class="approval-section-label">请为此次互助评分 <text style="color:var(--red);">*</text></text>
       <view class="progress-stars-row">
@@ -724,7 +755,7 @@
       </view>
     </view>
 
-    <!-- Feedback (optional) -->
+    <!-- 反馈（选填） -->
     <view class="approval-section">
       <text class="approval-section-label">互助感想（选填）</text>
       <textarea class="progress-feedback-input" value="{{progressSheetFeedback}}" bindinput="onProgressFeedbackInput" placeholder="分享一下此次互助的感受…" maxlength="200" />
@@ -732,7 +763,7 @@
   </scroll-view>
 
   <view class="progress-sheet-footer">
-    <view class="progress-confirm-btn" bindtap="onConfirmReturn">{{progressSheetType === 'helpReq' || progressSheetType === 'helpPro' ? '结束' : '归还'}}</view>
+    <view class="progress-confirm-btn" bindtap="onConfirmReturn">{{progressSheetType === 'helpReq' || progressSheetType === 'helpPro' ? '结束' : (progressSheetType === 'lend' ? '对方已归还' : '我已归还')}}</view>
   </view>
 </view>
 
@@ -745,13 +776,19 @@
   </view>
 
   <scroll-view class="completed-sheet-body" scroll-y enhanced show-scrollbar="{{false}}">
-    <!-- Item title -->
+    <!-- 物品标题 -->
     <view class="approval-section">
       <text class="approval-section-label">物品</text>
       <text class="approval-item-title">{{completedSheetItem.itemTitle}}</text>
     </view>
 
-    <!-- Person info -->
+    <!-- 备注（借入说明/借出说明/求助说明） -->
+    <view class="approval-section" wx:if="{{completedSheetItem.note}}">
+      <text class="approval-section-label">{{completedSheetItem.type === 'helpReq' || completedSheetItem.type === 'helpPro' ? '求助说明' : (completedSheetItem.postType === 'WANTED' ? '借出说明' : '借入说明')}}</text>
+      <text class="approval-note-text">{{completedSheetItem.note}}</text>
+    </view>
+
+    <!-- 对方信息 -->
     <view class="approval-section">
       <text class="approval-section-label">{{completedSheetItem.roleLabel}}</text>
       <view class="approval-resident-card">
@@ -782,6 +819,20 @@
           <text wx:else class="completed-rating-pending">未评分</text>
         </view>
       </view>
+    </view>
+
+    <!-- 补充评价入口：本方尚未评分时可在此评价对方 -->
+    <view class="approval-section" wx:if="{{completedSheetItem.myRating === null}}">
+      <text class="approval-section-label">请为此次互助评分 <text style="color:var(--red);">*</text></text>
+      <view class="progress-stars-row">
+        <view class="progress-star {{completedRating >= 1 ? 'active' : ''}}" bindtap="onCompletedRatingTap" data-star="1">★</view>
+        <view class="progress-star {{completedRating >= 2 ? 'active' : ''}}" bindtap="onCompletedRatingTap" data-star="2">★</view>
+        <view class="progress-star {{completedRating >= 3 ? 'active' : ''}}" bindtap="onCompletedRatingTap" data-star="3">★</view>
+        <view class="progress-star {{completedRating >= 4 ? 'active' : ''}}" bindtap="onCompletedRatingTap" data-star="4">★</view>
+        <view class="progress-star {{completedRating >= 5 ? 'active' : ''}}" bindtap="onCompletedRatingTap" data-star="5">★</view>
+      </view>
+      <textarea class="progress-feedback-input" style="margin-top:12px;" value="{{completedFeedback}}" bindinput="onCompletedFeedbackInput" placeholder="分享一下此次互助的感受…" maxlength="200" />
+      <view class="progress-confirm-btn" style="margin-top:12px;" bindtap="onSubmitCompletedRating">提交评价</view>
     </view>
 
     <!-- 互助感想 (both sides) -->
@@ -817,7 +868,7 @@
 <view class="alert-overlay" wx:if="{{showReturnConfirmAlert}}" catchtap="onCancelReturnConfirm">
   <view class="alert" catchtap="">
     <view class="alert-title">确认{{returnConfirmData.type === 'helpReq' || returnConfirmData.type === 'helpPro' ? '结束' : '归还'}}</view>
-    <view class="alert-body">{{returnConfirmData.type === 'helpReq' || returnConfirmData.type === 'helpPro' ? '确认结束此次互助？' : '确认物品已归还？'}}</view>
+    <view class="alert-body">{{returnConfirmData.type === 'helpReq' || returnConfirmData.type === 'helpPro' ? '确认结束此次互助？' : (returnConfirmData.type === 'lend' ? '确认对方已归还该物品？' : '确认我已归还该物品？')}}</view>
     <view class="alert-actions">
       <view class="alert-btn" bindtap="onCancelReturnConfirm">取消</view>
       <view class="alert-btn alert-btn-bold" bindtap="onDoReturn">确认</view>
@@ -846,4 +897,5 @@
       <view class="alert-btn alert-btn-bold" bindtap="onDoSave">确认</view>
     </view>
   </view>
+
 </view>

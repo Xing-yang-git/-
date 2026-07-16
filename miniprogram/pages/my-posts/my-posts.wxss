@@ -5,6 +5,60 @@
    CSS变量: --ios-* → --* (映射自 app.wxss page {} 块)
    ============================================================ */
 
+/* ============================================================
+   全局 Loading / Error 状态
+   ============================================================ */
+.global-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 60vh;
+  gap: 24rpx;
+}
+.loading-spinner {
+  width: 64rpx;
+  height: 64rpx;
+  border: 6rpx solid #E5E5EA;
+  border-top-color: #0071E3;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.loading-text {
+  font-size: 28rpx;
+  color: #8E8E93;
+}
+
+.global-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 60vh;
+  gap: 20rpx;
+  padding: 0 60rpx;
+}
+.error-icon {
+  font-size: 80rpx;
+}
+.error-text {
+  font-size: 28rpx;
+  color: #8E8E93;
+  text-align: center;
+  line-height: 1.6;
+}
+.error-retry-btn {
+  margin-top: 16rpx;
+  padding: 16rpx 48rpx;
+  border-radius: 20rpx;
+  background: #0071E3;
+  color: #FFFFFF;
+  font-size: 28rpx;
+}
+
 .container {
   height: 100vh;
   overflow: hidden;
@@ -120,6 +174,7 @@
 .page-content {
   flex: 1;
   min-height: 0;  /* critical for flex children to properly constrain */
+  background: var(--surface);  /* 白底铺满整个列表区，数据少时下方空白同为白色，list-end 提示区随之同色 */
 }
 
 /* ============================================================
@@ -202,7 +257,7 @@
   white-space: nowrap;
 }
 
-/* Status Tag */
+/* 状态标签 */
 .post-status {
   position: absolute;
   top: 28rpx;
@@ -242,7 +297,7 @@
   color: var(--red);
 }
 
-/* Action Button */
+/* 操作按钮 */
 .post-act-btn {
   position: absolute;
   bottom: 20rpx;
@@ -337,7 +392,7 @@
   white-space: nowrap;
 }
 
-/* Apply Tag */
+/* 申请标签 */
 .apply-tag {
   display: inline-flex;
   align-items: center;
@@ -349,7 +404,7 @@
   flex-shrink: 0;
 }
 
-/* Approval Action Buttons */
+/* 审批操作按钮 */
 .approval-actions {
   display: flex;
   gap: 16rpx;
@@ -422,11 +477,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.progress-avatar-icon {
-  width: 44rpx;
-  height: 44rpx;
+  font-size: 16px;   /* 👤 emoji 尺寸，与求助详情页头像统一 */
 }
 
 .progress-info {
@@ -446,7 +497,7 @@
   white-space: nowrap;
 }
 
-/* Gray name for completed items */
+/* 已完成项的灰色名称 */
 .progress-name-secondary {
   color: var(--text-secondary);
 }
@@ -464,7 +515,7 @@
   line-height: 1.3;
 }
 
-/* Larger title for first-line display in 进行中/已完成 cards */
+/* 进行中/已完成卡片首行大号标题 */
 .progress-title-lg {
   font-size: 28rpx;
   font-weight: 500;
@@ -482,12 +533,12 @@
   white-space: nowrap;
 }
 
-/* Gray meta for completed items */
+/* 已完成项的灰色元信息 */
 .progress-meta-secondary {
   color: var(--text-secondary);
 }
 
-/* Action button — absolute bottom-right, like post-act-btn */
+/* 操作按钮 — 绝对定位右下角，类似 post-act-btn */
 .progress-act-btn {
   position: absolute;
   bottom: 20rpx;
@@ -519,7 +570,7 @@
   transform: scale(0.97);
 }
 
-/* Completed status tag — absolute top-right, like post-status */
+/* 已完成状态标签 — 绝对定位右上角，类似 post-status */
 .progress-status {
   position: absolute;
   top: 24rpx;
@@ -532,6 +583,33 @@
   font-size: 22rpx;
   font-weight: 500;
   flex-shrink: 0;
+}
+
+/* 待评价标签（已完成列表项，本方尚未评分时显示于右下角） */
+.rating-pending-tag {
+  position: absolute;
+  bottom: 24rpx;
+  right: var(--margin);
+  display: inline-flex;
+  align-items: center;
+  height: 40rpx;
+  padding: 0 16rpx;
+  border-radius: 8rpx;
+  font-size: 22rpx;
+  font-weight: 500;
+  background: rgba(255, 149, 0, 0.12);
+  color: #FF9500;
+}
+
+/* 待评价小红点（主 tab / 子 tab 上的提示） */
+.rate-dot {
+  display: inline-block;
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: #FF9500;
+  margin-left: 8rpx;
+  vertical-align: super;
 }
 
 /* ============================================================
@@ -719,7 +797,7 @@
   color: var(--text);
 }
 
-/* --- Scrollable body (scroll-view: flex: 1 fills remaining space, scroll-y scrolls) --- */
+/* --- 可滚动主体（scroll-view：flex: 1 占满剩余空间，scroll-y 滚动） --- */
 .edit-sheet-body {
   flex: 1;
   min-height: 0;
@@ -733,7 +811,7 @@
   background: var(--surface);
 }
 
-/* --- Edit sheet form fields (aligned with publish-idle) --- */
+/* --- 编辑弹层表单字段（与 publish-idle 对齐） --- */
 
 .edit-sheet .input-group {
   margin-bottom: var(--space-3);
@@ -830,7 +908,7 @@
   box-sizing: border-box;
 }
 
-/* Edit sheet Save Button */
+/* 编辑弹层保存按钮 */
 .edit-save-btn {
   display: flex;
   align-items: center;
@@ -958,7 +1036,8 @@
   bottom: 0;
   left: 0;
   right: 0;
-  max-height: 80vh;
+  /* 显式 height 替代 max-height：让 flex:1 的 body 有确定高度可解析，footer 才能固定在底部（否则按钮区被 body 盖住点不动） */
+  height: 80vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -991,7 +1070,7 @@
   color: var(--text);
 }
 
-/* --- Scrollable body (scroll-view) --- */
+/* --- 可滚动主体（scroll-view） --- */
 .approval-sheet-body {
   flex: 1;
   min-height: 0;
@@ -1018,7 +1097,17 @@
   line-height: 1.4;
 }
 
-/* --- Resident card --- */
+.approval-note-text {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  background: var(--fill-quaternary);
+  padding: 16rpx 20rpx;
+  border-radius: var(--radius-sm);
+  display: block;
+}
+
+/* --- 住户卡片 --- */
 .approval-resident-card {
   background: var(--fill-quaternary);
   border-radius: var(--radius);
@@ -1065,7 +1154,7 @@
   color: var(--text-secondary);
 }
 
-/* --- Stats grid --- */
+/* --- 统计网格 --- */
 .approval-stats-grid {
   display: flex;
   flex-wrap: wrap;
@@ -1098,7 +1187,7 @@
   margin-top: 4rpx;
 }
 
-/* --- Friendly reminder --- */
+/* --- 温馨提示 --- */
 .approval-tip {
   background: rgba(0, 113, 227, 0.05);
   border-radius: var(--radius);
@@ -1212,7 +1301,8 @@
   bottom: 0;
   left: 0;
   right: 0;
-  max-height: 80vh;
+  /* 显式 height 替代 max-height：让 flex:1 的 body 有确定高度可解析，footer 才能固定在底部（否则按钮区被 body 盖住点不动） */
+  height: 80vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1245,14 +1335,14 @@
   color: var(--text);
 }
 
-/* --- Scrollable body (scroll-view) --- */
+/* --- 可滚动主体（scroll-view） --- */
 .progress-sheet-body {
   flex: 1;
   min-height: 0;
   padding: 0 var(--margin);
 }
 
-/* --- Return time badge --- */
+/* --- 归还时间徽标 --- */
 .progress-return-time {
   background: var(--fill-quaternary);
   border-radius: var(--radius);
@@ -1289,7 +1379,7 @@
   transform: scale(1.15);
 }
 
-/* --- Feedback textarea --- */
+/* --- 评价输入框 --- */
 .progress-feedback-input {
   width: 100%;
   min-height: 160rpx;
@@ -1351,7 +1441,8 @@
   bottom: 0;
   left: 0;
   right: 0;
-  max-height: 80vh;
+  /* 显式 height 替代 max-height：与其它 sheet 统一，body 高度可解析 */
+  height: 80vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1384,14 +1475,14 @@
   color: var(--text);
 }
 
-/* --- Scrollable body (scroll-view) --- */
+/* --- 可滚动主体（scroll-view） --- */
 .completed-sheet-body {
   flex: 1;
   min-height: 0;
   padding: 0 var(--margin);
 }
 
-/* --- Rating grid (2 columns) --- */
+/* --- 评分网格（2 列） --- */
 .completed-rating-grid {
   display: flex;
   gap: 16rpx;
@@ -1435,7 +1526,7 @@
   color: var(--text-tertiary);
 }
 
-/* --- Feedback list --- */
+/* --- 评价列表 --- */
 .completed-feedback-list {
   display: flex;
   flex-direction: column;

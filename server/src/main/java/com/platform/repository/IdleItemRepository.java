@@ -9,11 +9,12 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 
-public interface IdleItemRepository extends JpaRepository<IdleItem, UUID> {
+public interface IdleItemRepository extends JpaRepository<IdleItem, Long> {
 
     Page<IdleItem> findByStatusAndPostType(String status, String postType, Pageable pageable);
+
+    Page<IdleItem> findByStatusAndPostTypeAndTenantId(String status, String postType, Long tenantId, Pageable pageable);
 
     Page<IdleItem> findByPostTypeAndStatusIn(String postType, List<String> statuses, Pageable pageable);
 
@@ -26,9 +27,20 @@ public interface IdleItemRepository extends JpaRepository<IdleItem, UUID> {
             @Param("desc") String desc,
             Pageable pageable);
 
-    List<IdleItem> findByUserId(UUID userId);
+    /** 带租户隔离的关键词搜索——搜索必须与 getHomeList 一样限制在本小区内 */
+    @Query("SELECT i FROM IdleItem i WHERE i.status = :status AND i.postType = :postType " +
+           "AND i.tenantId = :tenantId AND (i.title LIKE %:title% OR i.description LIKE %:desc%)")
+    Page<IdleItem> searchByTenant(
+            @Param("status") String status,
+            @Param("postType") String postType,
+            @Param("tenantId") Long tenantId,
+            @Param("title") String title,
+            @Param("desc") String desc,
+            Pageable pageable);
 
-    Page<IdleItem> findByUserIdAndPostType(UUID userId, String postType, Pageable pageable);
+    List<IdleItem> findByUserId(Long userId);
+
+    Page<IdleItem> findByUserIdAndPostType(Long userId, String postType, Pageable pageable);
 
     Page<IdleItem> findByStatusIn(List<String> statuses, Pageable pageable);
 

@@ -59,7 +59,7 @@ const router = createRouter({
   routes
 });
 
-// Navigation guard — check token
+// 路由守卫 — 检查 token
 router.beforeEach((to, from, next) => {
   if (to.path === '/login') {
     next();

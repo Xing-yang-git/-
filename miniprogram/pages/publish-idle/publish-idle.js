@@ -1,4 +1,5 @@
 const api = require('../../utils/api');
+const auth = require('../../utils/auth');
 
 Page({
   data: {
@@ -18,6 +19,7 @@ Page({
     condition: 'normal',
     // HELP fields
     urgency: 'normal',
+    enableTimeRange: false,   // 时间范围为选填，默认关闭，不提交时间
     helpStartDate: '',
     helpStartHour: 9,
     helpEndDate: '',
@@ -26,7 +28,8 @@ Page({
   },
 
   onLoad(options) {
-    // Accept postType from query params
+    if (!auth.ensureAccess()) return;   // 登录/审核门禁：未通过则已跳转
+    // 从页面参数接收 postType
     if (options && options.type) {
       const type = options.type;
       if (type === 'WANTED' || type === 'BORROW') {
@@ -36,14 +39,14 @@ Page({
       }
     }
 
-    // Generate hour options 00:00 ~ 23:00
+    // 生成 00:00 ~ 23:00 的小时选项
     const hours = [];
     for (let i = 0; i < 24; i++) {
       hours.push(i < 10 ? '0' + i + ':00' : i + ':00');
     }
     this.setData({ hourOptions: hours });
 
-    // Set default help time range (today ~ today+3 days for HELP form)
+    // 设置求助默认时间范围（HELP 表单：今天 ~ 今天+3 天）
     const now = new Date();
     const y = now.getFullYear();
     const m = (now.getMonth() + 1).toString().padStart(2, '0');
@@ -55,6 +58,10 @@ Page({
     const em = (end.getMonth() + 1).toString().padStart(2, '0');
     const ed = end.getDate().toString().padStart(2, '0');
     this.setData({ helpEndDate: ey + '-' + em + '-' + ed });
+  },
+
+  onShow() {
+    if (!auth.ensureAccess()) return; // 登录/审核门禁：覆盖 tab 切换与后台切回
   },
 
   onPostTypeTap(e) {
@@ -144,6 +151,11 @@ Page({
     this.setData({ urgency: e.currentTarget.dataset.value });
   },
 
+  // HELP: toggle optional time range
+  onToggleTimeRange(e) {
+    this.setData({ enableTimeRange: e.detail.value });
+  },
+
   // HELP: time range date/hour pickers
   onHelpStartDateChange(e) {
     this.setData({ helpStartDate: e.detail.value });
@@ -183,17 +195,17 @@ Page({
         return;
       }
 
-      // Build time range strings (optional)
+      // 构建时间范围字符串（选填 — 仅当开关开启时）
       let timeStart = '';
       let timeEnd = '';
-      if (this.data.helpStartDate && this.data.helpEndDate) {
+      if (this.data.enableTimeRange && this.data.helpStartDate && this.data.helpEndDate) {
         timeStart = this.data.helpStartDate + ' ' + this.data.hourOptions[this.data.helpStartHour];
         timeEnd = this.data.helpEndDate + ' ' + this.data.hourOptions[this.data.helpEndHour];
       }
 
       wx.showLoading({ title: '发布中' });
       try {
-        // Upload images first
+        // 先上传图片
         let imageUrls = [];
         if (this.data.images.length > 0) {
           const uploadTasks = this.data.images.map(filePath => api.upload('/api/common/upload', filePath));
@@ -239,7 +251,7 @@ Page({
 
       wx.showLoading({ title: '发布中' });
       try {
-        // Upload images first (optional for WANTED)
+        // 先上传图片（需求借入选填）
         let imageUrls = [];
         if (this.data.images.length > 0) {
           const uploadTasks = this.data.images.map(filePath => api.upload('/api/common/upload', filePath));
@@ -288,7 +300,7 @@ Page({
 
     wx.showLoading({ title: '发布中' });
     try {
-      // Upload images first (required for LEND)
+      // 先上传图片（闲置借出必填）
       const uploadTasks = this.data.images.map(filePath => api.upload('/api/common/upload', filePath));
       const imageUrls = await Promise.all(uploadTasks);
       await api.post('/api/idle', {

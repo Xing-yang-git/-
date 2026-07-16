@@ -3,7 +3,6 @@ package com.platform.model.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Entity
 @Table(name = "help_applications")
@@ -13,16 +12,16 @@ import java.util.UUID;
 @Builder
 public class HelpApplication {
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @Column(name = "help_id", nullable = false)
-    private UUID helpId;
+    private Long helpId;
 
     @Column(name = "helper_id", nullable = false)
-    private UUID helperId;
+    private Long helperId;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(length = 200)
     private String note;
 
     @Column(nullable = false, length = 20)

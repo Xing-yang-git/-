@@ -6,7 +6,6 @@ import com.platform.service.RatingService;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/rating")
@@ -20,13 +19,13 @@ public class RatingController {
 
     @PostMapping
     public Result<?> submit(@RequestBody RatingRequest req, Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
+        Long userId = Long.valueOf(auth.getName());
         ratingService.submitRating(userId, req);
         return Result.ok();
     }
 
     @GetMapping("/user/{userId}")
-    public Result<?> getUserRatings(@PathVariable UUID userId) {
+    public Result<?> getUserRatings(@PathVariable Long userId) {
         return Result.ok(ratingService.getUserRatings(userId));
     }
 }

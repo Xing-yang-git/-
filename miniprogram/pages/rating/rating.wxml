@@ -1,11 +1,11 @@
 <view class="container">
-  <!-- Header -->
+  <!-- 头部 -->
   <view class="rating-header">
     <text class="header-text">为 {{targetName}} 评分</text>
     <text class="header-type">{{ratingTypeText}}</text>
   </view>
 
-  <!-- Overall Stars -->
+  <!-- 总体评分 -->
   <view class="card">
     <view class="card-title">总体评分</view>
     <view class="star-row large-stars">
@@ -19,41 +19,7 @@
     </view>
   </view>
 
-  <!-- Dimension 1 -->
-  <view class="card">
-    <view class="dimension-header">
-      <text class="dim-label">{{dimLabels[0]}}</text>
-      <view class="star-row small-stars">
-        <view
-          wx:for="{{[1,2,3,4,5]}}"
-          wx:key="*this"
-          class="star small {{item <= dimScores[0] ? 'filled' : ''}}"
-          bindtap="onDimTap"
-          data-dim="{{0}}"
-          data-score="{{item}}"
-        >★</view>
-      </view>
-    </view>
-  </view>
-
-  <!-- Dimension 2 -->
-  <view class="card">
-    <view class="dimension-header">
-      <text class="dim-label">{{dimLabels[1]}}</text>
-      <view class="star-row small-stars">
-        <view
-          wx:for="{{[1,2,3,4,5]}}"
-          wx:key="*this"
-          class="star small {{item <= dimScores[1] ? 'filled' : ''}}"
-          bindtap="onDimTap"
-          data-dim="{{1}}"
-          data-score="{{item}}"
-        >★</view>
-      </view>
-    </view>
-  </view>
-
-  <!-- Submit -->
+  <!-- 提交 -->
   <view class="submit-section">
     <button class="submit-btn {{overallScore > 0 ? '' : 'disabled'}}" bindtap="onSubmit" disabled="{{overallScore === 0}}">提交评分</button>
     <text class="submit-note">评分提交后不可修改</text>

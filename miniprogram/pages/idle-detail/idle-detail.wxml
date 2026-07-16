@@ -1,15 +1,17 @@
 <view class="detail-page">
-  <!-- Status banner -->
-  <view class="status-banner {{item.status === 'reserved' ? 'status-banner-reserved' : ''}}" wx:if="{{item.status === 'borrowed' || item.status === 'reserved'}}">
-    <!-- LEND banners -->
-    <text wx:if="{{item.status === 'borrowed' && !item.isWanted}}">🔒 该物品已被借出</text>
-    <text wx:if="{{item.status === 'reserved' && !item.isWanted}}">🕐 已有邻居申请借入，等待确认中</text>
-    <!-- WANTED banners -->
-    <text wx:if="{{item.status === 'borrowed' && item.isWanted}}">🔒 该需求已有人接单</text>
-    <text wx:if="{{item.status === 'reserved' && item.isWanted}}">🕐 已有邻居愿意借出，等待确认中</text>
+  <!-- 状态横幅（已同意的消息移至聊天，此处不再显示） -->
+  <view class="status-banner {{item.status === 'reserved' || item.userBorrowStatus === 'pending' ? 'status-banner-reserved' : ''}}" wx:if="{{item.status === 'borrowed' || item.status === 'reserved' || item.userBorrowStatus === 'pending'}}">
+    <!-- 当前用户的申请状态（优先级最高） -->
+    <text wx:if="{{item.userBorrowStatus === 'pending' && !item.isWanted}}">🕐 您的借入申请已发送，等待对方确认</text>
+    <text wx:if="{{item.userBorrowStatus === 'pending' && item.isWanted}}">🕐 您的借出意向已发送，等待对方确认</text>
+    <!-- 通用物品状态横幅（兜底） -->
+    <text wx:elif="{{item.status === 'borrowed' && !item.isWanted}}">🔒 该物品已被借出</text>
+    <text wx:elif="{{item.status === 'reserved' && !item.isWanted}}">🕐 已有邻居申请借入，等待确认中</text>
+    <text wx:elif="{{item.status === 'borrowed' && item.isWanted}}">🔒 该需求已有人接单</text>
+    <text wx:elif="{{item.status === 'reserved' && item.isWanted}}">🕐 已有邻居愿意借出，等待确认中</text>
   </view>
 
-  <!-- Image carousel -->
+  <!-- 图片轮播 -->
   <view class="img-carousel">
     <swiper wx:if="{{images.length > 0}}"
             indicator-dots="{{images.length > 1}}"
@@ -20,7 +22,7 @@
         <image class="carousel-image" src="{{item}}" mode="aspectFill" />
       </swiper-item>
     </swiper>
-    <!-- Fallback when no images -->
+    <!-- 无图片时的兜底展示 -->
     <view class="carousel-slide" wx:if="{{images.length === 0}}">
       <text class="carousel-icon">📦</text>
       <text class="carousel-caption">暂无图片</text>
@@ -28,7 +30,7 @@
   </view>
 
   <scroll-view class="page-content" scroll-y="{{!showSheet && !showHistorySheet}}" enhanced show-scrollbar="{{false}}">
-    <!-- Basic info -->
+    <!-- 基础信息 -->
     <view class="section-ios">
       <view class="detail-title">{{item.title}}</view>
       <view class="detail-desc">{{item.description}}</view>
@@ -38,7 +40,7 @@
         <text class="tag tag-fill" wx:if="{{item.pickupLabel}}">{{item.pickupLabel}}</text>
       </view>
 
-      <!-- Love-care reminder -->
+      <!-- 爱护提醒 -->
       <view class="callout" wx:if="{{!item.isWanted}}">
         <text>❤️ 请好好爱护借用的物品\n借用期间妥善保管。物主会在归还时检查物品状况。</text>
       </view>
@@ -56,7 +58,7 @@
       </view>
     </view>
 
-    <!-- Publisher info -->
+    <!-- 发布者信息 -->
     <view class="section-ios">
       <view class="pub-header">
         <view class="avatar">👤</view>
@@ -72,17 +74,18 @@
 
   </scroll-view>
 
-  <!-- Bottom action bar -->
+  <!-- 底部操作栏 -->
   <view class="action-bar">
     <button class="action-btn action-btn-secondary" bindtap="onContactTap">
       <text>联系他</text>
     </button>
-    <button class="action-btn action-btn-primary" bindtap="onBorrowTap" disabled="{{item.status === 'borrowed' || item.status === 'reserved'}}">
-      <text>{{item.status === 'borrowed' ? (item.isWanted ? '已有人借出' : '已被借出') : item.status === 'reserved' ? '已申请' : (item.isWanted ? '我要借出' : '我要借入')}}</text>
+    <button class="action-btn action-btn-primary" bindtap="onBorrowTap"
+      disabled="{{item.status === 'borrowed' || item.status === 'reserved' || item.userBorrowStatus === 'pending' || item.userBorrowStatus === 'approved' || item.userBorrowStatus === 'returned'}}">
+      <text>{{item.status === 'borrowed' ? (item.isWanted ? '已有人借出' : '已被借出') : item.userBorrowStatus === 'approved' ? '已通过' : item.userBorrowStatus === 'pending' ? '已申请' : item.userBorrowStatus === 'returned' ? '已归还' : item.status === 'reserved' ? '已申请' : (item.isWanted ? '我要借出' : '我要借入')}}</text>
     </button>
   </view>
 
-  <!-- History sheet overlay — matching my-posts approval sheet layout -->
+  <!-- 以往记录弹层遮罩 — 对齐 my-posts 审批弹层布局 -->
   <view class="history-sheet-overlay" wx:if="{{showHistorySheet}}" catchtouchmove="preventTouchMove" bindtap="onCloseHistorySheet"></view>
   <view class="history-sheet" wx:if="{{showHistorySheet}}">
     <view class="history-sheet-header">
@@ -91,7 +94,7 @@
     </view>
 
     <scroll-view class="history-sheet-body" scroll-y enhanced show-scrollbar="{{false}}">
-      <!-- Publisher resident info -->
+      <!-- 发布住户信息 -->
       <view class="history-section">
         <text class="history-section-label">发布住户</text>
         <view class="history-resident-card">
@@ -108,7 +111,7 @@
         </view>
       </view>
 
-      <!-- Mutual aid records -->
+      <!-- 互助记录 -->
       <view class="history-section">
         <text class="history-section-label">互助记录</text>
         <view class="history-stats-grid">
@@ -137,54 +140,54 @@
     </scroll-view>
   </view>
 
-  <!-- Borrow sheet overlay -->
+  <!-- 借用弹层遮罩 -->
   <view class="sheet-overlay" wx:if="{{showSheet}}" bindtap="onCloseSheet" catchtouchmove="preventTouchMove">
     <view class="sheet borrow-sheet" catchtap="preventTouchMove">
       <view class="sheet-handle"></view>
       <view class="sheet-header">{{item.isWanted ? '借出意向' : '借入申请'}}</view>
       <scroll-view class="borrow-sheet-body" scroll-y enhanced show-scrollbar="{{false}}">
-        <!-- 摘要信息 -->
-        <view class="borrow-summary">
-          <view class="borrow-summary-row">
-            <text class="borrow-summary-label">物品</text>
-            <text class="borrow-summary-value">{{item.title}}</text>
+          <!-- 摘要信息 -->
+          <view class="borrow-summary">
+            <view class="borrow-summary-row">
+              <text class="borrow-summary-label">物品</text>
+              <text class="borrow-summary-value">{{item.title}}</text>
+            </view>
+            <view class="borrow-summary-row">
+              <text class="borrow-summary-label">{{item.isWanted ? '需求者' : '借出者'}}</text>
+              <text class="borrow-summary-value">{{item.userRoom}}</text>
+            </view>
+            <view class="borrow-summary-row">
+              <text class="borrow-summary-label">{{item.isWanted ? '需借时长' : '可借时长'}}</text>
+              <text class="borrow-summary-value">{{item.durationLabel || '≤ 7天'}}</text>
+            </view>
           </view>
-          <view class="borrow-summary-row">
-            <text class="borrow-summary-label">{{item.isWanted ? '需求者' : '借出者'}}</text>
-            <text class="borrow-summary-value">{{item.userRoom}}</text>
-          </view>
-          <view class="borrow-summary-row">
-            <text class="borrow-summary-label">{{item.isWanted ? '需借时长' : '可借时长'}}</text>
-            <text class="borrow-summary-value">{{item.durationLabel || '≤ 7天'}}</text>
-          </view>
-        </view>
 
-        <!-- 说明（必填） -->
-        <view class="input-group" style="margin-top:24rpx;">
-          <view class="input-label">{{item.isWanted ? '借出说明' : '借用说明'}} <text class="required">*</text></view>
-          <textarea class="textarea" placeholder-style="font-size:13px;color:rgba(128,128,128,0.7);" placeholder="{{item.isWanted ? '请描述您可借出的物品情况，让需求者了解您的物品' : '请描述您需要借用此物品的原因和用途，让出借人更好地了解您的需求'}}" value="{{borrowForm.description}}" bindinput="onBorrowDescInput" maxlength="500" />
-        </view>
-
-        <!-- 期望时长（必填） -->
-        <view class="input-group" style="margin-top:24rpx;">
-          <view class="input-label">{{item.isWanted ? '可借出时长' : '期望借用时长'}} <text class="required">*</text></view>
-          <view class="segment">
-            <view class="segment-item {{borrowForm.durationUnit === 'day' ? 'active' : ''}}" bindtap="onBorrowUnitTap" data-value="day">按天</view>
-            <view class="segment-item {{borrowForm.durationUnit === 'hour' ? 'active' : ''}}" bindtap="onBorrowUnitTap" data-value="hour">按小时</view>
+          <!-- 说明（必填） -->
+          <view class="input-group" style="margin-top:24rpx;">
+            <view class="input-label">{{item.isWanted ? '借出说明' : '借用说明'}} <text class="required">*</text></view>
+            <textarea class="textarea" placeholder-style="font-size:13px;color:rgba(128,128,128,0.7);" placeholder="{{item.isWanted ? '请描述您可借出的物品情况，让需求者了解您的物品' : '请描述您需要借用此物品的原因和用途，让出借人更好地了解您的需求'}}" value="{{borrowForm.description}}" bindinput="onBorrowDescInput" maxlength="500" />
           </view>
-          <picker class="select-wrap" mode="selector" range="{{borrowForm.durationOptions}}" value="{{borrowForm.durationIndex}}" bindchange="onBorrowDurationChange">
-            <view class="select">{{borrowForm.durationOptions[borrowForm.durationIndex]}}</view>
-          </picker>
-        </view>
 
-        <!-- 赔偿提示 -->
-        <view class="callout callout-red" style="margin-top:24rpx;" wx:if="{{!item.isWanted}}">
-          <text>⚠️ 丢失/完全损坏需赔偿至少原价的 80%。借出前请双方拍照留证。</text>
-        </view>
-        <view class="callout callout-red" style="margin-top:24rpx;" wx:if="{{item.isWanted}}">
-          <text>⚠️ 借出前请与需求者确认物品状况并拍照留证，避免归还时产生纠纷。</text>
-        </view>
-      </scroll-view>
+          <!-- 期望时长（必填） -->
+          <view class="input-group" style="margin-top:24rpx;">
+            <view class="input-label">{{item.isWanted ? '可借出时长' : '期望借用时长'}} <text class="required">*</text></view>
+            <view class="segment">
+              <view class="segment-item {{borrowForm.durationUnit === 'day' ? 'active' : ''}}" bindtap="onBorrowUnitTap" data-value="day">按天</view>
+              <view class="segment-item {{borrowForm.durationUnit === 'hour' ? 'active' : ''}}" bindtap="onBorrowUnitTap" data-value="hour">按小时</view>
+            </view>
+            <picker class="select-wrap" mode="selector" range="{{borrowForm.durationOptions}}" value="{{borrowForm.durationIndex}}" bindchange="onBorrowDurationChange">
+              <view class="select">{{borrowForm.durationOptions[borrowForm.durationIndex]}}</view>
+            </picker>
+          </view>
+
+          <!-- 赔偿提示 -->
+          <view class="callout callout-red" style="margin-top:24rpx;" wx:if="{{!item.isWanted}}">
+            <text>⚠️ 丢失/完全损坏需赔偿至少原价的 80%。借出前请双方拍照留证。</text>
+          </view>
+          <view class="callout callout-red" style="margin-top:24rpx;" wx:if="{{item.isWanted}}">
+            <text>⚠️ 借出前请与需求者确认物品状况并拍照留证，避免归还时产生纠纷。</text>
+          </view>
+        </scroll-view>
       <view class="borrow-sheet-footer">
         <button class="action-btn action-btn-secondary" bindtap="onCloseSheet">取消</button>
         <button class="action-btn action-btn-primary" bindtap="onSubmitBorrow">确认申请</button>

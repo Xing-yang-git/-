@@ -2,69 +2,172 @@ const api = require('../../utils/api');
 
 Page({
   data: {
-    agreed: false
+    agreed: false,
+    phone: '',
+    password: '',
+    showPassword: false,
+    loading: false,
+    tenants: [],
+    tenantNames: [],
+    selectedTenantIndex: -1,
+    selectedTenantId: ''
   },
 
   onLoad() {
-    // Check if already logged in
+    // 显示 forceRelogin / WS 挤下线时写入的提示消息
+    const loginMessage = wx.getStorageSync('loginMessage');
+    if (loginMessage) {
+      wx.removeStorageSync('loginMessage');
+      wx.showToast({ title: loginMessage, icon: 'none', duration: 3000 });
+    }
+
     const token = wx.getStorageSync('token');
     if (token) {
-      wx.switchTab({ url: '/pages/home/home' });
+      const userInfo = wx.getStorageSync('userInfo') || {};
+      if (userInfo.authStatus) {
+        this.routeByStatus(userInfo.authStatus);
+        // pending / rejected / banned 不跳转、停留在本页，需要加载小区列表。
+        // approved / registering 会 redirectTo / switchTab 离开，loadTenants 多跑一次无害。
+        this.loadTenants();
+      } else {
+        // 老会话无 authStatus：拉一次真实状态；401 时 forceRelogin 已清 token 并停留登录页
+        api.get('/api/auth/status')
+          .then((d) => {
+            this.routeByStatus(d.authStatus || 'approved');
+            this.loadTenants();
+          })
+          .catch(() => { this.loadTenants(); });
+      }
       return;
     }
+    this.loadTenants();
+  },
+
+  onHide() {
+    // 离开登录页（navigateTo 去注册页等）时清空密码，避免残留
+    this.setData({ password: '', showPassword: false });
+  },
+
+  onUnload() {
+    // 页面销毁（redirectTo/switchTab 离开）时清空密码，避免残留
+    this.setData({ password: '', showPassword: false });
+  },
+
+  loadTenants() {
+    api.get('/api/common/tenants')
+      .then((data) => {
+        const list = data.list || data;
+        this.setData({
+          tenants: list,
+          tenantNames: list.map(t => t.name)
+        });
+      })
+      .catch(() => {
+        // 静默失败
+      });
+  },
+
+  onTenantChange(e) {
+    const idx = parseInt(e.detail.value);
+    const tenant = this.data.tenants[idx];
+    this.setData({
+      selectedTenantIndex: idx,
+      selectedTenantId: tenant ? tenant.id : ''
+    });
   },
 
   onAgreeChange(e) {
     this.setData({ agreed: e.detail.value.length > 0 });
   },
 
-  onLoginTap() {
+  onPhoneInput(e) {
+    this.setData({ phone: e.detail.value });
+  },
+
+  onPasswordInput(e) {
+    this.setData({ password: e.detail.value });
+  },
+
+  onTogglePassword() {
+    this.setData({ showPassword: !this.data.showPassword });
+  },
+
+  onLogin() {
     if (!this.data.agreed) {
       wx.showToast({ title: '请先同意用户协议', icon: 'none' });
       return;
     }
 
-    wx.showLoading({ title: '登录中...' });
+    if (!this.data.selectedTenantId) {
+      wx.showToast({ title: '请选择小区', icon: 'none' });
+      return;
+    }
 
-    wx.login({
-      success: (res) => {
-        if (res.code) {
-          api.post('/api/auth/wx-login', { code: res.code })
-            .then((data) => {
-              wx.hideLoading();
-              if (data.token) {
-                wx.setStorageSync('token', data.token);
-                // Store user info for other pages (e.g. home page community name)
-                if (data.user) {
-                  wx.setStorageSync('userInfo', data.user);
-                  const app = getApp();
-                  app.globalData.userInfo = data.user;
-                }
-                const userStatus = data.user ? data.user.authStatus : (data.authStatus || data.status);
-                if (data.needRegister || userStatus === 'registering') {
-                  wx.redirectTo({ url: '/pages/register/register' });
-                } else if (userStatus === 'pending') {
-                  wx.redirectTo({ url: '/pages/review-status/review-status' });
-                } else {
-                  wx.switchTab({ url: '/pages/home/home' });
-                }
-              } else {
-                wx.showToast({ title: '登录失败，请重试', icon: 'none' });
-              }
-            })
-            .catch((err) => {
-              wx.hideLoading();
-              wx.showToast({ title: err.message || '登录失败', icon: 'none' });
-            });
-        } else {
-          wx.hideLoading();
-          wx.showToast({ title: '获取微信登录凭证失败', icon: 'none' });
-        }
-      },
-      fail: () => {
-        wx.hideLoading();
-        wx.showToast({ title: '微信登录失败', icon: 'none' });
+    const phone = this.data.phone.trim();
+    if (!phone) {
+      wx.showToast({ title: '请输入手机号', icon: 'none' });
+      return;
+    }
+    if (!/^1[3-9]\d{9}$/.test(phone)) {
+      wx.showToast({ title: '请输入正确的手机号', icon: 'none' });
+      return;
+    }
+
+    const password = this.data.password;
+    if (!password) {
+      wx.showToast({ title: '请输入密码', icon: 'none' });
+      return;
+    }
+
+    this.setData({ loading: true });
+
+    api.post('/api/auth/phone-login', { phone, password, tenantId: this.data.selectedTenantId })
+      .then((data) => {
+        this.setData({ loading: false });
+        this.handleLoginSuccess(data);
+      })
+      .catch((err) => {
+        this.setData({ loading: false });
+        wx.showToast({ title: err.message || '登录失败', icon: 'none' });
+      });
+  },
+
+  onGoRegister() {
+    wx.navigateTo({ url: '/pages/register/register' });
+  },
+
+  /**
+   * 按审核状态跳转。
+   * 注意：pending / rejected / banned 不在此处跳转审核页——
+   * 用户可能是通过审核页左上角返回键回到登录页想换号登录，
+   * 跳回去会造成死循环。未审核用户的拦截由业务页 ensureAccess() 负责。
+   */
+  routeByStatus(status) {
+    if (status === 'registering') {
+      wx.redirectTo({ url: '/pages/register/register' });
+    } else if (status === 'approved') {
+      wx.switchTab({ url: '/pages/home/home' });
+    }
+    // pending / rejected / banned → 留在登录页，用户可以换号登录
+  },
+
+  handleLoginSuccess(data) {
+    if (data.token) {
+      wx.setStorageSync('token', data.token);
+      if (data.user) {
+        wx.setStorageSync('userInfo', data.user);
+        const app = getApp();
+        app.globalData.userInfo = data.user;
       }
-    });
+
+      const userStatus = data.user ? data.user.authStatus : (data.authStatus || data.status);
+      if (data.needRegister) {
+        wx.redirectTo({ url: '/pages/register/register' });
+      } else {
+        this.routeByStatus(userStatus || 'approved');   // 修复：rejected 此前落入 else 直接进首页
+      }
+    } else {
+      wx.showToast({ title: '登录失败，请重试', icon: 'none' });
+    }
   }
 });

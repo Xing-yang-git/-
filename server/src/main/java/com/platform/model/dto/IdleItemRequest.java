@@ -3,11 +3,10 @@ package com.platform.model.dto;
 import lombok.Data;
 
 import java.math.BigDecimal;
-import java.util.UUID;
 
 @Data
 public class IdleItemRequest {
-    private UUID userId;
+    private Long userId;
     private String postType;
     private String title;
     private String description;

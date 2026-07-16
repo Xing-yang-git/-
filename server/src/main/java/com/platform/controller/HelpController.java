@@ -8,7 +8,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/help")
@@ -22,79 +21,84 @@ public class HelpController {
 
     @PostMapping
     public Result<?> publish(@RequestBody HelpRequestDTO req, Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
+        Long userId = Long.valueOf(auth.getName());
         return Result.ok(helpService.publish(userId, req));
     }
 
     @GetMapping("/home")
     public Result<?> homeList(@RequestParam(defaultValue = "0") int page,
-                               @RequestParam(defaultValue = "10") int size) {
-        return Result.ok(helpService.getHomeList(page, size));
+                               @RequestParam(defaultValue = "10") int size,
+                               Authentication auth) {
+        Long userId = auth != null ? Long.valueOf(auth.getName()) : null;
+        return Result.ok(helpService.getHomeList(userId, page, size));
     }
 
     @GetMapping("/{id}")
-    public Result<?> detail(@PathVariable UUID id) {
+    public Result<?> detail(@PathVariable Long id) {
         return Result.ok(helpService.getDetail(id));
     }
 
     @GetMapping("/search")
     public Result<?> search(@RequestParam String keyword,
                              @RequestParam(defaultValue = "0") int page,
-                             @RequestParam(defaultValue = "10") int size) {
-        return Result.ok(helpService.search(keyword, page, size));
+                             @RequestParam(defaultValue = "10") int size,
+                             Authentication auth) {
+        // 传入当前用户以便 service 层按其所属小区做租户隔离
+        Long userId = auth != null ? Long.valueOf(auth.getName()) : null;
+        return Result.ok(helpService.search(userId, keyword, page, size));
     }
 
     @GetMapping("/my")
     public Result<?> myPosts(Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
+        Long userId = Long.valueOf(auth.getName());
         return Result.ok(helpService.getMyPosts(userId));
     }
 
     @PutMapping("/{id}/delist")
-    public Result<?> delist(@PathVariable UUID id, Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
+    public Result<?> delist(@PathVariable Long id, Authentication auth) {
+        Long userId = Long.valueOf(auth.getName());
         helpService.delist(userId, id);
         return Result.ok();
     }
 
     @PostMapping("/{id}/apply")
-    public Result<?> apply(@PathVariable UUID id, @RequestBody Map<String, String> body,
+    public Result<?> apply(@PathVariable Long id, @RequestBody Map<String, String> body,
                            Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
+        Long userId = Long.valueOf(auth.getName());
         helpService.apply(userId, id, body.getOrDefault("note", ""));
         return Result.ok();
     }
 
     @PutMapping("/applications/{appId}/approve")
-    public Result<?> approveApplication(@PathVariable UUID appId, @RequestBody ApproveRequest req,
+    public Result<?> approveApplication(@PathVariable Long appId, @RequestBody ApproveRequest req,
                                         Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
+        Long userId = Long.valueOf(auth.getName());
         helpService.approveReject(userId, appId, req);
         return Result.ok();
     }
 
     @GetMapping("/applications/my")
     public Result<?> myApplications(Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
+        Long userId = Long.valueOf(auth.getName());
         return Result.ok(helpService.getMyApplications(userId));
     }
 
     @GetMapping("/applications/pending")
     public Result<?> pendingApprovals(Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
+        Long userId = Long.valueOf(auth.getName());
         return Result.ok(helpService.getPendingApprovals(userId));
     }
 
     @PutMapping("/{id}")
-    public Result<?> update(@PathVariable UUID id, @RequestBody HelpRequestDTO req,
+    public Result<?> update(@PathVariable Long id, @RequestBody HelpRequestDTO req,
                             Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
+        Long userId = Long.valueOf(auth.getName());
         return Result.ok(helpService.update(userId, id, req));
     }
 
     @PutMapping("/applications/{appId}/complete")
-    public Result<?> completeHelp(@PathVariable UUID appId, Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
+    public Result<?> completeHelp(@PathVariable Long appId, Authentication auth) {
+        Long userId = Long.valueOf(auth.getName());
         return Result.ok(helpService.completeHelp(userId, appId));
     }
 }

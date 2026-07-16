@@ -5,7 +5,7 @@ import com.platform.service.ChatService;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.UUID;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/chat")
@@ -17,21 +17,18 @@ public class ChatController {
         this.chatService = chatService;
     }
 
-    @GetMapping("/sessions")
-    public Result<?> getSessions(Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
-        return Result.ok(chatService.getSessions(userId));
-    }
+    /**
+     * 发送聊天消息 — 服务端仅通过 WebSocket 转发，不做持久化。
+     */
+    @PostMapping("/relay")
+    public Result<?> relay(@RequestBody Map<String, Object> body, Authentication auth) {
+        Long fromUserId = Long.valueOf(auth.getName());
+        Long toUserId = Long.valueOf(body.get("toUserId").toString());
+        String content = (String) body.get("content");
+        String messageType = (String) body.getOrDefault("messageType", "text");
+        String sessionId = body.get("sessionId") != null ? body.get("sessionId").toString() : null;
 
-    @GetMapping("/sessions/{sessionId}/messages")
-    public Result<?> getMessages(@PathVariable UUID sessionId) {
-        return Result.ok(chatService.getMessages(sessionId));
-    }
-
-    @PutMapping("/sessions/{sessionId}/read")
-    public Result<?> markRead(@PathVariable UUID sessionId, Authentication auth) {
-        UUID userId = UUID.fromString(auth.getName());
-        chatService.markRead(sessionId, userId);
+        chatService.relayMessage(fromUserId, toUserId, content, messageType, sessionId);
         return Result.ok();
     }
 }

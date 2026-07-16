@@ -1,4 +1,10 @@
 const api = require('../../utils/api');
+const auth = require('../../utils/auth');
+
+const app = getApp();
+
+/** 本地存储 key 前缀 */
+const MSG_STORE_PREFIX = 'chat_msgs_';
 
 Page({
   data: {
@@ -10,31 +16,57 @@ Page({
     messages: [],
     inputText: '',
     scrollToView: '',
-    templates: ['还在吗？', '好的', '谢谢'],
     userId: '',
     socketOpen: false
   },
 
   onLoad(options) {
+    if (!auth.ensureAccess()) return;   // 登录/审核门禁：未通过则已跳转
     const sessionId = options.sessionId || '';
-    const otherName = decodeURIComponent(options.name || '用户');
+    const nameParam = decodeURIComponent(options.name || '用户');
     const roomInfo = decodeURIComponent(options.room || '');
     const aboutTitle = decodeURIComponent(options.about || '');
     const aboutId = options.aboutId || '';
-    const userId = wx.getStorageSync('userId') || '';
+    const aboutType = options.aboutType || '';
+    const otherUserId = options.otherUserId || '';
+    const userId = auth.getUserId();
 
-    this.setData({ sessionId, otherName, roomInfo, aboutTitle, aboutId, userId });
+    // 智能选择标题：如果传递的名字不像门牌地址（不含"栋/号/单元"），
+    // 则优先使用 room 参数
+    const hasAddress = /[栋号楼]/.test(nameParam);
+    const displayName = hasAddress ? nameParam : (roomInfo || nameParam);
 
-    if (sessionId) {
-      this.loadMessages();
+    // 设置原生导航栏标题
+    wx.setNavigationBarTitle({ title: displayName || '聊天' });
+
+    this.setData({ sessionId, otherName: displayName, roomInfo, aboutTitle, aboutId, aboutType, otherUserId, userId });
+
+    // 保存会话元数据（供 messages 页面构建列表；按用户命名空间隔离）
+    if (sessionId && userId) {
+      const metaKey = 'chat_meta_' + userId + '_' + sessionId;
+      wx.setStorageSync(metaKey, {
+        otherName: displayName,
+        room: roomInfo,
+        about: aboutTitle,
+        aboutId: aboutId,
+        aboutType: aboutType,
+        otherUserId: otherUserId
+      });
     }
-    this.connectWebSocket();
+
+    // 从本地加载历史消息
+    this.loadLocalMessages();
+
+    // 连接 WebSocket 接收实时消息
+    if (sessionId && userId) {
+      this.connectWebSocket();
+    }
   },
 
   onShow() {
-    if (this.data.sessionId) {
-      this.markRead();
-    }
+    if (!auth.ensureAccess()) return; // 登录/审核门禁：覆盖 tab 切换与后台切回
+    // 页面显示时重新加载本地消息（可能在其他页面有更新）
+    this.loadLocalMessages();
   },
 
   onUnload() {
@@ -43,33 +75,34 @@ Page({
     }
   },
 
-  async loadMessages() {
+  /**
+   * 从本地存储加载聊天记录（纯本地，不请求服务端）
+   */
+  loadLocalMessages() {
+    if (!this.data.sessionId || !this.data.userId) return;
+    const key = MSG_STORE_PREFIX + this.data.userId + '_' + this.data.sessionId;
     try {
-      const res = await api.get('/api/chat/sessions/' + this.data.sessionId + '/messages');
-      const msgs = (res.data && res.data.list) ? res.data.list : (res.data || []);
-      this.processMessages(msgs);
-      this.scrollToBottom();
+      const raw = wx.getStorageSync(key);
+      if (raw && Array.isArray(raw) && raw.length > 0) {
+        this.setData({ messages: raw });
+        this.scrollToBottom();
+      }
     } catch (e) {
-      console.error('Load messages failed:', e);
+      console.error('Load local messages failed:', e);
     }
   },
 
-  processMessages(list) {
-    const messages = list.map((msg, idx) => {
-      const prev = list[idx - 1];
-      const showTime = !prev || (msg.createTime - prev.createTime > 300000);
-      const date = new Date(msg.createTime);
-      const timeText = this.formatTime(date);
-      return {
-        id: msg.id || idx,
-        content: msg.content,
-        isMine: msg.senderId === this.data.userId,
-        avatarText: (msg.senderName || '?')[0],
-        showTime,
-        timeText: showTime ? timeText : ''
-      };
-    });
-    this.setData({ messages });
+  /**
+   * 保存消息到本地存储
+   */
+  saveLocalMessages(messages) {
+    if (!this.data.sessionId || !this.data.userId) return;
+    const key = MSG_STORE_PREFIX + this.data.userId + '_' + this.data.sessionId;
+    try {
+      wx.setStorageSync(key, messages);
+    } catch (e) {
+      console.error('Save local messages failed:', e);
+    }
   },
 
   formatTime(date) {
@@ -90,26 +123,40 @@ Page({
   },
 
   connectWebSocket() {
-    const wsUrl = 'ws://localhost:8080/ws/chat?userId=' + this.data.userId;
+    const baseUrl = (app && app.globalData) ? app.globalData.baseUrl : '';
+    // 从 HTTP baseUrl 推导 WS 地址：http://xxx:8080 → ws://xxx:8080
+    const wsBase = baseUrl.replace(/^http/, 'ws');
+    // 通过 token 建立连接，服务端从 token 解析用户身份（不再信任客户端传的 userId）
+    const wsUrl = wsBase + '/ws/chat?token=' + encodeURIComponent(auth.getToken());
+
     this.socketTask = wx.connectSocket({ url: wsUrl });
 
     this.socketTask.onOpen(() => {
       this.setData({ socketOpen: true });
+      console.log('Chat WebSocket connected:', wsUrl);
     });
 
     this.socketTask.onMessage(res => {
       try {
         const msg = JSON.parse(res.data);
+        // 只接收发给当前会话的消息（来自对方的实时消息）
         if (msg.sessionId === this.data.sessionId) {
-          const messages = [...this.data.messages, {
-            id: msg.id || Date.now(),
+          const now = Date.now();
+          const messages = this.data.messages;
+          const newMsg = {
+            id: msg.id || ('ws_' + now),
             content: msg.content,
-            isMine: msg.senderId === this.data.userId,
-            avatarText: (msg.senderName || '?')[0],
-            showTime: true,
+            isMine: String(msg.fromUserId || msg.senderId) === String(this.data.userId),
+            type: msg.messageType === 'system' ? 'system' : 'text',
+            systemIcon: msg.messageType === 'system' ? 'ⓘ' : '',
+            timestamp: now,
+            showTime: messages.length === 0 || (now - (messages[messages.length - 1].timestamp || 0) > 300000),
             timeText: this.formatTime(new Date())
-          }];
-          this.setData({ messages });
+          };
+
+          const updated = [...messages, newMsg];
+          this.setData({ messages: updated });
+          this.saveLocalMessages(updated);
           this.scrollToBottom();
         }
       } catch (e) {
@@ -122,17 +169,13 @@ Page({
       this.setData({ socketOpen: false });
     });
 
-    this.socketTask.onClose(() => {
+    this.socketTask.onClose(res => {
+      // code 4001：被新登录挤下线（服务端主动关闭），强制重新登录
+      if (res && res.code === 4001) {
+        api.forceRelogin();
+      }
       this.setData({ socketOpen: false });
     });
-  },
-
-  async markRead() {
-    try {
-      await api.put('/api/chat/sessions/' + this.data.sessionId + '/read');
-    } catch (e) {
-      console.error('Mark read failed:', e);
-    }
   },
 
   onInputChange(e) {
@@ -143,46 +186,46 @@ Page({
     const text = this.data.inputText.trim();
     if (!text) return;
 
-    const msg = {
-      id: Date.now(),
+    const now = Date.now();
+    const messages = this.data.messages;
+
+    // 本地消息对象
+    const newMsg = {
+      id: 'local_' + now,
       content: text,
       isMine: true,
-      avatarText: '我',
-      showTime: true,
+      type: 'text',
+      timestamp: now,
+      showTime: messages.length === 0 || (now - (messages[messages.length - 1].timestamp || 0) > 300000),
       timeText: this.formatTime(new Date())
     };
 
-    const messages = [...this.data.messages, msg];
-    this.setData({ messages, inputText: '' });
+    const updated = [...messages, newMsg];
+    this.setData({ messages: updated, inputText: '' });
+    this.saveLocalMessages(updated);
     this.scrollToBottom();
 
-    // Send via WebSocket
-    if (this.data.socketOpen && this.socketTask) {
-      this.socketTask.send({
-        data: JSON.stringify({
-          sessionId: this.data.sessionId,
-          content: text,
-          type: 'text'
-        })
-      });
-    }
-
-    // Also persist via REST
-    api.post('/api/chat/sessions/' + this.data.sessionId + '/messages', {
+    // 通过 relay 发送消息（服务端仅 WebSocket 转发，不存盘）
+    api.post('/api/chat/relay', {
+      toUserId: this.data.otherUserId,
+      sessionId: this.data.sessionId,
       content: text,
-      type: 'text'
+      messageType: 'text'
     }).catch(e => {
       console.error('Send message failed:', e);
     });
   },
 
-  onTemplateTap(e) {
-    this.setData({ inputText: e.currentTarget.dataset.text });
+  onNavBack() {
+    wx.navigateBack({
+      fail() { wx.switchTab({ url: '/pages/messages/messages' }); }
+    });
   },
 
   onAboutTap() {
-    if (this.data.aboutId) {
-      wx.navigateTo({ url: '/pages/detail/detail?id=' + this.data.aboutId });
+    if (this.data.aboutId && this.data.aboutType) {
+      const page = this.data.aboutType === 'HELP' ? 'help-detail' : 'idle-detail';
+      wx.navigateTo({ url: '/pages/' + page + '/' + page + '?id=' + this.data.aboutId });
     }
   }
 });

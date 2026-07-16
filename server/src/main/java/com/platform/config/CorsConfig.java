@@ -13,8 +13,8 @@ import java.util.List;
 public class CorsConfig {
 
     /**
-     * CorsConfigurationSource bean — picked up by Spring Security's .cors() DSL.
-     * This is the critical one for non-preflight cross-origin requests.
+     * CorsConfigurationSource Bean — 由 Spring Security 的 .cors() DSL 自动拾取。
+     * 对非 preflight 的跨域请求来说，这是关键配置。
      */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
@@ -31,8 +31,8 @@ public class CorsConfig {
     }
 
     /**
-     * Servlet-level CorsFilter — handles OPTIONS preflight before Spring Security.
-     * Redundant once corsConfigurationSource() is in place, but kept as a safety net.
+     * Servlet 层的 CorsFilter — 在 Spring Security 之前处理 OPTIONS preflight。
+     * 有了 corsConfigurationSource() 后本属冗余，保留作为兜底。
      */
     @Bean
     public CorsFilter corsFilter() {

@@ -10,13 +10,39 @@
     </view>
 
     <view class="login-footer">
-      <button class="wx-btn" bindtap="onLoginTap">登录</button>
+      <!-- 小区选择 -->
+      <picker class="tenant-picker" mode="selector" range="{{tenantNames}}" value="{{selectedTenantIndex}}" bindchange="onTenantChange">
+        <view class="tenant-picker-inner {{selectedTenantId ? '' : 'placeholder'}}">
+          {{selectedTenantId ? tenantNames[selectedTenantIndex] : '请选择小区'}}
+        </view>
+      </picker>
+      <!-- 手机号 -->
+      <view class="phone-input-group">
+        <input class="phone-input" type="number" maxlength="11" placeholder="请输入手机号"
+               value="{{phone}}" bindinput="onPhoneInput" />
+      </view>
+      <!-- 密码 -->
+      <view class="password-input-group">
+        <input class="password-input" type="text" password="{{!showPassword}}" placeholder="请输入密码"
+               value="{{password}}" bindinput="onPasswordInput" always-embed="{{true}}" />
+        <view class="toggle-password" catchtap="onTogglePassword">
+          <text>{{showPassword ? '◉' : '◎'}}</text>
+        </view>
+      </view>
+
+      <!-- 登录按钮 -->
+      <view class="login-btn">
+        <button class="wx-btn" bindtap="onLogin" loading="{{loading}}">登录</button>
+      </view>
+
+      <!-- 注册入口 -->
+      <view class="switch-login" bindtap="onGoRegister">注册</view>
 
       <view class="privacy-row">
         <checkbox-group bindchange="onAgreeChange">
-          <checkbox value="agree" checked="{{agreed}}" color="#0071e3"/>
+          <checkbox value="agree" checked="{{agreed}}" color="#0071e3" style="transform: scale(0.7)"/>
         </checkbox-group>
-        <text class="privacy-text">登录即表示同意<text class="privacy-link">《用户服务协议》</text>和<text class="privacy-link">《隐私政策》</text></text>
+        <text class="privacy-text">同意<text class="privacy-link">《用户服务协议》</text>和<text class="privacy-link">《隐私政策》</text></text>
       </view>
     </view>
   </view>

@@ -11,13 +11,37 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
-public interface UserRepository extends JpaRepository<User, UUID> {
+public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByOpenid(String openid);
 
     Optional<User> findByUsername(String username);
+
+    Optional<User> findByPhone(String phone);
+
+    Optional<User> findByPhoneAndTenantId(String phone, Long tenantId);
+
+    Optional<User> findByPhoneAndTenantIdAndRoomId(String phone, Long tenantId, Long roomId);
+
+    Optional<User> findByRoomId(Long roomId);
+
+    /** 鉴权探针：一次查询同时取 token 版本与审核状态 */
+    interface AuthProbe {
+        Integer getTokenVersion();
+        String getAuthStatus();
+    }
+
+    @Query("SELECT u.tokenVersion AS tokenVersion, u.authStatus AS authStatus FROM User u WHERE u.id = ?1")
+    AuthProbe findAuthProbeById(Long id);
+
+    /** 显式 JOIN FETCH — 确保完整加载房间层级关系，用于显示名称格式化 */
+    @Query("SELECT u FROM User u " +
+           "LEFT JOIN FETCH u.room r " +
+           "LEFT JOIN FETCH r.unit un " +
+           "LEFT JOIN FETCH un.building b " +
+           "WHERE u.id = :id")
+    Optional<User> findByIdWithRoom(@Param("id") Long id);
 
     List<User> findByAuthStatus(String authStatus);
 
@@ -27,11 +51,17 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @EntityGraph(attributePaths = {"room", "room.unit", "room.unit.building"})
     Page<User> findByAuthStatusNot(String authStatus, Pageable pageable);
 
+    /** 仅已审核通过的住户 — 排除 admin/super_admin 账号 */
+    @EntityGraph(attributePaths = {"room", "room.unit", "room.unit.building"})
+    Page<User> findByAuthStatusAndUserTypeNotIn(String authStatus, List<String> userTypes, Pageable pageable);
+
     long countByAuthStatus(String authStatus);
 
     long countByAuthStatusNot(String authStatus);
 
-    List<User> findByRoomIdIn(List<UUID> roomIds);
+    long countByAuthStatusAndUserTypeNotIn(String authStatus, List<String> userTypes);
+
+    List<User> findByRoomIdIn(List<Long> roomIds);
 
     @Query("SELECT u FROM User u JOIN u.room r JOIN r.unit un JOIN un.building b " +
            "WHERE u.authStatus = 'approved' " +
@@ -46,4 +76,6 @@ public interface UserRepository extends JpaRepository<User, UUID> {
                              @Param("userType") String userType,
                              @Param("keyword") String keyword,
                              Pageable pageable);
+
+    List<User> findByTenantIdAndUserTypeIn(Long tenantId, List<String> userTypes);
 }

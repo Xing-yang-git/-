@@ -6,15 +6,14 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class HelpResponseDTO {
-    private UUID id;
-    private UUID userId;
+    private Long id;
+    private Long userId;
     private String userName;
     private String userRoom;
     private String title;
@@ -30,9 +29,9 @@ public class HelpResponseDTO {
     private String delistReason;
     private Boolean isProxy;
     private int helperCount;
-    private UUID applicationId;
+    private Long applicationId;
     private String applicationStatus;
-    private UUID helperId;
+    private Long helperId;
     private String helperName;
     private String applicationNote;
     private LocalDateTime createdAt;

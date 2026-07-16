@@ -1,6 +1,6 @@
 /**
- * WebSocket Manager
- * Handles connection, reconnection, heartbeats, and message dispatching.
+ * WebSocket 管理器
+ * 处理连接、重连、心跳和消息分发。
  */
 
 const HEARTBEAT_INTERVAL = 30000;

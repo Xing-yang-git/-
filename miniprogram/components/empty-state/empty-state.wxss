@@ -1,4 +1,4 @@
-/* empty-state component — extends global .empty-state from app.wxss */
+/* empty-state 组件 — 继承 app.wxss 全局 .empty-state */
 .empty-icon {
   background: var(--fill-tertiary);
 }

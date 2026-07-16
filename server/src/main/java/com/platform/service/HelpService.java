@@ -26,7 +26,6 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -58,9 +57,13 @@ public class HelpService {
 
     private static final DateTimeFormatter DT_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
-    public HelpResponseDTO publish(UUID userId, HelpRequestDTO req) {
+    public HelpResponseDTO publish(Long userId, HelpRequestDTO req) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("用户不存在"));
+
         HelpRequest helpRequest = new HelpRequest();
         helpRequest.setUserId(userId);
+        helpRequest.setTenantId(user.getTenantId());
         helpRequest.setTitle(req.getTitle());
         helpRequest.setDescription(req.getDescription());
         helpRequest.setCategory(req.getCategory());
@@ -81,16 +84,21 @@ public class HelpService {
         }
         helpRequest.setImages(req.getImages());
         helpRequest.setStatus("online");
+        helpRequest.setIsProxy(false);
         helpRequest.setCreatedAt(LocalDateTime.now());
         helpRequest = helpRequestRepository.save(helpRequest);
 
         return toDTO(helpRequest);
     }
 
-    public PageDTO<HelpResponseDTO> getHomeList(int page, int size) {
+    public PageDTO<HelpResponseDTO> getHomeList(Long userId, int page, int size) {
+        User user = userRepository.findById(userId).orElse(null);
+        Long tenantId = user != null ? user.getTenantId() : null;
         PageRequest pageRequest = PageRequest.of(page, size,
                 Sort.by(Sort.Direction.DESC, "isUrgent", "createdAt"));
-        Page<HelpRequest> helpPage = helpRequestRepository.findByStatus("online", pageRequest);
+        Page<HelpRequest> helpPage = tenantId != null
+                ? helpRequestRepository.findByStatusAndTenantId("online", tenantId, pageRequest)
+                : helpRequestRepository.findByStatus("online", pageRequest);
 
         List<HelpResponseDTO> dtos = helpPage.getContent().stream()
                 .map(this::toDTO)
@@ -105,17 +113,21 @@ public class HelpService {
                 .build();
     }
 
-    public HelpResponseDTO getDetail(UUID helpId) {
+    public HelpResponseDTO getDetail(Long helpId) {
         HelpRequest helpRequest = helpRequestRepository.findById(helpId)
                 .orElseThrow(() -> new RuntimeException("求助信息不存在"));
         return enrichWithUserStats(toDTO(helpRequest));
     }
 
-    public PageDTO<HelpResponseDTO> search(String keyword, int page, int size) {
+    public PageDTO<HelpResponseDTO> search(Long userId, String keyword, int page, int size) {
+        // 与 getHomeList 保持一致的租户隔离——不同小区的数据不得互相搜到
+        User user = userId != null ? userRepository.findById(userId).orElse(null) : null;
+        Long tenantId = user != null ? user.getTenantId() : null;
         PageRequest pageRequest = PageRequest.of(page, size,
                 Sort.by(Sort.Direction.DESC, "isUrgent", "createdAt"));
-        Page<HelpRequest> helpPage = helpRequestRepository
-                .findByStatusAndTitleContainingOrDescriptionContaining(
+        Page<HelpRequest> helpPage = tenantId != null
+                ? helpRequestRepository.searchByTenant("online", tenantId, keyword, keyword, pageRequest)
+                : helpRequestRepository.findByStatusAndTitleContainingOrDescriptionContaining(
                         "online", keyword, keyword, pageRequest);
 
         List<HelpResponseDTO> dtos = helpPage.getContent().stream()
@@ -131,12 +143,12 @@ public class HelpService {
                 .build();
     }
 
-    public List<HelpResponseDTO> getMyPosts(UUID userId) {
+    public List<HelpResponseDTO> getMyPosts(Long userId) {
         List<HelpRequest> requests = helpRequestRepository.findByUserId(userId);
         return requests.stream().map(this::toDTO).collect(Collectors.toList());
     }
 
-    public HelpResponseDTO delist(UUID userId, UUID helpId) {
+    public HelpResponseDTO delist(Long userId, Long helpId) {
         HelpRequest helpRequest = helpRequestRepository.findById(helpId)
                 .orElseThrow(() -> new RuntimeException("求助信息不存在"));
 
@@ -149,7 +161,7 @@ public class HelpService {
         return toDTO(helpRequest);
     }
 
-    public HelpResponseDTO apply(UUID helperId, UUID helpId, String note) {
+    public HelpResponseDTO apply(Long helperId, Long helpId, String note) {
         HelpRequest helpRequest = helpRequestRepository.findById(helpId)
                 .orElseThrow(() -> new RuntimeException("求助信息不存在"));
 
@@ -159,6 +171,12 @@ public class HelpService {
 
         if (helpRequest.getUserId().equals(helperId)) {
             throw new RuntimeException("不能申请自己的求助");
+        }
+
+        // 防重复：同一用户对同一求助已有 pending/approved 申请时拒绝
+        if (helpApplicationRepository.existsByHelpIdAndHelperIdAndStatusIn(
+                helpId, helperId, List.of("pending", "approved"))) {
+            throw new RuntimeException("您已申请过该求助，请勿重复提交");
         }
 
         HelpApplication application = new HelpApplication();
@@ -176,7 +194,7 @@ public class HelpService {
         return toDTO(helpRequest);
     }
 
-    public HelpResponseDTO approveReject(UUID ownerId, UUID appId, ApproveRequest req) {
+    public HelpResponseDTO approveReject(Long ownerId, Long appId, ApproveRequest req) {
         HelpApplication application = helpApplicationRepository.findById(appId)
                 .orElseThrow(() -> new RuntimeException("帮助申请不存在"));
 
@@ -194,7 +212,7 @@ public class HelpService {
         application.setStatus(req.getApproved() ? "approved" : "rejected");
         helpApplicationRepository.save(application);
 
-        // Sync HelpRequest status
+        // 同步 HelpRequest 状态
         if (req.getApproved()) {
             helpRequest.setStatus("helping");
             helpRequestRepository.save(helpRequest);
@@ -211,21 +229,28 @@ public class HelpService {
     }
 
     /**
-     * Complete a help application — called by the help requester.
+     * 完成帮助申请 — 由求助方调用。
      */
-    public HelpResponseDTO completeHelp(UUID ownerId, UUID appId) {
+    /**
+     * 确认结束互助 —— 求助方(helpReq) / 帮助方(helpPro) 任意一方均可发起。
+     * 二者是同一条 HelpApplication 的两个视角，状态共享，
+     * 任意一方确认后双方都会从「进行中」进入「已完成」。
+     */
+    public HelpResponseDTO completeHelp(Long actorId, Long appId) {
         HelpApplication application = helpApplicationRepository.findById(appId)
                 .orElseThrow(() -> new RuntimeException("帮助申请不存在"));
 
         HelpRequest helpRequest = helpRequestRepository.findById(application.getHelpId())
                 .orElseThrow(() -> new RuntimeException("求助信息不存在"));
 
-        if (!helpRequest.getUserId().equals(ownerId)) {
+        boolean isRequester = helpRequest.getUserId().equals(actorId);
+        boolean isHelper = application.getHelperId().equals(actorId);
+        if (!isRequester && !isHelper) {
             throw new RuntimeException("无权操作该申请");
         }
 
         if (!"approved".equals(application.getStatus())) {
-            throw new RuntimeException("只能完成已批准的帮助申请");
+            throw new RuntimeException("只能完成进行中的帮助申请");
         }
 
         application.setStatus("completed");
@@ -235,18 +260,22 @@ public class HelpService {
         helpRequest.setStatus("completed");
         helpRequestRepository.save(helpRequest);
 
-        createNotification(application.getHelperId(), "help_result",
-                "帮助已完成", "您对「" + helpRequest.getTitle() + "」的帮助已确认完成",
-                application.getId());
+        // 通知对方（发起人是求助方则通知帮助方，反之亦然）
+        Long peerId = isRequester ? application.getHelperId() : helpRequest.getUserId();
+        if (peerId != null) {
+            createNotification(peerId, "help_result",
+                    "帮助已完成", "「" + helpRequest.getTitle() + "」的互助已确认完成",
+                    application.getId());
+        }
 
         return toDTO(helpRequest);
     }
 
     /**
-     * Update a help request (edit save or relist).
-     * If current status is completed/offline, auto-relists to online.
+     * 更新求助信息（编辑保存或重新上架）。
+     * 若当前状态为 completed/offline，自动重新上架为 online。
      */
-    public HelpResponseDTO update(UUID userId, UUID helpId, HelpRequestDTO req) {
+    public HelpResponseDTO update(Long userId, Long helpId, HelpRequestDTO req) {
         HelpRequest helpRequest = helpRequestRepository.findById(helpId)
                 .orElseThrow(() -> new RuntimeException("求助信息不存在"));
 
@@ -258,8 +287,6 @@ public class HelpService {
         helpRequest.setDescription(req.getDescription() != null ? req.getDescription() : helpRequest.getDescription());
         helpRequest.setCategory(req.getCategory() != null ? req.getCategory() : helpRequest.getCategory());
         helpRequest.setIsUrgent(req.getIsUrgent() != null ? req.getIsUrgent() : helpRequest.getIsUrgent());
-        helpRequest.setLocation(req.getLocation() != null ? req.getLocation() : helpRequest.getLocation());
-        helpRequest.setRewardType(req.getRewardType() != null ? req.getRewardType() : helpRequest.getRewardType());
 
         if (req.getTimeStart() != null && !req.getTimeStart().isEmpty()) {
             try {
@@ -273,7 +300,7 @@ public class HelpService {
         }
         helpRequest.setImages(req.getImages());
 
-        // Auto-relist: completed/offline → online
+        // 自动重新上架：completed/offline → online
         if ("completed".equals(helpRequest.getStatus()) || "offline".equals(helpRequest.getStatus())) {
             helpRequest.setStatus("online");
         }
@@ -282,7 +309,7 @@ public class HelpService {
         return toDTO(helpRequest);
     }
 
-    public List<HelpResponseDTO> getMyApplications(UUID userId) {
+    public List<HelpResponseDTO> getMyApplications(Long userId) {
         List<HelpApplication> applications = helpApplicationRepository.findByHelperId(userId);
         return applications.stream().map(app -> {
             HelpRequest helpRequest = helpRequestRepository.findById(app.getHelpId())
@@ -294,7 +321,7 @@ public class HelpService {
         }).collect(Collectors.toList());
     }
 
-    public List<HelpResponseDTO> getPendingApprovals(UUID userId) {
+    public List<HelpResponseDTO> getPendingApprovals(Long userId) {
         List<HelpRequest> myRequests = helpRequestRepository.findByUserId(userId);
         List<HelpResponseDTO> result = new ArrayList<>();
         for (HelpRequest hr : myRequests) {
@@ -315,7 +342,7 @@ public class HelpService {
     }
 
     private HelpResponseDTO enrichWithUserStats(HelpResponseDTO dto) {
-        UUID userId = dto.getUserId();
+        Long userId = dto.getUserId();
         if (userId == null) return dto;
 
         Double avgScore = ratingRepository.getAverageScore(userId);
@@ -343,8 +370,6 @@ public class HelpService {
                 .isUrgent(hr.getIsUrgent())
                 .timeStart(hr.getTimeStart())
                 .timeEnd(hr.getTimeEnd())
-                .location(hr.getLocation())
-                .rewardType(hr.getRewardType())
                 .images(hr.getImages())
                 .status(hr.getStatus())
                 .delistReason(hr.getDelistReason())
@@ -374,7 +399,8 @@ public class HelpService {
                     ? user.getRoom().getRoomNumber() : "";
 
             String typeLabel = getUserTypeLabel(user.getUserType());
-            return buildingName + unitName + roomNumber + "号(" + typeLabel + ")";
+            String addr = buildingName + unitName + roomNumber + "号";
+            return typeLabel.isEmpty() ? addr : addr + "(" + typeLabel + ")";
         } catch (Exception e) {
             return "";
         }
@@ -383,16 +409,15 @@ public class HelpService {
     private String getUserTypeLabel(String userType) {
         if (userType == null) return "";
         switch (userType) {
-            case "业主": return "业主";
-            case "租客": return "租客";
-            case "物业": return "物业";
+            case "owner": return "业主";
+            case "tenant": return "租客";
             case "admin": return "管理员";
             case "super_admin": return "超级管理员";
-            default: return userType;
+            default: return userType != null ? userType : "";
         }
     }
 
-    private void createNotification(UUID userId, String type, String title, String content, UUID relatedId) {
+    private void createNotification(Long userId, String type, String title, String content, Long relatedId) {
         Notification notification = new Notification();
         notification.setUserId(userId);
         notification.setType(type);

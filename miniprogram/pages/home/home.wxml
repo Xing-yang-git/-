@@ -1,24 +1,27 @@
 <view class="home-page">
-  <!-- Header: community name + search box -->
-  <view class="home-header">
-    <view class="community-name">{{communityName}}</view>
-    <view class="search-box" bindtap="onSearchTap">
-      <text class="search-placeholder">搜索</text>
-      <image class="search-box-icon" src="../../images/search-icon.svg" mode="aspectFit" />
+
+  <!-- 固定头部：top:0 即页面原点（紧接系统导航栏下方）；无需额外偏移 -->
+  <view class="home-top-fixed">
+    <view class="home-header">
+      <view class="community-name">{{communityName}}</view>
+      <view class="search-box" bindtap="onSearchTap">
+        <text class="search-placeholder">搜索</text>
+        <image class="search-box-icon" src="../../images/search-icon.svg" mode="aspectFit" />
+      </view>
+    </view>
+
+    <!-- 分段控制器 -->
+    <view class="segment-wrap">
+      <view class="segment">
+        <view class="segment-item {{currentTab === 0 ? 'active' : ''}}" bindtap="onTabChange" data-tab="0">闲置借出</view>
+        <view class="segment-item {{currentTab === 1 ? 'active' : ''}}" bindtap="onTabChange" data-tab="1">需求借入</view>
+        <view class="segment-item {{currentTab === 2 ? 'active' : ''}}" bindtap="onTabChange" data-tab="2">技能求助</view>
+      </view>
     </view>
   </view>
 
-  <!-- Segmented Control -->
-  <view class="segment-wrap">
-    <view class="segment">
-      <view class="segment-item {{currentTab === 0 ? 'active' : ''}}" bindtap="onTabChange" data-tab="0">闲置借出</view>
-      <view class="segment-item {{currentTab === 1 ? 'active' : ''}}" bindtap="onTabChange" data-tab="1">需求借入</view>
-      <view class="segment-item {{currentTab === 2 ? 'active' : ''}}" bindtap="onTabChange" data-tab="2">技能求助</view>
-    </view>
-  </view>
-
-  <!-- Content list -->
-  <scroll-view class="page-content" scroll-y enhanced show-scrollbar="{{false}}" refresher-enabled refresher-triggered="{{refreshing}}" bindrefresherrefresh="onPullDownRefresh">
+  <!-- 内容列表：padding-top 避开固定头部；页面自然滚动 -->
+  <view class="list-area" style="padding-top: {{listPaddingTop}}px;">
 
     <!-- Tab 0: 闲置借出 LEND -->
     <block wx:if="{{currentTab === 0}}">
@@ -75,12 +78,12 @@
       <view class="list-end" wx:if="{{!hasMore && helpList.length > 0}}">— 共 {{helpList.length}} 条求助 —</view>
     </block>
 
-    <!-- Empty state -->
+    <!-- 空状态 -->
     <view class="empty-state" wx:if="{{idleList.length === 0 && helpList.length === 0 && !loading}}">
       <image class="empty-icon-img" src="../../images/empty-icon.svg" mode="aspectFit" />
       <view class="empty-text">暂无内容</view>
     </view>
-  </scroll-view>
+  </view>
 
   <!-- FAB -->
   <view class="fab" bindtap="onFabTap">

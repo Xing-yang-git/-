@@ -6,7 +6,7 @@ const api = axios.create({
   timeout: 15000
 });
 
-// Request interceptor — attach token
+// 请求拦截器 — 附加 token
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('admin_token');
@@ -18,7 +18,7 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor — handle 401
+// 响应拦截器 — 处理 401
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -31,7 +31,7 @@ api.interceptors.response.use(
   }
 );
 
-// Convenience methods
+// 便捷方法
 export function get(url, params) {
   return api.get(url, { params });
 }

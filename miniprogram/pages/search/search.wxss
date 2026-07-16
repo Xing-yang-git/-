@@ -5,7 +5,7 @@
   background: var(--bg);
 }
 
-/* Search header — matches prototype .nav-bar at 44px height */
+/* 搜索头部 — 对齐原型 .nav-bar，44px 高度 */
 .search-header {
   display: flex;
   align-items: center;
@@ -15,7 +15,7 @@
   height: 44px;
 }
 
-/* Ensure search wrap fills available space (prototype uses inline flex:1) */
+/* 确保搜索容器填充可用空间（原型使用内联 flex:1） */
 .search-header .search-input-wrap {
   flex: 1;
 }
@@ -26,9 +26,10 @@
 }
 
 .search-clear {
-  width: 28rpx;
-  height: 28rpx;
-  padding: 8rpx;
+  width: 36rpx;
+  height: 36rpx;
+  padding: 24rpx 20rpx 24rpx 24rpx;
+  margin: -24rpx -20rpx -24rpx 0;
   flex-shrink: 0;
 }
 
@@ -37,7 +38,7 @@
   background: var(--bg);
 }
 
-/* Section (search history) */
+/* 分组区域（搜索历史） */
 .section {
   padding: var(--space-4);
 }
@@ -59,13 +60,13 @@
   color: var(--blue);
 }
 
-/* Hot search pill — matches prototype inline style */
+/* 热搜胶囊 — 对齐原型内联样式 */
 .pill-hot {
   background: rgba(255, 59, 48, 0.08);
   color: var(--red);
 }
 
-/* Filter tabs — matched to prototype .segment pattern */
+/* 筛选标签 — 对齐原型 .segment 模式 */
 .filter-tabs {
   display: flex;
   background: var(--bg);
@@ -91,19 +92,19 @@
   box-shadow: var(--shadow-sm);
 }
 
-/* Result count */
+/* 结果数量 */
 .result-count {
   padding: 8px var(--margin);
   font-size: 13px;
   color: var(--text-secondary);
 }
 
-/* Result list */
+/* 结果列表 */
 .result-list {
   background: var(--surface);
 }
 
-/* Result card — aligned to prototype .card-h-ios component */
+/* 结果卡片 — 对齐原型 .card-h-ios 组件 */
 .list-card {
   display: flex;
   padding: 12px var(--margin);
@@ -120,7 +121,7 @@
   border-top: 0.5px solid var(--separator);
 }
 
-/* Thumb — matches prototype .card-h-img: 72x72, border-radius 8px */
+/* 缩略图 — 对齐原型 .card-h-img：72x72，圆角 8px */
 .thumb {
   width: 144rpx;
   height: 144rpx;
@@ -143,7 +144,7 @@
   gap: 4px;
 }
 
-/* Title — matches prototype .card-h-title: 17px, weight 500 */
+/* 标题 — 对齐原型 .card-h-title：17px，weight 500 */
 .card-title {
   font-size: var(--text-base);
   font-weight: 500;
@@ -155,13 +156,13 @@
   overflow: hidden;
 }
 
-/* Meta — matches prototype .card-h-meta: 13px */
+/* 元信息 — 对齐原型 .card-h-meta：13px */
 .card-meta {
   font-size: var(--text-sm);
   color: var(--text-secondary);
 }
 
-/* Empty history — vertically centered */
+/* 空历史 — 垂直居中 */
 .empty-history {
   display: flex;
   flex-direction: column;

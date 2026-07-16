@@ -5,26 +5,23 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class BorrowResponseDTO {
-    private UUID id;
-    private UUID idleId;
+    private Long id;
+    private Long idleId;
     private String idleTitle;
     private String itemImage;
-    private UUID ownerId;
+    private Long ownerId;
     private String ownerName;
-    private UUID borrowerId;
+    private Long borrowerId;
     private String borrowerName;
     private String durationType;
     private Integer durationDays;
-    private LocalDate startDate;
     private String note;
     private String status;
     private String returnStatus;

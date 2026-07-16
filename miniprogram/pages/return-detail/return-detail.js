@@ -1,4 +1,5 @@
 const api = require('../../utils/api');
+const auth = require('../../utils/auth');
 
 Page({
   data: {
@@ -15,11 +16,16 @@ Page({
   },
 
   onLoad(options) {
+    if (!auth.ensureAccess()) return;   // 登录/审核门禁：未通过则已跳转
     const borrowId = options.id || '';
     this.setData({ borrowId });
     if (borrowId) {
       this.loadBorrowInfo(borrowId);
     }
+  },
+
+  onShow() {
+    if (!auth.ensureAccess()) return; // 登录/审核门禁：覆盖 tab 切换与后台切回
   },
 
   async loadBorrowInfo(id) {
@@ -84,7 +90,7 @@ Page({
     }
     wx.showLoading({ title: '提交中' });
     try {
-      // Upload return photos first
+      // 先上传归还照片
       let returnPhotos = '';
       if (this.data.images.length > 0) {
         const uploadTasks = this.data.images.map(filePath => api.upload('/api/common/upload', filePath));

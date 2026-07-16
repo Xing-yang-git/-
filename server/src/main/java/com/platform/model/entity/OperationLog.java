@@ -3,7 +3,6 @@ package com.platform.model.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Entity
 @Table(name = "operation_logs")
@@ -13,11 +12,14 @@ import java.util.UUID;
 @Builder
 public class OperationLog {
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @Column(name = "admin_id", nullable = false)
-    private UUID adminId;
+    private Long adminId;
+
+    @Column(name = "tenant_id", nullable = false)
+    private Long tenantId;
 
     @Column(nullable = false, length = 50)
     private String action;
@@ -26,7 +28,7 @@ public class OperationLog {
     private String targetType;
 
     @Column(name = "target_id")
-    private UUID targetId;
+    private Long targetId;
 
     @Column(columnDefinition = "TEXT")
     private String detail;

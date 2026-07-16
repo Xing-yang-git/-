@@ -1,17 +1,19 @@
 /* ============================================================
    B-End Admin — 社区互助闲置平台 物业管理后台
-   Element Plus overrides + layout styles
+   Element Plus 覆盖样式 + 布局样式
    ============================================================ */
 
 :root {
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", sans-serif;
+  --font:
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    "PingFang SC", sans-serif;
   --font-mono: "SF Mono", Menlo, Consolas, monospace;
   --accent: #0071e3;
   --accent-hover: #0077ed;
   --accent-active: #0066cc;
   --bg: #f5f5f7;
   --surface: #ffffff;
-  --sidebar-width: 220px;
+  --sidebar-width: 240px;
   --topbar-height: 56px;
   --text: #1d1d1f;
   --text-secondary: #6e6e73;
@@ -24,22 +26,61 @@
   --radius-sm: 6px;
   --radius: 10px;
   --radius-lg: 14px;
-  --shadow: 0 1px 3px rgba(0,0,0,0.06);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
   --ease: cubic-bezier(0.28, 0, 0.22, 1);
   --transition: 150ms var(--ease);
+
+  /* 将 Element Plus 主色与品牌强调色 (#0071e3) 对齐，
+     使 el-button / el-checkbox / el-radio / 激活状态使用品牌蓝色，
+     而非 Element 默认的 #409eff。 */
+  --el-color-primary: #0071e3;
+  --el-color-primary-light-3: #3391e9;
+  --el-color-primary-light-5: #66aeef;
+  --el-color-primary-light-7: #99caf4;
+  --el-color-primary-light-8: #b3d7f7;
+  --el-color-primary-light-9: #e6f1fc;
+  --el-color-primary-dark-2: #005ab6;
 }
 
-/* ─── Global ─── */
+/* ─── CSS 重置（原型对齐版） ─── */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+html {
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
 body {
   font-family: var(--font);
   font-size: 14px;
   color: var(--text);
+  background: var(--bg);
+}
+a {
+  text-decoration: none;
+  color: inherit;
+}
+button {
+  border: none;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  color: inherit;
+}
+input,
+select,
+textarea {
+  font: inherit;
+  outline: none;
+  border: none;
 }
 
-/* ─── Admin Layout ─── */
+/* ─── 管理后台布局 ─── */
 .admin-layout {
-  height: 100vh;
+  height: 100%;
   display: flex;
 }
 
@@ -55,82 +96,15 @@ body {
   overflow-y: auto;
 }
 
-/* ─── Sidebar ─── */
-.sidebar-logo {
-  padding: 28px 24px 24px;
-  font-size: 17px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
-  color: var(--text);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.sidebar-logo .logo-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #0071e3 0%, #2997ff 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 16px;
-}
-
-/* ─── Sidebar Menu overrides ─── */
-.admin-sidebar-menu {
-  border-right: none !important;
-  background: transparent !important;
-}
-
-.admin-sidebar-menu .el-menu-item {
-  margin: 2px 0;
-  border-radius: 12px;
-  font-size: 15px;
-  height: 48px;
-  line-height: 48px;
-  color: var(--text-secondary);
-  font-weight: 450;
-  transition: all 0.25s var(--ease);
-}
-
-.admin-sidebar-menu .el-menu-item:hover {
-  color: var(--text);
-  background: rgba(0,0,0,0.04);
-}
-
-.admin-sidebar-menu .el-menu-item.is-active {
-  color: var(--accent);
-  background: rgba(0,113,227,0.06);
-  font-weight: 550;
-}
-
-.admin-sidebar-menu .el-menu-item .el-icon {
-  font-size: 20px;
-  margin-right: 8px;
-}
-
-/* ─── Sidebar Footer ─── */
-.sidebar-footer {
-  padding: 16px 24px;
-  border-top: 0.5px solid var(--border-soft);
-  font-size: 12px;
-  color: var(--text-tertiary);
-  margin-top: auto;
-}
-
-/* ─── Topbar ─── */
+/* ─── 顶部栏 ─── */
 .topbar {
-  background: rgba(255,255,255,0.82);
+  background: rgba(255, 255, 255, 0.82);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   padding: 12px 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  height: 56px;
   border-bottom: 0.5px solid var(--border-soft);
 }
 
@@ -153,7 +127,19 @@ body {
   gap: 12px;
 }
 
-/* ─── Stat Cards ─── */
+.logout-btn {
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: color var(--transition);
+}
+.logout-btn:hover {
+  color: var(--red);
+}
+
+/* ─── 统计卡片 ─── */
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -169,7 +155,9 @@ body {
   display: flex;
   align-items: center;
   gap: 16px;
-  transition: box-shadow 0.3s var(--ease), transform 0.3s var(--ease);
+  transition:
+    box-shadow 0.3s var(--ease),
+    transform 0.3s var(--ease);
 }
 
 .stat-card:hover {
@@ -211,32 +199,38 @@ body {
   margin-top: 2px;
 }
 
-.stat-card .stat-change.up { color: var(--green); }
-.stat-card .stat-change.down { color: var(--red); }
+.stat-card .stat-change.up {
+  color: var(--green);
+}
+.stat-card .stat-change.down {
+  color: var(--red);
+}
 
-/* Dashboard luxe stat cards */
+/* Dashboard 高级统计卡片 */
 .stat-grid-luxe {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 24px;
-  margin-bottom: 32px;
+  margin-bottom: 48px;
 }
 
 .stat-card-luxe {
   background: var(--surface);
   border-radius: 16px;
   padding: 32px 28px 28px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-  transition: box-shadow 0.4s var(--ease), transform 0.4s var(--ease);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition:
+    box-shadow 0.4s var(--ease),
+    transform 0.4s var(--ease);
 }
 
 .stat-card-luxe:hover {
-  box-shadow: 0 8px 28px rgba(0,0,0,0.08);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
   transform: translateY(-2px);
 }
 
 .stat-card-luxe .luxe-value {
-  font-size: 44px;
+  font-size: 52px;
   font-weight: 300;
   letter-spacing: -0.03em;
   line-height: 1;
@@ -255,16 +249,41 @@ body {
   font-weight: 500;
 }
 
-.luxe-change.up { color: var(--green); }
-.luxe-change.down { color: var(--red); }
+.luxe-change.up {
+  color: var(--green);
+}
+.luxe-change.down {
+  color: var(--red);
+}
 
-/* ─── Panel ─── */
+/* ─── 面板 ─── */
 .panel {
   background: var(--surface);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   margin-bottom: 24px;
   overflow: hidden;
+}
+
+.panel-body-scroll {
+  padding: 0;
+  overflow-x: hidden;
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}
+
+.panel-empty {
+  padding: 48px 20px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.field-error {
+  font-size: 12px;
+  color: var(--red);
+  margin-top: 4px;
+  margin-bottom: 0;
 }
 
 .panel-header {
@@ -280,7 +299,7 @@ body {
   font-weight: 600;
 }
 
-/* ─── Segment Tabs ─── */
+/* ─── 分段标签页 ─── */
 .segment-row {
   display: inline-flex;
   gap: 4px;
@@ -302,15 +321,15 @@ body {
 }
 
 .segment-btn:hover {
-  background: rgba(0,113,227,0.04);
+  background: rgba(0, 113, 227, 0.04);
 }
 
 .segment-btn.active {
-  background: rgba(0,113,227,0.06);
+  background: rgba(0, 113, 227, 0.06);
   color: var(--accent);
 }
 
-/* ─── Status Badges ─── */
+/* ─── 状态徽标 ─── */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -322,13 +341,60 @@ body {
   white-space: nowrap;
 }
 
-.badge-success { background: rgba(52,199,89,0.1); color: var(--green); }
-.badge-warning { background: rgba(255,149,0,0.1); color: var(--orange); }
-.badge-danger { background: rgba(255,59,48,0.1); color: var(--red); }
-.badge-info { background: rgba(0,113,227,0.1); color: var(--accent); }
-.badge-default { background: var(--bg); color: var(--text-secondary); }
+.badge-success {
+  background: rgba(52, 199, 89, 0.1);
+  color: var(--green);
+}
+.badge-warning {
+  background: rgba(255, 149, 0, 0.1);
+  color: var(--orange);
+}
+.badge-danger {
+  background: rgba(255, 59, 48, 0.1);
+  color: var(--red);
+}
+.badge-info {
+  background: rgba(0, 113, 227, 0.1);
+  color: var(--accent);
+}
+.badge-default {
+  background: var(--bg);
+  color: var(--text-secondary);
+}
 
-/* ─── Table overrides ─── */
+/* ─── 标签（原型兼容） ─── */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.tag-blue {
+  background: rgba(0, 113, 227, 0.1);
+  color: var(--accent);
+}
+.tag-red {
+  background: rgba(255, 59, 48, 0.1);
+  color: var(--red);
+}
+.tag-orange {
+  background: rgba(255, 149, 0, 0.1);
+  color: var(--orange);
+}
+.tag-green {
+  background: rgba(52, 199, 89, 0.1);
+  color: var(--green);
+}
+.tag-gray {
+  background: var(--bg);
+  color: var(--text-secondary);
+}
+
+/* ─── 表格样式覆盖 ─── */
 .el-table {
   --el-table-border-color: var(--border-soft);
   font-size: 14px;
@@ -340,14 +406,156 @@ body {
   font-size: 12px;
   font-weight: 600;
   padding: 10px 0;
+  white-space: nowrap;
 }
 
 .el-table td.el-table__cell {
   padding: 12px 0;
   border-bottom: 0.5px solid var(--border-soft);
+  vertical-align: middle;
 }
 
-/* ─── Filter Row ─── */
+/* 原生 .table 在每个单元格上使用 `padding: X 16px; white-space: nowrap`。
+   Element Plus 将水平内边距放在内部 .cell 上（默认 `0 12px`，white-space:normal 导致文本换行），
+   而上面的 td/th 规则又添加了自己的 16px —— 两者叠加每侧达到 28px，导致窄列被截断
+   （选择框、操作按钮、超时状态标签等都会被裁切或省略）。
+   因此这里将 td/th 的内边距仅保留垂直方向，并将 16px 水平内边距 + nowrap 放在 .cell 上，
+   与原生表格完全对齐。 */
+.el-table .cell {
+  padding: 0 16px;
+  white-space: nowrap;
+}
+
+/* el-table 表头居中对齐 */
+.el-table th.el-table__cell.is-center,
+.el-table td.el-table__cell.is-center {
+  text-align: center;
+}
+
+/* ─── 消除 el-table 内部滚动条（全局） ─── */
+/* Element Plus 的 el-scrollbar 在 hover 时渐显滚动条 → 布局偏移 → overflow 问题。
+   所有 B 端表格均使用分页，因此不需要表格级滚动。 */
+.el-table .el-scrollbar__wrap {
+  overflow: hidden !important;
+  scrollbar-width: none !important;
+}
+.el-table .el-scrollbar__wrap::-webkit-scrollbar {
+  display: none !important;
+}
+.el-table .el-scrollbar__bar {
+  display: none !important;
+}
+
+/* ─── 原生表格居中 ─── */
+.table th.text-center,
+.table td.text-center {
+  text-align: center;
+}
+.table th.text-right,
+.table td.text-right {
+  text-align: right;
+}
+
+/* ─── 统一面板（原型对齐：标签页 + 筛选 + 表格容器） ─── */
+.unified-panel {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  margin-bottom: 0;
+}
+.unified-panel .panel {
+  box-shadow: none;
+  border-radius: 0;
+  margin-bottom: 0;
+}
+.unified-panel .seg-wrap {
+  padding: 14px 20px 8px;
+  background: var(--surface);
+}
+.unified-panel .unified-segment-row {
+  background: var(--surface);
+}
+.unified-panel .filter-row {
+  padding: 14px 20px 12px;
+}
+
+/* ─── 固定高度列表面板（住户管理 / 内容管理 / 互助记录） ─── */
+/* 白色 .unified-panel 填满可视区域高度且不随行数变化；
+   其主体 (.uf-body) 在内部滚动，而非整个面板随数据变化而伸缩。
+   通过 el-main 上的 .panel-fill 限定作用范围，其他页面（Dashboard 等）保持正常文档流。 */
+.el-main.panel-fill {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.el-main.panel-fill .unified-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.el-main.panel-fill .uf-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* ContentView 的表格容器自带 max-height/scroll；
+   在固定面板内 .uf-body 是唯一的滚动容器，因此将其中性化。 */
+.el-main.panel-fill .uf-body .panel-body-scroll {
+  max-height: none;
+  overflow: visible;
+}
+
+/* 为所有列表/数据表格设置粘性表头。每个 el-table 在其滚动容器中
+   （固定高度页面的 .uf-body、普通页面的 .el-main）以完整高度渲染；
+   将 header-wrapper 固定在该滚动容器顶部，使表头在主体滚动时保持不动。
+   粘性表头受 .panel/.panel-body-scroll 边界限制，当面板滚出视野时自然释放。
+   为使粘性绑定到滚动容器（而非表格本身），外围容器不能创建自己的滚动盒
+   —— 强制 overflow: visible。作用范围限定在 panels/uf-body，
+   因此弹窗表格（如 Dashboard）保留自己的 max-height 滚动 + Element Plus 原生固定表头。 */
+.panel:has(.el-table),
+.panel-body-scroll,
+.uf-body .el-table,
+.uf-body .el-table__inner-wrapper,
+.panel .el-table,
+.panel .el-table__inner-wrapper,
+.panel-body-scroll .el-table,
+.panel-body-scroll .el-table__inner-wrapper {
+  overflow: visible;
+}
+.uf-body .el-table__header-wrapper,
+.panel .el-table__header-wrapper,
+.panel-body-scroll .el-table__header-wrapper {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--surface);
+}
+
+/* ─── 分区标签（全部 tab 分组） ─── */
+.section-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 16px 0 8px;
+  margin: 0;
+}
+.section-label:first-child {
+  padding-top: 0;
+}
+
+/* ─── 全部面板（全部 tab — 堆叠分区） ─── */
+.all-panels .panel {
+  margin-bottom: 16px;
+}
+.all-panels .panel-header {
+  background: var(--bg);
+}
+
+/* ─── 筛选行 ─── */
 .filter-row {
   display: flex;
   gap: 10px;
@@ -357,12 +565,49 @@ body {
   background: var(--surface);
 }
 
-/* ─── Content area padding tweaks ─── */
+/* ─── 筛选下拉框 ─── */
+.filter-select {
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  border: 0.5px solid var(--border-soft);
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 28px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2386868b' fill='none' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  outline: none;
+}
+
+/* ─── 搜索框 ─── */
+.search-box {
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 13px;
+  border: 0.5px solid var(--border-soft);
+  width: 180px;
+  color: var(--text);
+  outline: none;
+}
+.search-box:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+.search-box::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* ─── 内容区内边距调整 ─── */
 .content-section {
   padding: 0;
 }
 
-/* ─── Section title ─── */
+/* ─── 分区标题 ─── */
 .section-title {
   font-size: 18px;
   font-weight: 600;
@@ -376,7 +621,7 @@ body {
   color: var(--text-tertiary);
 }
 
-/* ─── Detail row ─── */
+/* ─── 详情行 ─── */
 .detail-row {
   display: flex;
   align-items: center;
@@ -395,14 +640,14 @@ body {
   flex: 1;
 }
 
-/* ─── Divider ─── */
+/* ─── 分割线 ─── */
 .dv-divider {
   height: 0.5px;
   background: var(--border-soft);
   margin: 12px 0;
 }
 
-/* ─── Quick stats ─── */
+/* ─── 快速统计 ─── */
 .quick-stats {
   display: flex;
   gap: 24px;
@@ -427,20 +672,20 @@ body {
   color: var(--text-secondary);
 }
 
-/* ─── Luxe chart ─── */
+/* ─── 高级图表 ─── */
 .luxe-section {
-  margin-bottom: 32px;
+  margin-bottom: 48px;
 }
 
 .luxe-section-header {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
 }
 
 .luxe-section-title {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
@@ -453,8 +698,8 @@ body {
 .chart-luxe {
   background: var(--surface);
   border-radius: 16px;
-  padding: 32px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  padding: 32px 32px 24px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .two-col-luxe {
@@ -467,7 +712,7 @@ body {
   background: var(--surface);
   border-radius: 16px;
   padding: 32px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .stat-row {
@@ -480,8 +725,8 @@ body {
   list-style: none;
   background: var(--surface);
   border-radius: 16px;
-  padding: 20px 32px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  padding: 28px 32px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   margin: 0;
 }
 
@@ -499,7 +744,7 @@ body {
 
 .top-list-luxe .rank {
   color: var(--text-tertiary);
-  width: 36px;
+  width: 28px;
   font-weight: 500;
 }
 
@@ -513,96 +758,202 @@ body {
   font-size: 16px;
 }
 
-/* ─── Text utils ─── */
-.text-secondary { color: var(--text-secondary); }
-.text-tertiary { color: var(--text-tertiary); }
-.text-red { color: var(--red); }
-.text-orange { color: var(--orange); }
-.text-green { color: var(--green); }
-.text-sm { font-size: 12px; }
-.text-xs { font-size: 11px; }
-.mt-4 { margin-top: 4px; }
-.mt-8 { margin-top: 8px; }
-.mt-12 { margin-top: 12px; }
-.mt-16 { margin-top: 16px; }
-.mb-8 { margin-bottom: 8px; }
-.mb-16 { margin-bottom: 16px; }
-.text-center { text-align: center; }
+/* ─── 文本工具类 ─── */
+.text-secondary {
+  color: var(--text-secondary);
+}
+.text-tertiary {
+  color: var(--text-tertiary);
+}
+.text-red {
+  color: var(--red);
+}
+.text-orange {
+  color: var(--orange);
+}
+.text-green {
+  color: var(--green);
+}
+.text-sm {
+  font-size: 12px;
+}
+.text-xs {
+  font-size: 11px;
+}
+.mt-4 {
+  margin-top: 4px;
+}
+.mt-8 {
+  margin-top: 8px;
+}
+.mt-12 {
+  margin-top: 12px;
+}
+.mt-16 {
+  margin-top: 16px;
+}
+.mb-8 {
+  margin-bottom: 8px;
+}
+.mb-16 {
+  margin-bottom: 16px;
+}
+.text-center {
+  text-align: center;
+}
 
-/* ─── Buttons ─── */
+/* ─── 按钮 ─── */
 .btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
-  height: 32px; padding: 0 14px; border-radius: 6px; font-size: 13px; font-weight: 500;
-  cursor: pointer; transition: all var(--transition); white-space: nowrap; border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+  border: none;
 }
-.btn:active { transform: scale(0.97); }
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover { background: var(--accent-hover); }
-.btn-secondary { background: var(--bg); color: var(--text); }
-.btn-secondary:hover { background: var(--border-soft); }
-.btn-danger { background: var(--red); color: #fff; }
-.btn-ghost { background: transparent; color: var(--accent); }
-.btn-sm { height: 26px; padding: 0 10px; font-size: 12px; border-radius: 4px; }
+.btn:active {
+  transform: scale(0.97);
+}
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+.btn-secondary {
+  background: var(--bg);
+  color: var(--text);
+}
+.btn-secondary:hover {
+  background: var(--border-soft);
+}
+.btn-danger {
+  background: var(--red);
+  color: #fff;
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--accent);
+}
+.btn-sm {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  border-radius: 4px;
+}
 
-/* ─── Publish form ─── */
-.publish-field { margin-bottom: 16px; }
+/* ─── 发布表单 ─── */
+.publish-field {
+  margin-bottom: 16px;
+}
 .field-label {
-  font-size: 13px; font-weight: 500; color: var(--text-secondary);
-  display: block; margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  display: block;
+  margin-bottom: 6px;
 }
-.field-label .required { color: var(--red); }
+.field-label .required {
+  color: var(--red);
+}
 
-/* ─── Publish mode toggle buttons ─── */
+/* ─── 发布模式切换按钮 ─── */
 .btn-sm-toggle {
-  height: 26px; padding: 0 10px; font-size: 12px; border-radius: 4px;
-  border: none; cursor: pointer; font-weight: 500;
-  background: var(--bg); color: var(--text);
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  font-weight: 500;
+  background: var(--bg);
+  color: var(--text);
   transition: all var(--transition);
 }
 .btn-sm-toggle.active {
-  background: var(--accent); color: #fff;
+  background: var(--accent);
+  color: #fff;
 }
-.btn-sm-toggle:not(.active):hover { background: var(--border-soft); }
+.btn-sm-toggle:not(.active):hover {
+  background: var(--border-soft);
+}
 
-/* ─── Custom Checkbox (offline modal) ─── */
+/* ─── 自定义复选框（下架弹窗） ─── */
 .offline-check-label {
-  display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; padding: 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px 0;
 }
 .check-box {
-  width: 18px; height: 18px; border-radius: 4px; border: 1.5px solid var(--border);
-  display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff;
-  transition: all var(--transition); flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1.5px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #fff;
+  transition: all var(--transition);
+  flex-shrink: 0;
 }
-.check-box.checked { background: var(--accent); border-color: var(--accent); }
+.check-box.checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
 
-/* ─── Resident search ─── */
+/* ─── 住户检索 ─── */
 .rs-item {
-  display: flex; align-items: center; padding: 10px 16px; cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  cursor: pointer;
 }
-.rs-item:hover { background: rgba(0,0,0,0.03); }
-.rs-item.selected { background: rgba(0,113,227,0.06); }
+.rs-item:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+.rs-item.selected {
+  background: rgba(0, 113, 227, 0.06);
+}
 .rs-separator {
   height: 1px;
-  background: linear-gradient(to right, transparent 5%, var(--border-soft) 25%, var(--border-soft) 75%, transparent 95%);
+  background: linear-gradient(
+    to right,
+    transparent 5%,
+    var(--border-soft) 25%,
+    var(--border-soft) 75%,
+    transparent 95%
+  );
 }
 
-/* ─── Auth pages ─── */
+/* ─── 认证页面 ─── */
 .auth-wrapper {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100vh;
+  height: 100%;
   background: var(--bg);
 }
 
-/* ─── Home launcher grid ─── */
+/* ─── 首页启动器网格 ─── */
 .launcher-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 16px;
 }
 
-/* ─── Responsive ─── */
+/* ─── 响应式布局 ─── */
 @media (max-width: 768px) {
   .stat-grid-luxe {
     grid-template-columns: repeat(2, 1fr);
@@ -621,12 +972,37 @@ body {
   }
 }
 
-/* ─── Keyframe Animations ─── */
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes scaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
-@keyframes toastIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+/* ─── 关键帧动画 ─── */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
 
-/* ─── Element Plus Overrides — Modal/Dialog ─── */
+/* ─── Element Plus 覆盖样式 — 弹窗/对话框 ─── */
 .el-dialog {
   border-radius: var(--radius-lg);
 }
@@ -638,33 +1014,174 @@ body {
   padding: 20px 24px 12px;
 }
 
-/* ─── Element Plus Overrides — Input ─── */
+/* ─── Element Plus 覆盖样式 — 输入框 ─── */
 .el-input__wrapper {
   border-radius: 6px;
   box-shadow: 0 0 0 0.5px var(--border-soft);
 }
-.el-input__wrapper:hover { box-shadow: 0 0 0 0.5px var(--border); }
-.el-input.is-focus .el-input__wrapper { box-shadow: 0 0 0 1px var(--accent); }
+.el-input__wrapper:hover {
+  box-shadow: 0 0 0 0.5px var(--border);
+}
+.el-input.is-focus .el-input__wrapper {
+  box-shadow: 0 0 0 1px var(--accent);
+}
 
-/* ─── Element Plus Overrides — Checkbox ─── */
+/* ─── Element Plus 覆盖样式 — 选择器（对齐原生 .filter-select） ─── */
+/* 先消除 marker 类在 el-select 根元素上的原生盒子样式，
+   再在内部 wrapper 上重新应用外观。 */
+.el-select.filter-select {
+  border: none;
+  background: none;
+  background-image: none;
+  padding: 0;
+}
+.el-select.filter-select .el-select__wrapper {
+  background: var(--bg);
+  box-shadow: 0 0 0 0.5px var(--border-soft);
+  border-radius: 6px;
+  min-height: 30px;
+  padding: 3px 12px;
+  font-size: 13px;
+}
+.el-select.filter-select .el-select__wrapper:hover {
+  box-shadow: 0 0 0 0.5px var(--border);
+}
+.el-select.filter-select .el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* ─── Element Plus 覆盖样式 — 搜索输入框（对齐原生 .search-box） ─── */
+.el-input.search-box {
+  border: none;
+  background: none;
+  padding: 0;
+}
+.el-input.search-box .el-input__wrapper {
+  background: var(--bg);
+  border-radius: 6px;
+}
+.el-input.search-box.is-focus .el-input__wrapper {
+  box-shadow: 0 0 0 1px var(--accent);
+  background: var(--surface);
+}
+.el-input.search-box .el-input__inner::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* ─── Element Plus 覆盖样式 — 分页 ─── */
+.el-pagination {
+  --el-pagination-font-size: 13px;
+  font-weight: 500;
+}
+
+/* ─── Element Plus 覆盖样式 — 发布表单字段（对齐原生 .field-input） ─── */
+.el-input.field-input,
+.el-select.field-input {
+  border: none;
+  background: none;
+  background-image: none;
+  padding: 0;
+}
+.el-input.field-input .el-input__wrapper {
+  background: var(--bg);
+  box-shadow: 0 0 0 0.5px var(--border-soft);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 13px;
+}
+.el-input.field-input.is-focus .el-input__wrapper {
+  box-shadow: 0 0 0 1px var(--accent);
+  background: var(--surface);
+}
+.el-select.field-input .el-select__wrapper {
+  background: var(--bg);
+  box-shadow: 0 0 0 0.5px var(--border-soft);
+  border-radius: 6px;
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+.el-select.field-input .el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.el-textarea.field-input .el-textarea__inner {
+  background: var(--bg);
+  box-shadow: 0 0 0 0.5px var(--border-soft);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--text);
+}
+.el-textarea.field-input .el-textarea__inner:focus {
+  box-shadow: 0 0 0 1px var(--accent);
+  background: var(--surface);
+}
+.el-textarea.field-input .el-textarea__inner::placeholder,
+.el-input.field-input .el-input__inner::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* ─── Element Plus 覆盖样式 — 日期选择器（对齐 field-input） ─── */
+.el-date-editor.el-input {
+  --el-input-bg-color: var(--bg);
+  height: auto;
+}
+.el-date-editor .el-input__wrapper {
+  background: var(--bg);
+  box-shadow: 0 0 0 0.5px var(--border-soft);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+.el-date-editor .el-input__wrapper:hover {
+  box-shadow: 0 0 0 0.5px var(--border);
+}
+.el-date-editor .el-input__inner {
+  font-size: 13px;
+  color: var(--text);
+}
+.el-date-editor .el-input__inner::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* ─── Element Plus 覆盖样式 — 复选框 ─── */
 .el-checkbox__input.is-checked .el-checkbox__inner {
   background-color: var(--accent);
   border-color: var(--accent);
 }
 
-/* ─── Element Plus Overrides — Radio ─── */
+/* ─── Element Plus 覆盖样式 — 单选按钮 ─── */
 .el-radio__input.is-checked .el-radio__inner {
   border-color: var(--accent);
   background: var(--accent);
 }
 
-/* ─── Element Plus Overrides — Message (Toast) ─── */
+/* ─── Element Plus 覆盖样式 — 消息提示（Toast） ─── */
 .el-message {
   border-radius: 8px;
   box-shadow: var(--shadow-md);
 }
 
-/* ─── Rating Tag ─── */
+/* Vue3 ::v-deep 或 :deep() */
+.el-checkbox__input .el-checkbox__inner {
+  border-color: #d1e5ff !important;
+  /* 未选中边框 */
+  background-color: #ffffff !important;
+}
+
+.el-checkbox__input:hover .el-checkbox__inner {
+  border-color: #b9ddff !important;
+  /* hover边框颜色 */
+  background-color: #dfefff !important;
+  /* box-shadow: 0 0 0 2px rgba(245, 108, 108, 0.15); 可选hover外发光 */
+}
+
+/* 选中状态边框+背景 */
+.el-checkbox__input.is-checked .el-checkbox__inner {
+  border-color: #409eff !important;
+  background-color: #409eff !important;
+}
+
+/* ─── 评分标签 ─── */
 .rating-tag {
   display: inline-flex;
   align-items: center;
@@ -676,10 +1193,18 @@ body {
   flex-shrink: 0;
   margin-left: 4px;
 }
-.rating-tag .stars { color: var(--orange); font-size: 11px; line-height: 1; }
-.rating-tag .label { color: var(--text-secondary); font-size: 10px; line-height: 1; }
+.rating-tag .stars {
+  color: var(--orange);
+  font-size: 11px;
+  line-height: 1;
+}
+.rating-tag .label {
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1;
+}
 
-/* ─── Form Field (iOS style) ─── */
+/* ─── 表单字段（iOS 风格） ─── */
 .field-input {
   padding: 6px 10px;
   border-radius: 6px;
@@ -689,5 +1214,11 @@ body {
   border: 0.5px solid var(--border-soft);
   transition: border-color var(--transition);
 }
-.field-input:focus { border-color: var(--accent); background: var(--surface); outline: none; }
-.field-input::placeholder { color: var(--text-tertiary); }
+.field-input:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+  outline: none;
+}
+.field-input::placeholder {
+  color: var(--text-tertiary);
+}

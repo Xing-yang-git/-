@@ -23,14 +23,22 @@ public class JwtTokenProvider {
     }
 
     public String generateToken(String userId, String userType) {
+        return generateToken(userId, userType, null);
+    }
+
+    /** tokenVersion 非 null 时写入 ver claim（C端单会话登录）；B端 token 不带 ver */
+    public String generateToken(String userId, String userType, Integer tokenVersion) {
         Date now = new Date();
-        return Jwts.builder()
+        JwtBuilder builder = Jwts.builder()
                 .subject(userId)
                 .claim("userType", userType)
                 .issuedAt(now)
                 .expiration(new Date(now.getTime() + expiration))
-                .signWith(key)
-                .compact();
+                .signWith(key);
+        if (tokenVersion != null) {
+            builder.claim("ver", tokenVersion);
+        }
+        return builder.compact();
     }
 
     public String getUserId(String token) {
@@ -41,6 +49,12 @@ public class JwtTokenProvider {
     public String getUserType(String token) {
         return Jwts.parser().verifyWith(key).build()
                 .parseSignedClaims(token).getPayload().get("userType", String.class);
+    }
+
+    /** 令牌版本号，缺失返回 null（B端 token 无此 claim） */
+    public Integer getTokenVersion(String token) {
+        return Jwts.parser().verifyWith(key).build()
+                .parseSignedClaims(token).getPayload().get("ver", Integer.class);
     }
 
     public boolean validate(String token) {

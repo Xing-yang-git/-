@@ -2,20 +2,15 @@ package com.platform.model.dto;
 
 import lombok.Data;
 
-import java.util.UUID;
 
 @Data
 public class RatingRequest {
-    // Backend field names
-    private UUID borrowId;
-    private UUID helpApplicationId;
+    // 后端字段名
+    private Long borrowId;
+    private Long helpApplicationId;
     private Integer score;
-    private String dimensionScores;
-
-    // C端 miniprogram field names (aliases)
-    private UUID targetId;        // maps to borrowId or helpApplicationId
-    private String ratingType;    // "borrow" or "help"
-    private Integer overallScore; // maps to score
-    private String dimScores;     // C端: actual score numbers [4,5]
-    private String dimLabels;     // C端: label names ["物品完好度","沟通态度"]
+    // C端小程序字段名（别名）
+    private Long targetId;        // 对应 borrowId 或 helpApplicationId
+    private String ratingType;    // "borrow" 或 "help"
+    private Integer overallScore; // 对应 score
 }

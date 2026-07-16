@@ -5,7 +5,7 @@
   min-height: 100vh;
 }
 
-/* Summary Row */
+/* 摘要行 */
 .summary-row {
   display: flex;
   align-items: center;
@@ -46,7 +46,7 @@
   color: var(--text-tertiary);
 }
 
-/* Toggle Row */
+/* 切换行 */
 .toggle-row {
   display: flex;
   gap: 12px;
@@ -75,7 +75,7 @@
   background: var(--red);
 }
 
-/* Status Cards */
+/* 状态卡片 */
 .status-cards {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -121,7 +121,7 @@
   color: var(--text);
 }
 
-/* Damage Options */
+/* 损坏选项 */
 .damage-options {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

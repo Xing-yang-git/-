@@ -57,8 +57,12 @@
 .step-labels {
   display: flex;
   justify-content: space-between;
-  padding: 0 40rpx;
+  padding: 0 10rpx;
   margin-top: 8rpx;
+}
+
+.step-labels-4 {
+  padding: 0 0rpx;
 }
 
 .step-label {
@@ -308,6 +312,13 @@
   display: block;
 }
 
+.input-hint {
+  font-size: 24rpx;
+  color: var(--text-tertiary);
+  margin-top: 8rpx;
+  display: block;
+}
+
 /* --- Buttons (对齐 ios-ui.css .btn / .btn-primary / .btn-secondary) --- */
 .btn {
   display: inline-flex;
@@ -358,4 +369,31 @@
 
 .step-footer .btn {
   flex: 1;
+}
+
+/* --- 密码输入组（对齐 login 页样式） --- */
+.password-input-group {
+  display: flex;
+  align-items: center;
+  height: 88rpx;
+  border-radius: 16rpx;
+  background: var(--fill-tertiary);
+  padding: 0 24rpx;
+  box-sizing: border-box;
+}
+
+.password-input-group .input {
+  flex: 1;
+  height: 88rpx;
+  background: transparent;
+  margin-bottom: 0;
+  padding: 0;
+  border: none;
+}
+
+.toggle-password {
+  font-size: 40rpx;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  padding: 12rpx 4rpx 12rpx 16rpx;
 }

@@ -1,4 +1,5 @@
 const api = require('../../utils/api');
+const auth = require('../../utils/auth');
 
 Page({
   data: {
@@ -9,6 +10,11 @@ Page({
   },
 
   onLoad(options) {
+    // 此页不该被无 token 者到达
+    if (!auth.getToken()) {
+      wx.reLaunch({ url: '/pages/login/login' });
+      return;
+    }
     const state = options.state || 'pending';
     this.setData({ status: state });
     this.checkStatus();
@@ -25,6 +31,14 @@ Page({
     return api.get('/api/auth/status')
       .then((data) => {
         const authStatus = data.authStatus || data.status;
+        // 关键：先把最新审核状态写回本地，防止页面门禁用旧状态造成循环跳转
+        const userInfo = wx.getStorageSync('userInfo') || {};
+        if (authStatus && userInfo.authStatus !== authStatus) {
+          userInfo.authStatus = authStatus;
+          wx.setStorageSync('userInfo', userInfo);
+          const app = getApp();
+          if (app) app.globalData.userInfo = userInfo;
+        }
         if (authStatus === 'approved') {
           wx.switchTab({ url: '/pages/home/home' });
           return;
@@ -32,18 +46,25 @@ Page({
         this.setData({
           status: authStatus || 'pending',
           rejectReason: data.rejectReason || '',
-          banReason: data.banReason || '',
+          banReason: data.bannedReason || '', // 修复：服务端返回键名是 bannedReason
           loading: false
         });
       })
       .catch(() => {
-        // Keep current status from onLoad on error
+        // 出错时保留 onLoad 传入的当前状态
         this.setData({ loading: false });
       });
   },
 
   onRefresh() {
     this.checkStatus();
+  },
+
+  // 自定义导航返回 = 换账号登录，必须清 token，否则登录页会按 pending 状态把用户弹回本页
+  onBackToLogin() {
+    auth.clearToken();
+    wx.removeStorageSync('userInfo');
+    wx.reLaunch({ url: '/pages/login/login' });
   },
 
   onContactProperty() {
@@ -56,7 +77,7 @@ Page({
   },
 
   onResubmit() {
-    wx.redirectTo({ url: '/pages/register/register' });
+    wx.navigateTo({ url: '/pages/register/register' });
   },
 
   onAppeal() {

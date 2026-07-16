@@ -1,17 +1,27 @@
 .home-page {
   min-height: 100vh;
+  background: var(--bg);
   display: flex;
   flex-direction: column;
-  background: var(--bg);
+}
+
+/* 固定头部 — 从屏幕顶部全宽覆盖；通过 JS 设置 padding-top 将内容推到导航栏下方 */
+.home-top-fixed {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: rgba(255, 255, 255);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 .home-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.82);
-  flex-shrink: 0;
+  padding: 20px 16px 6px;
   gap: 12px;
 }
 
@@ -83,7 +93,9 @@
   box-shadow: var(--shadow-sm);
 }
 
-.page-content {
+/* flex: 1 使列表区域填充剩余视口高度，即使为空时也不塌缩到内容高度
+   （与 B 端 .unified-panel 相同模式） */
+.list-area {
   flex: 1;
   background: var(--surface);
 }
@@ -100,21 +112,12 @@
   background: var(--fill-quaternary);
 }
 
+/* 渐变极细分割线（两端淡出），对齐消息页分隔线样式 */
 .list-card + .list-card {
-  border-top: none;
-  margin-left: 0;
-  padding-left: 16px;
-  position: relative;
-}
-
-.list-card + .list-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 76px;
-  right: 16px;
-  height: 0.5px;
-  background: var(--separator);
+  background-image: linear-gradient(to right, transparent 8%, var(--separator) 25%, var(--separator) 75%, transparent 92%);
+  background-repeat: no-repeat;
+  background-size: 100% 0.5px;
+  background-position: top;
 }
 
 .thumb {
@@ -163,7 +166,7 @@
   margin-top: 2px;
 }
 
-/* Tag overrides */
+/* 标签覆盖 */
 .urgent-tag {
   margin-right: 4px;
 }
@@ -209,7 +212,7 @@
   flex-shrink: 0;
 }
 
-/* Empty state — vertically centered on screen */
+/* 空状态 — 屏幕垂直居中 */
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -218,7 +221,7 @@
   padding-top: 35vh;
 }
 
-/* Empty state image icon */
+/* 空状态图片图标 */
 .empty-icon-img {
   width: 40px;
   height: 40px;

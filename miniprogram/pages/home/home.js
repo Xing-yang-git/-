@@ -1,6 +1,7 @@
 const api = require('../../utils/api');
+const auth = require('../../utils/auth');
 
-// Map category keywords to prototype-style feather icons
+// 将分类关键词映射到原型风格的 feather 图标
 const IDLE_ICONS = [
   'icon-wrench.svg',
   'icon-book.svg',
@@ -21,7 +22,7 @@ const HELP_ICONS = [
 ];
 
 function pickIcon(item, index, iconList) {
-  // Use item.category or fall back to index-based rotation (matching prototype bgColor rotation)
+  // 优先用 item.category 匹配图标，否则按索引轮换（与原型 bgColor 轮换规则一致）
   if (item.category) {
     const cat = item.category;
     if (cat.includes('维修') || cat.includes('修理')) return 'icon-wrench.svg';
@@ -46,11 +47,15 @@ Page({
     hasMore: true,
     loading: false,
     refreshing: false,
-    fabOpen: false
+    fabOpen: false,
+    listPaddingTop: 100
   },
 
   onLoad() {
-    // Get user's community name: priority: backend tenantName > registration storage > fallback
+    if (!auth.ensureAccess()) return;   // 登录/审核门禁：未通过则已跳转
+    // 计算导航栏偏移 + scroll-view 高度
+    this.calcLayoutHeights();
+    // 获取用户小区名称，优先级：后端 tenantName > 注册时存储 > 兜底值
     try {
       const userInfo = wx.getStorageSync('userInfo');
       if (userInfo && userInfo.tenantName) {
@@ -64,16 +69,39 @@ Page({
         }
       }
     } catch (e) {
-      // Fall back to default
+      // 兜底使用默认值
     }
     this.loadData();
+  },
+
+  onShow() {
+    if (!auth.ensureAccess()) return; // 登录/审核门禁：覆盖 tab 切换与后台切回
   },
 
   onPullDownRefresh() {
     this.setData({ refreshing: true, page: 0, idleList: [], helpList: [], hasMore: true });
     this.loadData().finally(() => {
       this.setData({ refreshing: false });
+      wx.stopPullDownRefresh();
     });
+  },
+
+  /**
+   * 渲染后测量 .home-top-fixed 实际高度，设为 listPaddingTop，
+   * 使滚动区域从固定头部下方开始。所有值单位为 px。
+   */
+  calcLayoutHeights() {
+    const self = this;
+    setTimeout(() => {
+      wx.createSelectorQuery()
+        .select('.home-top-fixed')
+        .boundingClientRect()
+        .exec((res) => {
+          if (res[0] && res[0].height > 0) {
+            self.setData({ listPaddingTop: Math.ceil(res[0].height) });
+          }
+        });
+    }, 200);
   },
 
   onTabChange(e) {

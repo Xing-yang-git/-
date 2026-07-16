@@ -5,7 +5,6 @@ import com.platform.service.CommonService;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/common")
@@ -23,17 +22,17 @@ public class CommonController {
     }
 
     @GetMapping("/buildings")
-    public Result<?> getBuildings(@RequestParam UUID tenantId) {
+    public Result<?> getBuildings(@RequestParam Long tenantId) {
         return Result.ok(commonService.getBuildingsByTenantId(tenantId));
     }
 
     @GetMapping("/units")
-    public Result<?> getUnits(@RequestParam UUID buildingId) {
+    public Result<?> getUnits(@RequestParam Long buildingId) {
         return Result.ok(commonService.getUnitsByBuildingId(buildingId));
     }
 
     @GetMapping("/rooms")
-    public Result<?> getRooms(@RequestParam UUID unitId) {
+    public Result<?> getRooms(@RequestParam Long unitId) {
         return Result.ok(commonService.getRoomsByUnitId(unitId));
     }
 

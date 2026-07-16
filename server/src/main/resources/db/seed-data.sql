@@ -1,9 +1,9 @@
 -- =============================================================================
--- Seed data: test users, idle_items, help_requests for home page display
--- Safe to re-run: skips if enough data exists
+-- 种子数据：测试用户、idle_items、help_requests，用于首页展示
+-- 可安全重复执行：数据已足够时自动跳过
 -- =============================================================================
 
--- Only insert if < 4 resident users with room assignments exist
+-- 仅当已分配房间的住户少于 4 人时插入
 DO $$
 DECLARE
     user_count int;
@@ -11,7 +11,7 @@ DECLARE
 BEGIN
     SELECT count(*) INTO user_count FROM users WHERE user_type = '业主' AND room_id IS NOT NULL;
     IF user_count < 4 THEN
-        -- Add users assigned to rooms (pick first 4 rooms from building 1, unit 1)
+        -- 添加已分配房间的用户（取 1栋1单元的前 4 个房间）
         FOR r_id IN SELECT id FROM rooms WHERE unit_id IN (
             SELECT id FROM units WHERE building_id IN (
                 SELECT id FROM buildings WHERE name = '1栋' LIMIT 1
@@ -33,7 +33,7 @@ BEGIN
     END IF;
 END $$;
 
--- Only insert idle items if < 12 total
+-- 仅当闲置物品总数少于 12 时插入
 DO $$
 DECLARE
     item_count int;
@@ -42,18 +42,18 @@ DECLARE
 BEGIN
     SELECT count(*) INTO item_count FROM idle_items WHERE status = 'online';
     IF item_count < 12 THEN
-        -- Get test users (skip NULL check — they exist from previous seeding or above)
+        -- 获取测试用户（省略 NULL 检查 — 前面的初始化或上一步已保证其存在）
         SELECT id INTO u1 FROM users WHERE id = '40000000-0000-0000-0000-000000000011';
         SELECT id INTO u2 FROM users WHERE id = '40000000-0000-0000-0000-000000000012';
         SELECT id INTO u3 FROM users WHERE id = '40000000-0000-0000-0000-000000000013';
-        -- Get any additional resident with room
+        -- 再取一位已分配房间的其他住户
         SELECT id INTO u4 FROM users WHERE user_type = '业主' AND room_id IS NOT NULL
             AND id NOT IN ('40000000-0000-0000-0000-000000000011',
                            '40000000-0000-0000-0000-000000000012',
                            '40000000-0000-0000-0000-000000000013')
             LIMIT 1;
 
-        -- More LEND items with diverse categories and prices
+        -- 更多 LEND 物品，覆盖多种分类和价格
         INSERT INTO idle_items (id, user_id, post_type, title, description, category, condition, price, images, max_duration, pickup_method, status, created_at, updated_at)
         VALUES
         (gen_random_uuid(), u1, 'LEND', '戴森吸尘器V8', '只用过2次，很干净，适合深度清洁', '家居', 'like-new', 0, '["/images/demo/vacuum.jpg"]', 3, 'self_pickup', 'online',
@@ -73,7 +73,7 @@ BEGIN
         (gen_random_uuid(), u3, 'LEND', '冬季羽绒服男款L码', '只穿过一季，干净整洁', '服饰', 'like-new', 0, '["/images/demo/jacket.jpg"]', 14, 'self_pickup', 'online',
          now_ts - INTERVAL '4 days', now_ts - INTERVAL '4 days'),
 
-        -- More WANTED items
+        -- 更多 WANTED 物品
         (gen_random_uuid(), u2, 'WANTED', '求借电钻安装窗帘', '需要冲击钻，打几个孔就行，半天归还', '工具', 'worn', 0, NULL, 1, 'self_pickup', 'online',
          now_ts - INTERVAL '6 hours', now_ts - INTERVAL '6 hours'),
         (gen_random_uuid(), u1, 'WANTED', '求借瑜伽垫2天', '家里来客人，临时借用，用完即还', '运动', 'worn', 0, NULL, 2, 'self_pickup', 'online',
@@ -83,7 +83,7 @@ BEGIN
         (gen_random_uuid(), u1, 'WANTED', '求借婴儿推车3天', '亲戚带宝宝来访，临时用几天', '其他', 'normal', 0, NULL, 3, 'self_pickup', 'online',
          now_ts - INTERVAL '5 days', now_ts - INTERVAL '5 days'),
 
-        -- Items from additional user
+        -- 来自额外用户的物品
         (gen_random_uuid(), u4, 'LEND', '烤箱32L家用', '买来没用几次，适合烘焙新手', '家居', 'like-new', 0, '["/images/demo/oven.jpg"]', 7, 'self_pickup', 'online',
          now_ts - INTERVAL '1 day', now_ts - INTERVAL '1 day'),
         (gen_random_uuid(), u4, 'LEND', 'iPad Air 4代', '64G WiFi版，带保护壳', '电子产品', 'normal', 0, '["/images/demo/ipad.jpg"]', 7, 'self_pickup', 'online',
@@ -92,7 +92,7 @@ BEGIN
     END IF;
 END $$;
 
--- Only insert help requests if < 6 total
+-- 仅当求助信息总数少于 6 时插入
 DO $$
 DECLARE
     h_count int;

@@ -1,5 +1,7 @@
 server:
   port: 8080
+  # 绑定所有网络接口：确保手机同网段可访问后端
+  address: 0.0.0.0
 
 spring:
   application:
@@ -23,6 +25,7 @@ spring:
   sql:
     init:
       mode: always
+      encoding: UTF-8
       schema-locations: classpath:db/schema.sql,classpath:db/alter.sql
       data-locations: classpath:db/seed.sql
       continue-on-error: true
@@ -37,9 +40,16 @@ spring:
       max-file-size: 10MB
       max-request-size: 20MB
 
+# 微信小程序配置（真机调试 / 生产环境必须配置）
+wechat:
+  miniapp:
+    app-id: ${WECHAT_APPID:}
+    app-secret: ${WECHAT_SECRET:}
+
 # JWT 配置
 jwt:
-  secret: YTk3ZDRmMjE4YzY1MjNhNDZiN2Y4ZDkwZTExNjM3NTJhYjhkZWZkMWEyMzQ1Njc4OTBiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6
+  # 优先从 JWT_SECRET 环境变量注入；未设置时回退到本地开发默认值。生产环境必须通过环境变量提供并轮换密钥。
+  secret: ${JWT_SECRET:YTk3ZDRmMjE4YzY1MjNhNDZiN2Y4ZDkwZTExNjM3NTJhYjhkZWZkMWEyMzQ1Njc4OTBiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6}
   expiration: 604800000  # 7天
 
 # 文件上传路径

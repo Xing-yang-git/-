@@ -11,8 +11,13 @@ Page({
     building: '',
     unit: '',
     room: '',
-    residentType: '业主',
+    residentType: 'owner',
     nickPreview: '1栋1单元1001号(业主)',
+    phone: '',
+    password: '',
+    passwordConfirm: '',
+    showPassword: false,
+    showPasswordConfirm: false,
     realName: '',
     docImages: [],
     docLabel: '上传房产证',
@@ -56,7 +61,7 @@ Page({
     const tenantId = e.currentTarget.dataset.tenantId;
     const item = this.data.filteredTenants.find(t => t.id === tenantId);
     if (!item) return;
-    // Store community name for home page display
+    // 存储小区名称供首页展示
     wx.setStorageSync('communityName', item.name);
     this.setData({
       selectedTenant: tenantId,
@@ -82,8 +87,8 @@ Page({
 
   onSetType(e) {
     const type = e.currentTarget.dataset.type;
-    const docLabel = type === '业主' ? '上传房产证' : '上传租赁合同';
-    const docHint = type === '业主'
+    const docLabel = type === 'owner' ? '上传房产证' : '上传租赁合同';
+    const docHint = type === 'owner'
       ? '请上传清晰完整的房产证照片（支持拍照或相册选取）'
       : '请上传清晰完整的租赁合同照片，需包含租期起止日期';
     this.setData({ residentType: type, docLabel, docHint });
@@ -94,8 +99,29 @@ Page({
     const b = this.data.building || '1';
     const u = this.data.unit || '1';
     const r = this.data.room || '1001';
-    const typeLabel = this.data.residentType === '业主' ? '业主' : '租客';
+    const typeLabel = this.data.residentType === 'owner' ? '业主' : '租客';
     this.setData({ nickPreview: `${b}栋${u}单元${r}号(${typeLabel})` });
+  },
+
+  // ── Step 3: Phone + Password ──
+  onPhoneInput(e) {
+    this.setData({ phone: e.detail.value });
+  },
+
+  onPasswordInput(e) {
+    this.setData({ password: e.detail.value });
+  },
+
+  onPasswordConfirmInput(e) {
+    this.setData({ passwordConfirm: e.detail.value });
+  },
+
+  onTogglePassword() {
+    this.setData({ showPassword: !this.data.showPassword });
+  },
+
+  onTogglePasswordConfirm() {
+    this.setData({ showPasswordConfirm: !this.data.showPasswordConfirm });
   },
 
   onNameInput(e) {
@@ -136,7 +162,9 @@ Page({
   },
 
   onNextStep() {
-    const { currentStep, selectedTenant, building, unit, room, realName, docImages, residentType } = this.data;
+    const { currentStep, selectedTenant, building, unit, room,
+            phone, password, passwordConfirm,
+            realName, docImages, residentType } = this.data;
 
     // Step 1 validation
     if (currentStep === 0) {
@@ -167,8 +195,35 @@ Page({
       return;
     }
 
-    // Step 3: Submit
+    // Step 3 validation: Phone + Password
     if (currentStep === 2) {
+      const phoneTrim = phone.trim();
+      if (!phoneTrim) {
+        wx.showToast({ title: '请输入手机号', icon: 'none' });
+        return;
+      }
+      if (!/^1[3-9]\d{9}$/.test(phoneTrim)) {
+        wx.showToast({ title: '请输入正确的手机号', icon: 'none' });
+        return;
+      }
+      if (!password || password.length < 8 || password.length > 20) {
+        wx.showToast({ title: '密码需要8-20位', icon: 'none' });
+        return;
+      }
+      if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+        wx.showToast({ title: '密码需要包含字母和数字', icon: 'none' });
+        return;
+      }
+      if (password !== passwordConfirm) {
+        wx.showToast({ title: '两次密码输入不一致', icon: 'none' });
+        return;
+      }
+      this.setData({ currentStep: 3 });
+      return;
+    }
+
+    // Step 4: Submit
+    if (currentStep === 3) {
       if (!realName.trim()) {
         wx.showToast({ title: '请填写真实姓名', icon: 'none' });
         return;
@@ -180,7 +235,7 @@ Page({
 
       wx.showLoading({ title: '上传证件照...' });
 
-      // Upload all docImages first, then submit with URLs
+      // 先上传全部证件图片，再携带 URL 提交
       const uploadTasks = docImages.map(filePath => api.upload('/api/common/upload', filePath));
       Promise.all(uploadTasks)
         .then((urls) => {
@@ -190,18 +245,23 @@ Page({
             building: building,
             unit: unit,
             room: room,
+            phone: phone.trim(),
+            password: password,
             name: realName.trim(),
             userType: residentType,
             docImages: urls
           });
         })
-        .then((userData) => {
+        .then((data) => {
           wx.hideLoading();
-          // Store updated user info (with room) for home page community name
-          if (userData) {
-            wx.setStorageSync('userInfo', userData);
+          // 保存公开注册响应中的 token 和用户信息
+          if (data.token) {
+            wx.setStorageSync('token', data.token);
+          }
+          if (data.user) {
+            wx.setStorageSync('userInfo', data.user);
             const app = getApp();
-            app.globalData.userInfo = userData;
+            app.globalData.userInfo = data.user;
           }
           wx.showToast({ title: '提交成功，请等待物业审核', icon: 'success' });
           setTimeout(() => {

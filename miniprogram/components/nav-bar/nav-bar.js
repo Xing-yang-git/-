@@ -11,6 +11,10 @@ Component({
     rightText: {
       type: String,
       value: ''
+    },
+    customBack: {
+      type: Boolean,
+      value: false
     }
   },
 
@@ -29,6 +33,11 @@ Component({
 
   methods: {
     onBack() {
+      if (this.data.customBack) {
+        // 由页面自行处理返回（如审核页返回登录页）
+        this.triggerEvent('back');
+        return;
+      }
       wx.navigateBack({
         delta: 1,
         fail() {

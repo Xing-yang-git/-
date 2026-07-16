@@ -1,5 +1,5 @@
 <view class="container">
-  <!-- Item Summary Card -->
+  <!-- 物品摘要卡片 -->
   <view class="card">
     <view class="card-title">借出物品</view>
     <view class="summary-row">
@@ -12,7 +12,7 @@
     </view>
   </view>
 
-  <!-- On Time -->
+  <!-- 是否准时 -->
   <view class="card">
     <view class="card-title">是否准时归还</view>
     <view class="toggle-row">
@@ -21,7 +21,7 @@
     </view>
   </view>
 
-  <!-- Return Status -->
+  <!-- 归还状态 -->
   <view class="card">
     <view class="card-title">归还状态</view>
     <view class="status-cards">
@@ -40,7 +40,7 @@
     </view>
   </view>
 
-  <!-- Damage Type -->
+  <!-- 损坏类型 -->
   <view class="card">
     <view class="card-title">物品状况</view>
     <view class="damage-options">
@@ -56,19 +56,19 @@
     </view>
   </view>
 
-  <!-- Damage Note (conditional) -->
+  <!-- 损坏说明（条件显示） -->
   <view class="card" wx:if="{{damageType !== 'none' && damageType}}">
     <view class="card-title">损坏说明</view>
     <textarea class="textarea" placeholder="请描述物品损坏情况" value="{{damageNote}}" bindinput="onInput" data-field="damageNote" />
   </view>
 
-  <!-- Return Note -->
+  <!-- 归还备注 -->
   <view class="card">
     <view class="card-title">归还备注</view>
     <textarea class="textarea" placeholder="有什么想说的..." value="{{returnNote}}" bindinput="onInput" data-field="returnNote" />
   </view>
 
-  <!-- Photo Upload -->
+  <!-- 照片上传 -->
   <view class="card">
     <view class="card-title">照片凭证（选填）</view>
     <view class="image-grid">
@@ -84,7 +84,7 @@
     </view>
   </view>
 
-  <!-- Submit Button -->
+  <!-- 提交按钮 -->
   <view class="submit-bar">
     <button class="submit-btn" bindtap="onSubmit">提交归还确认</button>
   </view>

@@ -1,4 +1,5 @@
 const api = require('../../utils/api');
+const auth = require('../../utils/auth');
 
 Page({
   data: {
@@ -13,7 +14,12 @@ Page({
   },
 
   onLoad() {
+    if (!auth.ensureAccess()) return;   // 登录/审核门禁：未通过则已跳转
     this.loadHistory();
+  },
+
+  onShow() {
+    if (!auth.ensureAccess()) return; // 登录/审核门禁：覆盖 tab 切换与后台切回
   },
 
   loadHistory() {

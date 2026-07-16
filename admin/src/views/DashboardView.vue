@@ -1,10 +1,10 @@
 <template>
   <el-container class="admin-layout">
-    <el-aside width="220px">
+    <el-aside width="240px">
       <AppSidebar />
     </el-aside>
     <el-container>
-      <el-header class="topbar" height="56px">
+      <el-header class="topbar">
         <div class="topbar-left">
           <span class="topbar-title" style="display:flex;align-items:baseline;gap:8px;">
             <span>翠湖花园 · 运营看板</span>
@@ -25,7 +25,7 @@
         </div>
       </el-header>
       <el-main>
-        <!-- KPI Cards -->
+        <!-- KPI 卡片 -->
         <div class="stat-grid-luxe">
           <div class="stat-card-luxe">
             <div class="luxe-label">在线闲置物品</div>
@@ -49,7 +49,7 @@
           </div>
         </div>
 
-        <!-- Chart Section -->
+        <!-- 图表区域 -->
         <div class="luxe-section">
           <div class="luxe-section-header">
             <span class="luxe-section-title">月度互助趋势</span>
@@ -70,13 +70,13 @@
           </div>
         </div>
 
-        <!-- Stats + Top List -->
+        <!-- 统计 + 排行榜 -->
         <div class="luxe-section">
           <div class="luxe-section-header">
             <span class="luxe-section-title">互助分析</span>
           </div>
           <div class="two-col-luxe">
-            <!-- Completion Rate -->
+            <!-- 完成率 -->
             <div class="stat-panel-luxe">
               <div style="margin-bottom:20px;font-size:15px;font-weight:600;color:var(--text);">本月互助完成率</div>
               <div class="stat-row">
@@ -90,7 +90,7 @@
                 </div>
               </div>
             </div>
-            <!-- Damage Stats -->
+            <!-- 损坏统计 -->
             <div class="stat-panel-luxe">
               <div style="margin-bottom:20px;font-size:15px;font-weight:600;color:var(--text);">损坏统计</div>
               <div class="stat-row">
@@ -111,7 +111,7 @@
           </div>
         </div>
 
-        <!-- Top List -->
+        <!-- 排行榜 -->
         <div class="luxe-section">
           <div class="luxe-section-header">
             <span class="luxe-section-title">互助对象排行</span>
@@ -126,7 +126,7 @@
           </ol>
         </div>
 
-        <!-- All Records Dialog -->
+        <!-- 全部记录弹窗 -->
         <el-dialog v-model="showAllRecords" title="全部互助记录" width="640px">
           <div class="filter-row" style="padding:0;margin-bottom:8px;">
             <el-select v-model="arFilterType" placeholder="全部类型" size="small" style="width:120px;" clearable @change="filterAllRecords">
@@ -176,11 +176,11 @@ const authStore = useAuthStore();
 const chartRef = ref(null);
 let chartInstance = null;
 
-// Animated stats
+// 动画统计数值
 const animatedStats = reactive({ idle: 0, help: 0, pub: 0, mau: 0 });
 const targets = { idle: 128, help: 35, pub: 256, mau: 89 };
 
-// Period selector
+// 时间周期选择器
 const periods = [
   { key: 'week', label: '周' },
   { key: 'month', label: '月' },
@@ -188,14 +188,14 @@ const periods = [
 ];
 const currentPeriod = ref('week');
 
-// Chart data
+// 图表数据
 const chartData = {
   week:  { labels: ['6/24','6/25','6/26','6/27','6/28','6/29','今日'], pub: [40,55,70,50,65,80,72], done: [25,32,45,38,42,55,48] },
   month:  { labels: ['第1周','第2周','第3周','第4周'], pub: [180,210,256,190], done: [120,145,170,135] },
   quarter: { labels: ['4月','5月','6月'], pub: [620,710,780], done: [430,490,540] }
 };
 
-// Top list
+// 排行榜
 const topList = [
   { name: '3栋2单元1502号(业主)', count: 12, room: '3栋', type: 'idle' },
   { name: '6栋1单元401号(业主)', count: 9, room: '6栋', type: 'idle' },
@@ -223,7 +223,7 @@ const filteredAllRecords = computed(() => {
   return allRecords.filter(r => r.type === arFilterType.value);
 });
 
-function filterAllRecords() { /* computed handles it */ }
+function filterAllRecords() { /* 由 computed 处理 */ }
 
 const today = computed(() => {
   const d = new Date();
@@ -263,7 +263,7 @@ function renderChart() {
       bottom: 0
     },
     grid: { left: 20, right: 20, top: 20, bottom: 40 },
-    xAxis: { type: 'category', data: d.labels, axisLine: { lineStyle: { color: '#e8e8ed' } } },
+    xAxis: { type: 'category', data: d.labels, axisLine: { lineStyle: { color: '#e8e8ed' } }, axisLabel: { color: '#525256' } },
     yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f5f5f7' } } },
     series: [
       {
@@ -306,12 +306,12 @@ async function handleLogout() {
     });
     authStore.logout();
     router.push('/login');
-  } catch { /* cancelled */ }
+  } catch { /* 已取消 */ }
 }
 
-// WebSocket message handler
+// WebSocket 消息处理函数
 function onWsMessage(data) {
-  // Update stats from real-time data
+  // 从实时数据更新统计数值
   if (data.idle) targets.idle = data.idle;
   if (data.help) targets.help = data.help;
   if (data.pub) targets.pub = data.pub;
@@ -324,7 +324,7 @@ onMounted(() => {
     initChart();
     animateStats();
   });
-  // Uncomment to enable live WebSocket updates
+  // 取消注释以启用 WebSocket 实时更新
   // connect(onWsMessage);
 });
 
@@ -336,6 +336,11 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* 不设最大宽度限制 —— 4列 KPI 网格和2列分析区域在任何宽度下等比缩放，不会显得稀疏。 */
+:deep(.el-main) {
+  padding: 32px 40px !important;
+}
+
 .panel-value {
   font-size: 40px;
   font-weight: 300;

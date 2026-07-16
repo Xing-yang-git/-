@@ -7,28 +7,27 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 
-public interface BorrowRequestRepository extends JpaRepository<BorrowRequest, UUID> {
+public interface BorrowRequestRepository extends JpaRepository<BorrowRequest, Long> {
 
-    List<BorrowRequest> findByBorrowerId(UUID borrowerId);
+    List<BorrowRequest> findByBorrowerId(Long borrowerId);
 
-    List<BorrowRequest> findByIdleIdInAndStatus(List<UUID> idleIds, String status);
+    List<BorrowRequest> findByIdleIdInAndStatus(List<Long> idleIds, String status);
 
-    List<BorrowRequest> findByIdleId(UUID idleId);
+    List<BorrowRequest> findByIdleId(Long idleId);
 
     long countByStatusAndCreatedAtBetween(String status, LocalDateTime start, LocalDateTime end);
 
     List<BorrowRequest> findByStatus(String status);
 
     @Query("SELECT COUNT(br) FROM BorrowRequest br WHERE br.idleItem.userId = :ownerId AND br.status = 'returned'")
-    long countReturnedByOwnerId(@Param("ownerId") UUID ownerId);
+    long countReturnedByOwnerId(@Param("ownerId") Long ownerId);
 
     @Query("SELECT COUNT(br) FROM BorrowRequest br WHERE br.idleItem.userId = :ownerId AND br.status = 'returned' AND br.isOnTime = true")
-    long countOnTimeReturnedByOwnerId(@Param("ownerId") UUID ownerId);
+    long countOnTimeReturnedByOwnerId(@Param("ownerId") Long ownerId);
 
-    List<BorrowRequest> findByBorrowerIdAndStatus(UUID borrowerId, String status);
+    List<BorrowRequest> findByBorrowerIdAndStatus(Long borrowerId, String status);
 
     @Query("SELECT br FROM BorrowRequest br WHERE br.idleItem.userId = :ownerId AND br.status = :status")
-    List<BorrowRequest> findByOwnerIdAndStatus(@Param("ownerId") UUID ownerId, @Param("status") String status);
+    List<BorrowRequest> findByOwnerIdAndStatus(@Param("ownerId") Long ownerId, @Param("status") String status);
 }

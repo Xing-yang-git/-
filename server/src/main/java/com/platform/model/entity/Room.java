@@ -3,7 +3,6 @@ package com.platform.model.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Entity
 @Table(name = "rooms")
@@ -13,11 +12,11 @@ import java.util.UUID;
 @Builder
 public class Room {
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @Column(name = "unit_id", nullable = false)
-    private UUID unitId;
+    private Long unitId;
 
     @Column(name = "room_number", nullable = false, length = 10)
     private String roomNumber;

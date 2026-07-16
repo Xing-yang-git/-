@@ -17,11 +17,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.UUID;
 
 /**
- * Seeds the initial admin account and tenant data on first startup.
- * Safe to re-run — skips if data already exists.
+ * 首次启动时初始化管理员账号和小区种子数据。
+ * 可安全重复执行——已有数据时自动跳过。
  */
 @Component
 public class DataInitializer implements CommandLineRunner {
@@ -52,11 +51,11 @@ public class DataInitializer implements CommandLineRunner {
     @Override
     @Transactional
     public void run(String... args) {
-        seedAdmin();
-        seedTenant();
+        Long tenantId = seedTenant();
+        seedAdmin(tenantId);
     }
 
-    private void seedAdmin() {
+    private void seedAdmin(Long tenantId) {
         if (userRepository.findByUsername("admin").isPresent()) {
             log.info("Admin user already exists, skipping seed");
             return;
@@ -66,17 +65,18 @@ public class DataInitializer implements CommandLineRunner {
                 .username("admin")
                 .passwordHash(passwordEncoder.encode("admin123"))
                 .name("系统管理员")
-                .userType("admin")
+                .userType("super_admin")
+                .tenantId(tenantId)
                 .authStatus("approved")
                 .build();
         userRepository.save(admin);
-        log.info("Created admin user: admin / admin123");
+        log.info("Created super_admin: admin / admin123 (tenant_id={})", tenantId);
     }
 
-    private void seedTenant() {
+    private Long seedTenant() {
         if (tenantRepository.count() > 0) {
             log.info("Tenants already exist, skipping seed");
-            return;
+            return tenantRepository.findAll().get(0).getId();
         }
 
         Tenant tenant = Tenant.builder()
@@ -85,16 +85,16 @@ public class DataInitializer implements CommandLineRunner {
         tenant = tenantRepository.save(tenant);
         log.info("Created tenant: 翠湖花园");
 
-        UUID tenantId = tenant.getId();
+        Long tenantId = tenant.getId();
 
-        // Create 8 buildings, each with 3 units, each with 4 rooms (1-8栋 × 1-3单元 × 101-804)
+        // 创建 8 栋楼，每栋 3 个单元，每个单元 4 个房间 (1-8栋 × 1-3单元 × 101-804)
         for (int b = 1; b <= 8; b++) {
             Building building = Building.builder()
                     .tenantId(tenantId)
                     .name(b + "栋")
                     .build();
             building = buildingRepository.save(building);
-            UUID buildingId = building.getId();
+            Long buildingId = building.getId();
 
             for (int u = 1; u <= 3; u++) {
                 Unit unit = Unit.builder()
@@ -102,7 +102,7 @@ public class DataInitializer implements CommandLineRunner {
                         .name(u + "单元")
                         .build();
                 unit = unitRepository.save(unit);
-                UUID unitId = unit.getId();
+                Long unitId = unit.getId();
 
                 for (int r = 1; r <= 4; r++) {
                     String roomNumber = (b * 100 + r) + "";
@@ -116,21 +116,21 @@ public class DataInitializer implements CommandLineRunner {
         }
         log.info("Created buildings/units/rooms for 翠湖花园 (8栋 × 3单元 × 4房)");
 
-        // Create a second tenant for the dropdown
+        // 创建第二个小区，供下拉选择使用
         Tenant tenant2 = Tenant.builder()
                 .name("阳光花园")
                 .build();
         tenant2 = tenantRepository.save(tenant2);
         log.info("Created tenant: 阳光花园");
 
-        UUID t2Id = tenant2.getId();
+        Long t2Id = tenant2.getId();
         for (int b = 1; b <= 3; b++) {
             Building building = Building.builder()
                     .tenantId(t2Id)
                     .name(b + "栋")
                     .build();
             building = buildingRepository.save(building);
-            UUID buildingId = building.getId();
+            Long buildingId = building.getId();
 
             for (int u = 1; u <= 2; u++) {
                 Unit unit = Unit.builder()
@@ -138,7 +138,7 @@ public class DataInitializer implements CommandLineRunner {
                         .name(u + "单元")
                         .build();
                 unit = unitRepository.save(unit);
-                UUID unitId = unit.getId();
+                Long unitId = unit.getId();
 
                 for (int r = 1; r <= 6; r++) {
                     String roomNumber = (b * 100 + r) + "";
@@ -151,5 +151,7 @@ public class DataInitializer implements CommandLineRunner {
             }
         }
         log.info("Created buildings/units/rooms for 阳光花园 (3栋 × 2单元 × 6房)");
+
+        return tenantId;
     }
 }

@@ -7,14 +7,13 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class UserDTO {
-    private UUID id;
+    private Long id;
     private String openid;
     private String username;
     private String name;
@@ -22,7 +21,8 @@ public class UserDTO {
     private String avatarUrl;
     private String authStatus;
     private String userType;
-    private UUID roomId;
+    private Long roomId;
+    private Long tenantId;
     private String roomInfo;
     private String userRoom;
     private String tenantName;

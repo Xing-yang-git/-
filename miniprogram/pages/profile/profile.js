@@ -1,4 +1,5 @@
 const api = require('../../utils/api');
+const auth = require('../../utils/auth');
 
 Page({
   data: {
@@ -10,16 +11,23 @@ Page({
     isAuth: false,
     userTypeText: '业主',
     score: 0,
-    starLevel: 0,
     ratingCount: 0,
     recordTab: 'idle',
     idleRecords: [],
     helpRecords: [],
+    // 来自后端的统计数据
+    lendCount: 0,
+    borrowCount: 0,
+    borrowReturnRate: 0,
+    helpReqCount: 0,
+    helpProCount: 0,
+    // Loading
+    loading: true,
 
-    // Logout alert
+    // 退出登录弹窗
     showLogoutAlert: false,
 
-    // Record detail
+    // 记录详情
     showRecordDetail: false,
     recordDetail: {
       item: '',
@@ -31,86 +39,114 @@ Page({
   },
 
   onLoad() {
+    if (!auth.ensureAccess()) return;   // 登录/审核门禁：未通过则已跳转
     const sysInfo = wx.getSystemInfoSync();
     this.setData({ statusBarHeight: sysInfo.statusBarHeight || 44 });
-    const userInfo = wx.getStorageSync('userInfo') || {};
-    const userId = userInfo.id || wx.getStorageSync('userId') || '';
-    this.setData({
-      userId,
-      userName: userInfo.name || '用户',
-      avatarText: (userInfo.name || '用')[0],
-      roomInfo: userInfo.room || userInfo.roomNumber || '未绑定',
-      isAuth: userInfo.isAuth || false,
-      userTypeText: userInfo.userType === 'owner' ? '业主' : (userInfo.userType === 'tenant' ? '租客' : '业主')
-    });
-    if (userId) {
-      this.loadRatings(userId);
-      this.loadRecords();
-    }
+    this.loadProfile();
+    this.loadRecords();
   },
 
   onShow() {
+    if (!auth.ensureAccess()) return; // 登录/审核门禁：覆盖 tab 切换与后台切回
     if (this.data.userId) {
-      this.loadRatings(this.data.userId);
+      this.loadProfile();
       this.loadRecords();
     }
   },
 
-  async loadRatings(userId) {
+  // ================================================================
+  // 个人资料数据 — 来自 /api/user/profile（真实数据库数据）
+  // ================================================================
+  async loadProfile() {
+    const token = wx.getStorageSync('token');
+    if (!token) {
+      this.setData({ loading: false, isAuth: false });
+      return;
+    }
     try {
-      const res = await api.get('/api/rating/user/' + userId);
-      const data = res.data || {};
+      const data = await api.get('/api/user/profile');
       this.setData({
+        loading: false,
+        userId: data.id || '',
+        userName: data.name || '用户',
+        avatarText: (data.name || '用')[0],
+        roomInfo: data.roomInfo || '未绑定',
+        isAuth: data.isAuth || false,
+        userTypeText: data.userTypeText || '业主',
         score: (data.score || 0).toFixed(1),
-        starLevel: Math.round((data.score || 0) / 20),
-        ratingCount: data.count || 0
+        ratingCount: data.ratingCount || 0,
+        lendCount: data.lendCount || 0,
+        borrowCount: data.borrowCount || 0,
+        borrowReturnRate: data.borrowReturnRate != null ? data.borrowReturnRate : 100,
+        helpReqCount: data.helpReqCount || 0,
+        helpProCount: data.helpProCount || 0
       });
     } catch (e) {
-      console.error('Load ratings failed:', e);
+      console.error('Load profile failed:', e);
+      this.setData({ loading: false });
     }
   },
 
+  // ================================================================
+  // 记录 — 来自 /api/user/completed（真实数据库数据）
+  // ================================================================
   async loadRecords() {
-    if (this.data.recordTab === 'idle') {
-      this.loadIdleRecords();
-    } else {
-      this.loadHelpRecords();
-    }
-  },
-
-  async loadIdleRecords() {
+    // 互借记录: borrow + lend
     try {
-      const res = await api.get('/api/idle/records');
-      const list = (res.data && res.data.list) ? res.data.list : (res.data || []);
-      const idleRecords = list.map(item => ({
+      const [borrowList, lendList] = await Promise.all([
+        api.get('/api/user/completed', { role: 'borrow' }),
+        api.get('/api/user/completed', { role: 'lend' })
+      ]);
+      const allIdle = [
+        ...(Array.isArray(borrowList) ? borrowList : []),
+        ...(Array.isArray(lendList) ? lendList : [])
+      ];
+      // 按 completedAt 倒序排列
+      allIdle.sort((a, b) => {
+        const ta = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+        const tb = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+        return tb - ta;
+      });
+      const idleRecords = allIdle.map(item => ({
         id: item.id,
-        title: item.title || item.itemTitle || '',
-        type: item.type || 'LEND',
-        typeText: item.type === 'LEND' ? '借出' : '借入',
-        roleText: item.type === 'LEND' ? '借入者' : '借出者',
-        peerName: item.peerName || item.peer || '',
-        dateText: this.formatDate(item.createTime),
-        remark: item.remark || item.evaluation || '—'
+        title: item.title || '',
+        type: item.subType || 'LEND',
+        typeText: item.subType === 'borrow' ? '借入' : '借出',
+        roleText: item.subType === 'borrow' ? '借出者' : '借入者',
+        peerName: item.personName || '',
+        dateText: this.formatDate(item.completedAt),
+        remark: item.myFeedback || item.theirFeedback || '—'
       }));
       this.setData({ idleRecords });
     } catch (e) {
       console.error('Load idle records failed:', e);
     }
-  },
 
-  async loadHelpRecords() {
+    // 互助记录: helpReq + helpPro
     try {
-      const res = await api.get('/api/help/records');
-      const list = (res.data && res.data.list) ? res.data.list : (res.data || []);
-      const helpRecords = list.map(item => ({
+      const [helpReqList, helpProList] = await Promise.all([
+        api.get('/api/user/completed', { role: 'helpReq' }),
+        api.get('/api/user/completed', { role: 'helpPro' })
+      ]);
+      const allHelp = [
+        ...(Array.isArray(helpReqList) ? helpReqList : []),
+        ...(Array.isArray(helpProList) ? helpProList : [])
+      ];
+      // 按 completedAt 倒序排列
+      allHelp.sort((a, b) => {
+        const ta = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+        const tb = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+        return tb - ta;
+      });
+      const helpRecords = allHelp.map(item => ({
         id: item.id,
-        title: item.title || item.itemTitle || '',
-        type: item.type || 'HELP',
-        typeText: item.type === 'SEEK' ? '求助' : '帮助',
-        roleText: item.type === 'SEEK' ? '帮助者' : '求助者',
-        peerName: item.peerName || item.peer || '',
-        dateText: this.formatDate(item.createTime),
-        remark: item.remark || item.evaluation || '—'
+        title: item.title || '',
+        type: item.subType || 'helpReq',
+        typeText: item.subType === 'helpReq' ? '求助' : '帮助',
+        roleText: item.subType === 'helpReq' ? '帮助者' : '求助者',
+        peerName: item.personName || '',
+        dateText: this.formatDate(item.completedAt),
+        remark: item.myFeedback || item.theirFeedback || '—'
       }));
       this.setData({ helpRecords });
     } catch (e) {
@@ -119,17 +155,15 @@ Page({
   },
 
   // ================================================================
-  // Tab Switching
+  // Tab 切换
   // ================================================================
   onRecordTabTap(e) {
     const tab = e.currentTarget.dataset.tab;
-    this.setData({ recordTab: tab }, () => {
-      this.loadRecords();
-    });
+    this.setData({ recordTab: tab });
   },
 
   // ================================================================
-  // Record Detail
+  // 记录详情
   // ================================================================
   onOpenRecord(e) {
     const record = e.currentTarget.dataset.record;
@@ -150,7 +184,7 @@ Page({
   },
 
   // ================================================================
-  // Logout
+  // 退出登录
   // ================================================================
   onLogoutTap() {
     this.setData({ showLogoutAlert: true });
@@ -176,7 +210,7 @@ Page({
   },
 
   // ================================================================
-  // Helpers
+  // 辅助函数
   // ================================================================
   formatDate(timestamp) {
     if (!timestamp) return '';

@@ -4,35 +4,62 @@
 -->
 <view class="container">
 
-  <!-- Nav Bar -->
+  <!-- 导航栏 -->
   <view class="nav-wrap" style="padding-top: {{statusBarHeight}}px;">
-    <view class="nav-bar">
-      <view class="logout-icon" bindtap="onLogoutTap">
-        <text style="font-size:40rpx;color:var(--text-secondary);">↪</text>
-      </view>
-    </view>
+    <view class="nav-bar"></view>
   </view>
 
   <view class="page-content">
 
-    <!-- Profile Card -->
-    <view class="profile-card">
-      <view class="avatar">
-        <image class="avatar-icon" src="../../images/icon-user.svg" mode="aspectFit" />
-      </view>
+    <!-- 加载状态 -->
+    <view class="global-loading" wx:if="{{loading}}">
+      <view class="loading-spinner"></view>
+      <text class="loading-text">加载中...</text>
+    </view>
+
+    <!-- 个人资料卡片 -->
+    <view class="profile-card" wx:if="{{!loading}}">
+      <view class="avatar">👤</view>
       <view class="info">
-        <view class="name">{{roomInfo}}</view>
+        <view class="name-row">
+          <view class="name">{{roomInfo}}</view>
+          <view class="logout-icon" bindtap="onLogoutTap">
+            <image class="logout-icon-img" src="../../images/logout-icon.svg" mode="aspectFit" />
+          </view>
+        </view>
         <view class="meta">
           <view class="auth-tag {{isAuth ? 'authed' : 'unauthed'}}">{{isAuth ? '已认证' : '未认证'}}</view>
           <text>{{userTypeText}}</text>
         </view>
-        <view class="rate">综合评分 {{score}} ★★★★★</view>
+        <view class="rate">综合评分 {{score}} / 5.0 · {{ratingCount}} 人评价</view>
       </view>
     </view>
 
-    <view class="profile-sep"></view>
+    <!-- 统计网格 -->
+    <view class="profile-stats-grid" wx:if="{{!loading}}">
+      <view class="profile-stat-item">
+        <text class="profile-stat-value">{{borrowCount}}</text>
+        <text class="profile-stat-label">借入次数</text>
+      </view>
+      <view class="profile-stat-item">
+        <text class="profile-stat-value">{{borrowReturnRate}}%</text>
+        <text class="profile-stat-label">按时归还率</text>
+      </view>
+      <view class="profile-stat-item">
+        <text class="profile-stat-value">{{lendCount}}</text>
+        <text class="profile-stat-label">借出次数</text>
+      </view>
+      <view class="profile-stat-item">
+        <text class="profile-stat-value">{{helpReqCount}}</text>
+        <text class="profile-stat-label">求助次数</text>
+      </view>
+      <view class="profile-stat-item">
+        <text class="profile-stat-value">{{helpProCount}}</text>
+        <text class="profile-stat-label">帮助他人</text>
+      </view>
+    </view>
 
-    <!-- Record Tabs -->
+    <!-- 记录标签 -->
     <view class="record-header">
       <view class="segment">
         <view class="segment-item {{recordTab === 'idle' ? 'active' : ''}}" bindtap="onRecordTabTap" data-tab="idle">互借记录</view>
@@ -40,8 +67,8 @@
       </view>
     </view>
 
-    <!-- Idle Records -->
-    <view wx:if="{{recordTab === 'idle'}}">
+    <!-- 互借记录 -->
+    <view class="record-list" wx:if="{{recordTab === 'idle'}}">
       <block wx:for="{{idleRecords}}" wx:key="id">
         <view class="list-row" bindtap="onOpenRecord" data-record="{{item}}">
           <view class="list-bd">
@@ -59,8 +86,8 @@
       <view class="list-end" wx:if="{{idleRecords.length > 0}}">— 共 {{idleRecords.length}} 条记录 —</view>
     </view>
 
-    <!-- Help Records -->
-    <view wx:if="{{recordTab === 'help'}}">
+    <!-- 互助记录 -->
+    <view class="record-list" wx:if="{{recordTab === 'help'}}">
       <block wx:for="{{helpRecords}}" wx:key="id">
         <view class="list-row" bindtap="onOpenRecord" data-record="{{item}}">
           <view class="list-bd">
@@ -82,7 +109,7 @@
 
 </view>
 
-<!-- Logout Alert -->
+<!-- 退出登录确认弹窗 -->
 <view class="alert-overlay" wx:if="{{showLogoutAlert}}" catchtap="onCloseLogoutAlert">
   <view class="alert" catchtap="">
     <view class="alert-title">退出登录</view>
@@ -94,7 +121,7 @@
   </view>
 </view>
 
-<!-- Record Detail Alert -->
+<!-- 记录详情弹窗 -->
 <view class="alert-overlay" wx:if="{{showRecordDetail}}" catchtap="onCloseRecordDetail">
   <view class="alert" catchtap="">
     <view class="alert-title">互助记录详情</view>

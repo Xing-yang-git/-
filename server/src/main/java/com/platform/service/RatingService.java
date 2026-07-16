@@ -21,7 +21,6 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -49,8 +48,8 @@ public class RatingService {
         this.userRepository = userRepository;
     }
 
-    public Map<String, Object> submitRating(UUID fromUserId, RatingRequest req) {
-        // Normalize C端 field names to backend field names
+    public Map<String, Object> submitRating(Long fromUserId, RatingRequest req) {
+        // 将 C端字段名归一化为后端字段名
         if (req.getBorrowId() == null && req.getHelpApplicationId() == null && req.getTargetId() != null) {
             if ("help".equals(req.getRatingType())) {
                 req.setHelpApplicationId(req.getTargetId());
@@ -61,14 +60,6 @@ public class RatingService {
         if (req.getScore() == null && req.getOverallScore() != null) {
             req.setScore(req.getOverallScore());
         }
-        // Merge C端 dimension fields into dimensionScores
-        if (req.getDimensionScores() == null) {
-            if (req.getDimScores() != null) {
-                req.setDimensionScores(req.getDimScores());
-            } else if (req.getDimLabels() != null) {
-                req.setDimensionScores(req.getDimLabels());
-            }
-        }
 
         if (req.getBorrowId() != null) {
             BorrowRequest borrowRequest = borrowRequestRepository.findById(req.getBorrowId())
@@ -78,8 +69,21 @@ public class RatingService {
                 throw new RuntimeException("只能对已归还的借入记录进行评价");
             }
 
-            if (!borrowRequest.getBorrowerId().equals(fromUserId)) {
-                throw new RuntimeException("只有借入方可以进行评价");
+            IdleItem idleItem = idleItemRepository.findById(borrowRequest.getIdleId()).orElse(null);
+            Long ownerId = idleItem != null ? idleItem.getUserId() : null;
+            Long borrowerId = borrowRequest.getBorrowerId();
+
+            // 借入双方（借入方 / 物品所有者）任一方均可评价对方
+            boolean isBorrower = borrowerId.equals(fromUserId);
+            boolean isOwner = ownerId != null && ownerId.equals(fromUserId);
+            if (!isBorrower && !isOwner) {
+                throw new RuntimeException("无权评价该借入记录");
+            }
+            Long toUserId = isBorrower ? ownerId : borrowerId;
+            // 物品被删除时 ownerId 为 null——to_user_id 是 NOT NULL 列，
+            // 在业务层给出明确报错，而不是落库时抛数据库约束异常
+            if (toUserId == null) {
+                throw new RuntimeException("对方用户信息缺失，无法评价");
             }
 
             boolean alreadyRated = ratingRepository
@@ -88,15 +92,11 @@ public class RatingService {
                 throw new RuntimeException("您已经评价过该借入记录");
             }
 
-            IdleItem idleItem = idleItemRepository.findById(borrowRequest.getIdleId()).orElse(null);
-            UUID ownerId = idleItem != null ? idleItem.getUserId() : null;
-
             Rating rating = new Rating();
             rating.setFromUserId(fromUserId);
-            rating.setToUserId(ownerId);
+            rating.setToUserId(toUserId);
             rating.setBorrowId(req.getBorrowId());
             rating.setScore(req.getScore());
-            rating.setDimensionScores(req.getDimensionScores());
             rating.setCreatedAt(LocalDateTime.now());
             ratingRepository.save(rating);
 
@@ -114,8 +114,20 @@ public class RatingService {
                 throw new RuntimeException("只能对已完成的帮助进行评价");
             }
 
-            if (!application.getHelperId().equals(fromUserId)) {
-                throw new RuntimeException("只有帮助方可以进行评价");
+            HelpRequest helpRequest = helpRequestRepository.findById(application.getHelpId()).orElse(null);
+            Long requesterId = helpRequest != null ? helpRequest.getUserId() : null;
+            Long helperId = application.getHelperId();
+
+            // 互助双方（帮助方 / 求助方）任一方均可评价对方
+            boolean isHelper = helperId.equals(fromUserId);
+            boolean isRequester = requesterId != null && requesterId.equals(fromUserId);
+            if (!isHelper && !isRequester) {
+                throw new RuntimeException("无权评价该帮助");
+            }
+            Long toUserId = isHelper ? requesterId : helperId;
+            // 求助被删除时 requesterId 为 null——同上，业务层防御 NOT NULL 约束
+            if (toUserId == null) {
+                throw new RuntimeException("对方用户信息缺失，无法评价");
             }
 
             boolean alreadyRated = ratingRepository
@@ -124,15 +136,11 @@ public class RatingService {
                 throw new RuntimeException("您已经评价过该帮助");
             }
 
-            HelpRequest helpRequest = helpRequestRepository.findById(application.getHelpId()).orElse(null);
-            UUID ownerId = helpRequest != null ? helpRequest.getUserId() : null;
-
             Rating rating = new Rating();
             rating.setFromUserId(fromUserId);
-            rating.setToUserId(ownerId);
+            rating.setToUserId(toUserId);
             rating.setHelpApplicationId(req.getHelpApplicationId());
             rating.setScore(req.getScore());
-            rating.setDimensionScores(req.getDimensionScores());
             rating.setCreatedAt(LocalDateTime.now());
             ratingRepository.save(rating);
 
@@ -145,7 +153,7 @@ public class RatingService {
         throw new RuntimeException("请指定要评价的借入记录或帮助申请");
     }
 
-    public Map<String, Object> getUserRatings(UUID userId) {
+    public Map<String, Object> getUserRatings(Long userId) {
         List<Rating> ratings = ratingRepository.findByToUserId(userId);
         List<RatingDTO> ratingDTOs = ratings.stream().map(this::toDTO).collect(Collectors.toList());
 
@@ -168,7 +176,6 @@ public class RatingService {
                 .id(rating.getId())
                 .fromUserName(fromUser != null ? fromUser.getName() : "未知用户")
                 .score(rating.getScore())
-                .dimensionScores(rating.getDimensionScores())
                 .createdAt(rating.getCreatedAt())
                 .build();
     }

@@ -53,10 +53,10 @@ class HelpServiceTest {
     @InjectMocks
     private HelpService helpService;
 
-    private UUID userId;
-    private UUID helperId;
-    private UUID helpId;
-    private UUID appId;
+    private Long userId;
+    private Long helperId;
+    private Long helpId;
+    private Long appId;
     private HelpRequest helpRequest;
     private HelpApplication application;
     private User user;
@@ -64,10 +64,11 @@ class HelpServiceTest {
 
     @BeforeEach
     void setUp() {
-        userId = UUID.randomUUID();
-        helperId = UUID.randomUUID();
-        helpId = UUID.randomUUID();
-        appId = UUID.randomUUID();
+        // 各实体使用不同的 Long 字面量，保证测试内 ID 互不冲突
+        userId = 1L;
+        helperId = 2L;
+        helpId = 100L;
+        appId = 200L;
 
         user = User.builder()
                 .id(userId)
@@ -107,7 +108,7 @@ class HelpServiceTest {
     @Test
     @DisplayName("发布求助 - 正常发布求助成功")
     void should_publishHelp_when_validInput() {
-        // Arrange
+        // 准备
         HelpRequestDTO req = new HelpRequestDTO();
         req.setTitle("需要帮忙");
         req.setDescription("帮忙搬东西");
@@ -123,10 +124,10 @@ class HelpServiceTest {
         });
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
+        // 执行
         HelpResponseDTO result = helpService.publish(userId, req);
 
-        // Assert
+        // 断言
         assertThat(result).isNotNull();
         assertThat(result.getTitle()).isEqualTo("需要帮忙");
         assertThat(result.getStatus()).isEqualTo("online");
@@ -137,7 +138,7 @@ class HelpServiceTest {
     @Test
     @DisplayName("发布求助 - isUrgent为null时默认false")
     void should_defaultIsUrgentToFalse_when_null() {
-        // Arrange
+        // 准备
         HelpRequestDTO req = new HelpRequestDTO();
         req.setTitle("非紧急求助");
         req.setDescription("测试");
@@ -150,10 +151,10 @@ class HelpServiceTest {
         });
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
+        // 执行
         HelpResponseDTO result = helpService.publish(userId, req);
 
-        // Assert
+        // 断言
         assertThat(result.getIsUrgent()).isFalse();
     }
 
@@ -162,17 +163,18 @@ class HelpServiceTest {
     @Test
     @DisplayName("获取求助首页 - 正常返回分页列表")
     void should_returnHomeList_when_helpsExist() {
-        // Arrange
+        // 准备
         Page<HelpRequest> helpPage = new PageImpl<>(List.of(helpRequest),
                 PageRequest.of(0, 10), 1);
+        // 用户未关联小区（tenantId 为 null）时走不带 tenant 过滤的查询分支
         when(helpRequestRepository.findByStatus(eq("online"), any(PageRequest.class)))
                 .thenReturn(helpPage);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
-        PageDTO<HelpResponseDTO> result = helpService.getHomeList(0, 10);
+        // 执行
+        PageDTO<HelpResponseDTO> result = helpService.getHomeList(userId, 0, 10);
 
-        // Assert
+        // 断言
         assertThat(result.getContent()).hasSize(1);
         assertThat(result.getTotalElements()).isEqualTo(1);
     }
@@ -182,17 +184,17 @@ class HelpServiceTest {
     @Test
     @DisplayName("获取求助详情 - 正常返回详情")
     void should_returnDetail_when_helpExists() {
-        // Arrange
+        // 准备
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(ratingRepository.getAverageScore(userId)).thenReturn(4.0);
         when(helpRequestRepository.findByUserId(userId)).thenReturn(List.of(helpRequest));
         when(helpApplicationRepository.countByHelperIdAndStatus(userId, "approved")).thenReturn(5L);
 
-        // Act
+        // 执行
         HelpResponseDTO result = helpService.getDetail(helpId);
 
-        // Assert
+        // 断言
         assertThat(result).isNotNull();
         assertThat(result.getRating()).isEqualTo(4.0);
         assertThat(result.getHelpCount()).isEqualTo(1);
@@ -202,10 +204,10 @@ class HelpServiceTest {
     @Test
     @DisplayName("获取求助详情 - 求助不存在时抛出异常")
     void should_throwException_when_helpNotFound() {
-        // Arrange
+        // 准备
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.empty());
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> helpService.getDetail(helpId))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("求助信息不存在");
@@ -214,20 +216,21 @@ class HelpServiceTest {
     // ==================== search ====================
 
     @Test
-    @DisplayName("搜索求助 - 返回匹配结果")
+    @DisplayName("搜索求助 - 按用户所属小区隔离搜索")
     void should_searchHelp_when_keywordMatches() {
-        // Arrange
+        // 准备：用户归属小区 10L，搜索必须走带 tenantId 的隔离查询（与首页列表一致）
+        User tenantUser = User.builder().id(userId).name("张三").tenantId(10L).build();
         Page<HelpRequest> helpPage = new PageImpl<>(List.of(helpRequest),
                 PageRequest.of(0, 10), 1);
-        when(helpRequestRepository.findByStatusAndTitleContainingOrDescriptionContaining(
-                eq("online"), eq("搬"), eq("搬"), any(PageRequest.class)))
+        when(userRepository.findById(userId)).thenReturn(Optional.of(tenantUser));
+        when(helpRequestRepository.searchByTenant(
+                eq("online"), eq(10L), eq("搬"), eq("搬"), any(PageRequest.class)))
                 .thenReturn(helpPage);
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
-        PageDTO<HelpResponseDTO> result = helpService.search("搬", 0, 10);
+        // 执行
+        PageDTO<HelpResponseDTO> result = helpService.search(userId, "搬", 0, 10);
 
-        // Assert
+        // 断言
         assertThat(result.getContent()).hasSize(1);
     }
 
@@ -236,14 +239,14 @@ class HelpServiceTest {
     @Test
     @DisplayName("获取我的求助 - 返回用户的求助列表")
     void should_returnMyPosts_when_userHasPosts() {
-        // Arrange
+        // 准备
         when(helpRequestRepository.findByUserId(userId)).thenReturn(List.of(helpRequest));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
+        // 执行
         List<HelpResponseDTO> result = helpService.getMyPosts(userId);
 
-        // Assert
+        // 断言
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getTitle()).isEqualTo("需要帮忙搬家具");
     }
@@ -251,13 +254,13 @@ class HelpServiceTest {
     @Test
     @DisplayName("获取我的求助 - 无求助时返回空列表")
     void should_returnEmptyPosts_when_noPosts() {
-        // Arrange
+        // 准备
         when(helpRequestRepository.findByUserId(userId)).thenReturn(Collections.emptyList());
 
-        // Act
+        // 执行
         List<HelpResponseDTO> result = helpService.getMyPosts(userId);
 
-        // Assert
+        // 断言
         assertThat(result).isEmpty();
     }
 
@@ -266,15 +269,15 @@ class HelpServiceTest {
     @Test
     @DisplayName("下架求助 - 正常下架")
     void should_delistHelp_when_ownerOperates() {
-        // Arrange
+        // 准备
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
         when(helpRequestRepository.save(any(HelpRequest.class))).thenReturn(helpRequest);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
+        // 执行
         HelpResponseDTO result = helpService.delist(userId, helpId);
 
-        // Assert
+        // 断言
         assertThat(result.getStatus()).isEqualTo("offline");
         assertThat(helpRequest.getStatus()).isEqualTo("offline");
     }
@@ -282,11 +285,11 @@ class HelpServiceTest {
     @Test
     @DisplayName("下架求助 - 非所有者操作时抛出异常")
     void should_throwException_when_delistNotOwner() {
-        // Arrange
-        UUID otherId = UUID.randomUUID();
+        // 准备
+        Long otherId = 99L;
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> helpService.delist(otherId, helpId))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("无权操作该求助");
@@ -297,8 +300,10 @@ class HelpServiceTest {
     @Test
     @DisplayName("申请帮助 - 正常申请成功")
     void should_applyHelp_when_validInput() {
-        // Arrange
+        // 准备
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
+        when(helpApplicationRepository.existsByHelpIdAndHelperIdAndStatusIn(
+                eq(helpId), eq(helperId), anyList())).thenReturn(false);
         when(helpApplicationRepository.save(any(HelpApplication.class))).thenAnswer(inv -> {
             HelpApplication app = inv.getArgument(0);
             app.setId(appId);
@@ -307,10 +312,10 @@ class HelpServiceTest {
         when(notificationRepository.save(any(Notification.class))).thenReturn(new Notification());
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
+        // 执行
         HelpResponseDTO result = helpService.apply(helperId, helpId, "我可以帮忙");
 
-        // Assert
+        // 断言
         assertThat(result).isNotNull();
         verify(helpApplicationRepository).save(any(HelpApplication.class));
         verify(notificationRepository).save(any(Notification.class));
@@ -319,11 +324,11 @@ class HelpServiceTest {
     @Test
     @DisplayName("申请帮助 - 求助已关闭时抛出异常")
     void should_throwException_when_helpClosed() {
-        // Arrange
+        // 准备
         helpRequest.setStatus("offline");
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> helpService.apply(helperId, helpId, "note"))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("该求助已关闭");
@@ -332,10 +337,10 @@ class HelpServiceTest {
     @Test
     @DisplayName("申请帮助 - 申请自己的求助时抛出异常")
     void should_throwException_when_applyingOwnHelp() {
-        // Arrange
+        // 准备
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> helpService.apply(userId, helpId, "note"))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("不能申请自己的求助");
@@ -346,7 +351,7 @@ class HelpServiceTest {
     @Test
     @DisplayName("审批帮助 - 通过申请并更新状态")
     void should_approveHelp_when_validApproval() {
-        // Arrange
+        // 准备
         ApproveRequest req = new ApproveRequest();
         req.setApproved(true);
 
@@ -357,10 +362,10 @@ class HelpServiceTest {
         when(notificationRepository.save(any(Notification.class))).thenReturn(new Notification());
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
+        // 执行
         HelpResponseDTO result = helpService.approveReject(userId, appId, req);
 
-        // Assert
+        // 断言
         assertThat(application.getStatus()).isEqualTo("approved");
         assertThat(helpRequest.getStatus()).isEqualTo("helping");
     }
@@ -368,15 +373,15 @@ class HelpServiceTest {
     @Test
     @DisplayName("审批帮助 - 非所有者操作时抛出异常")
     void should_throwException_when_approveNotOwner() {
-        // Arrange
+        // 准备
         ApproveRequest req = new ApproveRequest();
         req.setApproved(true);
-        UUID otherId = UUID.randomUUID();
+        Long otherId = 99L;
 
         when(helpApplicationRepository.findById(appId)).thenReturn(Optional.of(application));
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> helpService.approveReject(otherId, appId, req))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("无权操作该申请");
@@ -385,7 +390,7 @@ class HelpServiceTest {
     @Test
     @DisplayName("审批帮助 - 申请已被处理时抛出异常")
     void should_throwException_when_applicationAlreadyProcessed() {
-        // Arrange
+        // 准备
         application.setStatus("approved");
         ApproveRequest req = new ApproveRequest();
         req.setApproved(true);
@@ -393,7 +398,7 @@ class HelpServiceTest {
         when(helpApplicationRepository.findById(appId)).thenReturn(Optional.of(application));
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> helpService.approveReject(userId, appId, req))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("该申请已被处理，无法重复操作");
@@ -404,7 +409,7 @@ class HelpServiceTest {
     @Test
     @DisplayName("完成帮助 - 正常完成帮助")
     void should_completeHelp_when_validCompletion() {
-        // Arrange
+        // 准备
         application.setStatus("approved");
 
         when(helpApplicationRepository.findById(appId)).thenReturn(Optional.of(application));
@@ -414,28 +419,28 @@ class HelpServiceTest {
         when(notificationRepository.save(any(Notification.class))).thenReturn(new Notification());
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
+        // 执行
         HelpResponseDTO result = helpService.completeHelp(userId, appId);
 
-        // Assert
+        // 断言
         assertThat(application.getStatus()).isEqualTo("completed");
         assertThat(helpRequest.getStatus()).isEqualTo("completed");
         verify(notificationRepository).save(any(Notification.class));
     }
 
     @Test
-    @DisplayName("完成帮助 - 只能完成已批准的申请")
-    void should_throwException_when_notApprovedApplication() {
-        // Arrange
+    @DisplayName("完成帮助 - 只能完成进行中的申请")
+    void should_throwException_when_notInProgressApplication() {
+        // 准备
         application.setStatus("pending");
 
         when(helpApplicationRepository.findById(appId)).thenReturn(Optional.of(application));
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
 
-        // Act & Assert
+        // 执行 & 断言
         assertThatThrownBy(() -> helpService.completeHelp(userId, appId))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessage("只能完成已批准的帮助申请");
+                .hasMessage("只能完成进行中的帮助申请");
     }
 
     // ==================== update ====================
@@ -443,7 +448,7 @@ class HelpServiceTest {
     @Test
     @DisplayName("更新求助 - 正常更新求助信息")
     void should_updateHelp_when_validUpdate() {
-        // Arrange
+        // 准备
         HelpRequestDTO req = new HelpRequestDTO();
         req.setTitle("更新后的求助标题");
         req.setDescription("更新描述");
@@ -452,17 +457,17 @@ class HelpServiceTest {
         when(helpRequestRepository.save(any(HelpRequest.class))).thenReturn(helpRequest);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
+        // 执行
         HelpResponseDTO result = helpService.update(userId, helpId, req);
 
-        // Assert
+        // 断言
         assertThat(result.getTitle()).isEqualTo("更新后的求助标题");
     }
 
     @Test
     @DisplayName("更新求助 - completed状态自动恢复为online")
     void should_autoRelist_when_statusCompleted() {
-        // Arrange
+        // 准备
         helpRequest.setStatus("completed");
         HelpRequestDTO req = new HelpRequestDTO();
         req.setTitle("重新发布");
@@ -471,10 +476,10 @@ class HelpServiceTest {
         when(helpRequestRepository.save(any(HelpRequest.class))).thenReturn(helpRequest);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
+        // 执行
         HelpResponseDTO result = helpService.update(userId, helpId, req);
 
-        // Assert
+        // 断言
         assertThat(result.getStatus()).isEqualTo("online");
     }
 
@@ -483,15 +488,15 @@ class HelpServiceTest {
     @Test
     @DisplayName("获取我的帮助申请 - 返回申请列表")
     void should_returnMyApplications_when_hasApplications() {
-        // Arrange
+        // 准备
         when(helpApplicationRepository.findByHelperId(helperId)).thenReturn(List.of(application));
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
+        // 执行
         List<HelpResponseDTO> result = helpService.getMyApplications(helperId);
 
-        // Assert
+        // 断言
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getApplicationStatus()).isEqualTo("pending");
         assertThat(result.get(0).getApplicationId()).isEqualTo(appId);
@@ -502,17 +507,17 @@ class HelpServiceTest {
     @Test
     @DisplayName("获取待审批 - 返回待审批帮助申请")
     void should_returnPendingApprovals_when_hasPending() {
-        // Arrange
+        // 准备
         when(helpRequestRepository.findByUserId(userId)).thenReturn(List.of(helpRequest));
         when(helpApplicationRepository.findByHelpIdAndStatus(helpId, "pending"))
                 .thenReturn(List.of(application));
         when(userRepository.findById(helperId)).thenReturn(Optional.of(helper));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        // Act
+        // 执行
         List<HelpResponseDTO> result = helpService.getPendingApprovals(userId);
 
-        // Assert
+        // 断言
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getHelperName()).isEqualTo("帮助者");
     }

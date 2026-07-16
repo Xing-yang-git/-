@@ -3,7 +3,6 @@ package com.platform.model.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Entity
 @Table(name = "notifications")
@@ -13,11 +12,11 @@ import java.util.UUID;
 @Builder
 public class Notification {
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @Column(name = "user_id", nullable = false)
-    private UUID userId;
+    private Long userId;
 
     @Column(nullable = false, length = 30)
     private String type;
@@ -29,7 +28,7 @@ public class Notification {
     private String content;
 
     @Column(name = "related_id")
-    private UUID relatedId;
+    private Long relatedId;
 
     @Column(name = "is_read", nullable = false)
     @Builder.Default

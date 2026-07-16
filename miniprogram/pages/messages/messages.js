@@ -1,4 +1,5 @@
 const api = require('../../utils/api');
+const auth = require('../../utils/auth');
 
 Page({
   data: {
@@ -6,10 +7,12 @@ Page({
   },
 
   onLoad() {
+    if (!auth.ensureAccess()) return;   // 登录/审核门禁：未通过则已跳转
     this.loadSessions();
   },
 
   onShow() {
+    if (!auth.ensureAccess()) return; // 登录/审核门禁：覆盖 tab 切换与后台切回
     this.loadSessions();
   },
 
@@ -20,22 +23,57 @@ Page({
   },
 
   async loadSessions() {
+    const token = wx.getStorageSync('token');
+    if (!token) {
+      this.setData({ sessions: [] });
+      return;
+    }
+    const uid = auth.getUserId();
+    if (!uid) { this.setData({ sessions: [] }); return; }
     try {
-      const res = await api.get('/api/chat/sessions');
-      const list = res.data && res.data.list ? res.data.list : (res.data || []);
-      const sessions = list.map(item => ({
-        id: item.id,
-        otherName: item.otherName || '用户',
-        avatarText: (item.otherName || '?')[0],
-        avatarColor: this.getAvatarColor(item.id || item.otherName),
-        lastMessage: item.lastMessage || '',
-        timeText: this.formatRelativeTime(item.lastTime || item.updateTime),
-        unreadCount: item.unreadCount || 0,
-        isRead: (item.unreadCount || 0) === 0,
-        roomInfo: item.roomInfo || '',
-        aboutTitle: item.aboutTitle || '',
-        aboutId: item.aboutId || ''
-      }));
+      // 从本地存储构建会话列表（不再从服务端获取；键按用户命名空间隔离）
+      const MSG_PREFIX = 'chat_msgs_' + uid + '_';
+      const META_PREFIX = 'chat_meta_' + uid + '_';
+      const sessions = [];
+      try {
+        const info = wx.getStorageInfoSync();
+        info.keys.forEach(key => {
+          // 一次性清理旧格式键（无用户前缀，无法归属账号，直接删除）
+          if ((key.startsWith('chat_msgs_') || key.startsWith('chat_meta_')) && !/^\d+_/.test(key.substring(10))) {
+            wx.removeStorageSync(key);
+            return;
+          }
+          if (key.startsWith(MSG_PREFIX)) {
+            const sessionId = key.substring(MSG_PREFIX.length);
+            // 读取最后一条消息
+            const messages = wx.getStorageSync(key) || [];
+            const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+            // 读取会话元数据
+            const meta = wx.getStorageSync(META_PREFIX + sessionId) || {};
+            if (lastMsg || meta.otherName) {
+              sessions.push({
+                id: sessionId,
+                otherName: meta.otherName || '用户',
+                avatarText: (meta.otherName || '?')[0],
+                avatarColor: this.getAvatarColor(sessionId),
+                lastMessage: lastMsg ? lastMsg.content : '',
+                timeText: lastMsg ? this.formatRelativeTime(lastMsg.timestamp) : '',
+                roomInfo: meta.room || '',
+                aboutTitle: meta.about || '',
+                aboutId: meta.aboutId || '',
+                aboutType: meta.aboutType || '',
+                otherUserId: meta.otherUserId || '',
+                _sortTime: lastMsg ? lastMsg.timestamp : 0
+              });
+            }
+          }
+        });
+      } catch (e) {
+        console.error('Scan local storage failed:', e);
+      }
+      sessions.sort((a, b) => {
+        return (b._sortTime || 0) - (a._sortTime || 0);
+      });
       this.setData({ sessions });
     } catch (e) {
       console.error('Load sessions failed:', e);
@@ -68,12 +106,14 @@ Page({
   },
 
   onSessionTap(e) {
-    const { id, name, room, about, aboutId } = e.currentTarget.dataset;
+    const { id, name, room, about, aboutId, aboutType, otheruserid } = e.currentTarget.dataset;
     const url = '/pages/chat/chat?sessionId=' + id
       + '&name=' + encodeURIComponent(name)
       + '&room=' + encodeURIComponent(room || '')
       + '&about=' + encodeURIComponent(about || '')
-      + '&aboutId=' + (aboutId || '');
+      + '&aboutId=' + (aboutId || '')
+      + '&aboutType=' + (aboutType || '')
+      + '&otherUserId=' + (otheruserid || '');
     wx.navigateTo({ url });
   }
 });

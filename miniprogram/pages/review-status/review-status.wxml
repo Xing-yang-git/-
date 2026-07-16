@@ -1,10 +1,10 @@
 <view class="review-page">
-  <!-- Loading -->
+  <!-- 加载中 -->
   <view wx:if="{{loading}}" class="loading-wrap">
     <text>加载中...</text>
   </view>
 
-  <!-- Pending State -->
+  <!-- 审核中状态 -->
   <view class="state-panel" wx:elif="{{status === 'pending'}}">
     <view class="status-card">
       <view class="status-icon pending">
@@ -23,7 +23,7 @@
     <view class="footer-tip">如有疑问，请联系小区物业</view>
   </view>
 
-  <!-- Rejected State -->
+  <!-- 已驳回状态 -->
   <view class="state-panel" wx:elif="{{status === 'rejected'}}">
     <view class="status-card">
       <view class="status-icon rejected">
@@ -32,17 +32,14 @@
       <view class="status-title">审核未通过</view>
       <view class="status-desc">
         <view>你的认证资料未通过物业审核，</view>
-        <view>请根据以下原因修改后重新提交。</view>
+        <view>有疑问请线下咨询物业</view>
       </view>
       <view class="callout callout-red">{{rejectReason || '证件照片模糊不清，无法辨认关键信息'}}</view>
-      <view class="btn-row">
-        <button class="btn btn-secondary" bindtap="onContactProperty">联系物业</button>
-        <button class="btn btn-primary" bindtap="onResubmit">修改重提</button>
-      </view>
+      <button class="btn btn-primary btn-full" bindtap="onResubmit">再次认证</button>
     </view>
   </view>
 
-  <!-- Banned State -->
+  <!-- 已封禁状态 -->
   <view class="state-panel" wx:elif="{{status === 'banned'}}">
     <view class="status-card">
       <view class="status-icon banned">
@@ -57,7 +54,7 @@
     </view>
   </view>
 
-  <!-- Fallback: unknown status → same as pending -->
+  <!-- 兜底：未知状态 → 同审核中 -->
   <view class="state-panel" wx:else>
     <view class="status-card">
       <view class="status-icon pending">

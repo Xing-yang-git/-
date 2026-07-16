@@ -1,6 +1,6 @@
 /**
- * Auth Utility
- * Token management, login check, JWT parsing.
+ * 认证工具模块
+ * token 管理、登录检查、JWT 解析。
  */
 
 const TOKEN_KEY = 'token';
@@ -44,12 +44,13 @@ function getUserId() {
 }
 
 function _base64Decode(str) {
-  // Replace URL-safe chars and add padding
+  // 替换 URL 安全字符并补齐填充
   str = str.replace(/-/g, '+').replace(/_/g, '/');
   while (str.length % 4) str += '=';
 
-  // Base64 decode to byte array
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  // Base64 解码为字节数组——字符表第 65 位必须是 '='（padding 哨兵，index 64），
+  // 缺失会导致带 padding 的 token 解出垃圾字节、JSON.parse 失败
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
   const bytes = [];
   for (let i = 0; i < str.length; i += 4) {
     const a = chars.indexOf(str[i]);
@@ -61,7 +62,7 @@ function _base64Decode(str) {
     if (d !== 64) bytes.push(((c & 3) << 6) | d);
   }
 
-  // Convert bytes to percent-encoded string, then decode (handles UTF-8)
+  // 将字节转换为百分号编码字符串再解码（处理 UTF-8）
   let result = '';
   for (let i = 0; i < bytes.length; i++) {
     result += '%' + ('00' + bytes[i].toString(16)).slice(-2);
@@ -69,7 +70,7 @@ function _base64Decode(str) {
   try {
     return decodeURIComponent(result);
   } catch (e) {
-    // Fallback: raw ASCII string
+    // 兜底：原始 ASCII 字符串
     let ascii = '';
     for (let i = 0; i < bytes.length; i++) {
       ascii += String.fromCharCode(bytes[i]);
@@ -78,17 +79,48 @@ function _base64Decode(str) {
   }
 }
 
-function checkLogin() {
-  const token = getToken();
-  if (!token) {
-    wx.reLaunch({ url: '/pages/login/login' });
+// —— 门禁防抖：onLoad+onShow 同帧双触发时只 reLaunch 一次 ——
+let _guardPending = false;
+function _guardRedirect(url) {
+  if (_guardPending) return;
+  _guardPending = true;
+  wx.reLaunch({
+    url,
+    complete: () => {
+      setTimeout(() => { _guardPending = false; }, 1000);
+    }
+  });
+}
+
+/**
+ * 页面访问门禁：业务页面在 onLoad/onShow 首行调用。
+ * 无 token → 登录页；authStatus 未通过审核 → 对应状态页（注册页/审核页）。
+ * @returns {boolean} true = 放行，false = 已发起跳转（调用方应立即 return）
+ */
+function ensureAccess() {
+  if (!getToken()) {
+    _guardRedirect('/pages/login/login');
     return false;
   }
-  return true;
+  const userInfo = wx.getStorageSync('userInfo') || {};
+  const status = userInfo.authStatus;
+  if (!status || status === 'approved') return true; // 旧存储无 authStatus 放行，由服务端 401/403 兜底
+  if (status === 'registering') {
+    _guardRedirect('/pages/register/register');
+    return false;
+  }
+  // pending / rejected / banned → 审核状态页
+  _guardRedirect('/pages/review-status/review-status?state=' + status);
+  return false;
+}
+
+function checkLogin() {
+  return ensureAccess();
 }
 
 module.exports = {
   checkLogin,
+  ensureAccess,
   getToken,
   setToken,
   clearToken,

@@ -1,4 +1,4 @@
-/* star-rating component — extends global .stars/.star from app.wxss */
+/* star-rating 组件 — 继承 app.wxss 全局 .stars/.star */
 .star {
   color: var(--fill-primary);
   transition: color var(--motion-fast) var(--ease), transform var(--motion-fast) var(--ease);

@@ -18,7 +18,7 @@
 
 .login-header {
   position: absolute;
-  top: 20vh;
+  top: 10vh;
   left: 0;
   right: 0;
   display: flex;
@@ -27,13 +27,11 @@
 }
 
 .login-footer {
-  position: absolute;
-  bottom: 20vh;
-  left: 32px;
-  right: 32px;
   display: flex;
   flex-direction: column;
   align-items: center;
+  margin-top: 250px;
+  width: 100vw;
 }
 
 .login-icon-area {
@@ -64,21 +62,24 @@
   letter-spacing: 0.01em;
 }
 
+.login-btn{
+  width: 100%;
+  margin-top: 20px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .wx-btn {
-  width: 140%;
+  width: 65%;
   height: 50px;
   border-radius: 50rpx;
   background: var(--blue);
   color: var(--surface);
   font-size: var(--text-base);
   font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 20px;
-  border: none;
   box-shadow: 0 4px 14px rgba(0, 113, 227, 0.3);
-  padding: 0;
   line-height: 50px;
   transition: opacity var(--motion-fast) var(--ease);
 }
@@ -106,4 +107,95 @@
 
 .privacy-link {
   color: var(--blue);
+}
+
+/* ── 密码登录切换链接 ── */
+.switch-login {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  padding: 8px 0;
+  margin: 0 0 20px 100px;
+}
+
+/* ── 小区选择器 ── */
+.tenant-picker {
+  width: 65%;
+  height: 50px;
+  margin-bottom: 16px;
+  border-radius: 50rpx;
+  background: #ffffff;
+}
+
+.tenant-picker-inner {
+  width: 100%;
+  height: 50px;
+  line-height: 50px;
+  padding: 0 16px;
+  text-align: left;
+  box-sizing: border-box;
+  font-size: var(--text-base);
+  color: var(--text);
+}
+
+.tenant-picker-inner.placeholder {
+  color: var(--text-tertiary);
+}
+
+/* ── 手机号输入组 ── */
+.phone-input-group {
+  display: flex;
+  align-items: center;
+  width: 65%;
+  height: 50px;
+  border-radius: 50rpx;
+  background: #ffffff;
+  margin-bottom: 16px;
+  padding: 0 16px 0 15px;
+  box-sizing: border-box;
+}
+
+.phone-prefix {
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+.phone-input {
+  flex: 1;
+  height: 50px;
+  font-size: var(--text-base);
+  color: var(--text);
+  background: transparent;
+  text-align: left;
+}
+
+/* ── 密码输入组 ── */
+.password-input-group {
+  display: flex;
+  align-items: center;
+  width: 65%;
+  height: 50px;
+  border-radius: 50rpx;
+  background: #ffffff;
+  margin-bottom: 16px;
+  padding: 0 16px;
+  box-sizing: border-box;
+}
+
+.password-input {
+  flex: 1;
+  height: 50px;
+  font-size: var(--text-base);
+  color: var(--text);
+  background: transparent;
+  text-align: left;
+}
+
+.toggle-password {
+  font-size: 40rpx;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  padding: 12rpx 4rpx 12rpx 16rpx;
 }

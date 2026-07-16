@@ -1,5 +1,5 @@
 <view class="register-page">
-  <!-- Step Indicator -->
+  <!-- 步骤指示器 — 共 4 步 -->
   <view class="step-indicator-wrap">
     <view class="step-row">
       <view class="step-circle {{currentStep >= 0 ? 'active' : ''}} {{currentStep > 0 ? 'done' : ''}}">
@@ -12,14 +12,20 @@
         <text wx:else>2</text>
       </view>
       <view class="step-line {{currentStep >= 2 ? 'done' : ''}}"></view>
-      <view class="step-circle {{currentStep >= 2 ? 'active' : ''}}">
-        <text>3</text>
+      <view class="step-circle {{currentStep >= 2 ? 'active' : ''}} {{currentStep > 2 ? 'done' : ''}}">
+        <text wx:if="{{currentStep > 2}}">✓</text>
+        <text wx:else>3</text>
+      </view>
+      <view class="step-line {{currentStep >= 3 ? 'done' : ''}}"></view>
+      <view class="step-circle {{currentStep >= 3 ? 'active' : ''}}">
+        <text>4</text>
       </view>
     </view>
-    <view class="step-labels">
+    <view class="step-labels step-labels-4">
       <text class="step-label {{currentStep === 0 ? 'active' : ''}}">选择小区</text>
       <text class="step-label {{currentStep === 1 ? 'active' : ''}}">填写房号</text>
-      <text class="step-label {{currentStep === 2 ? 'active' : ''}}">上传证件</text>
+      <text class="step-label {{currentStep === 2 ? 'active' : ''}}">账号设置</text>
+      <text class="step-label {{currentStep === 3 ? 'active' : ''}}">上传证件</text>
     </view>
   </view>
 
@@ -66,8 +72,8 @@
         <view class="input-group">
           <view class="input-label">住户类型 <text class="required">*</text></view>
           <view class="segment">
-            <view class="segment-item {{residentType === '业主' ? 'active' : ''}}" bindtap="onSetType" data-type="业主">业主</view>
-            <view class="segment-item {{residentType === '租客' ? 'active' : ''}}" bindtap="onSetType" data-type="租客">租客</view>
+            <view class="segment-item {{residentType === 'owner' ? 'active' : ''}}" bindtap="onSetType" data-type="owner">业主</view>
+            <view class="segment-item {{residentType === 'tenant' ? 'active' : ''}}" bindtap="onSetType" data-type="tenant">租客</view>
           </view>
         </view>
 
@@ -77,8 +83,40 @@
       </view>
     </view>
 
-    <!-- Step 3: 上传证件 -->
+    <!-- Step 3: 手机号 + 密码（新增） -->
     <view class="step-panel" wx:if="{{currentStep === 2}}">
+      <view class="step-body">
+        <view class="input-group">
+          <view class="input-label">手机号 <text class="required">*</text></view>
+          <input class="input" type="number" maxlength="11" placeholder="请输入手机号"
+                 value="{{phone}}" bindinput="onPhoneInput" />
+          <text class="input-hint">手机号将作为您的登录账号</text>
+        </view>
+        <view class="input-group">
+          <view class="input-label">设置密码 <text class="required">*</text></view>
+          <view class="password-input-group">
+            <input class="input" type="text" password="{{!showPassword}}" placeholder="8-20位，需包含字母和数字"
+                   value="{{password}}" bindinput="onPasswordInput" always-embed="{{true}}" />
+            <view class="toggle-password" catchtap="onTogglePassword">
+              <text>{{showPassword ? '◉' : '◎'}}</text>
+            </view>
+          </view>
+        </view>
+        <view class="input-group">
+          <view class="input-label">确认密码 <text class="required">*</text></view>
+          <view class="password-input-group">
+            <input class="input" type="text" password="{{!showPasswordConfirm}}" placeholder="再次输入密码"
+                   value="{{passwordConfirm}}" bindinput="onPasswordConfirmInput" always-embed="{{true}}" />
+            <view class="toggle-password" catchtap="onTogglePasswordConfirm">
+              <text>{{showPasswordConfirm ? '◉' : '◎'}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- Step 4: 上传证件（原 Step 3） -->
+    <view class="step-panel" wx:if="{{currentStep === 3}}">
       <view class="step-body">
         <view class="input-group">
           <view class="input-label">真实姓名 <text class="required">*</text></view>
@@ -104,9 +142,9 @@
     </view>
   </scroll-view>
 
-  <!-- Footer -->
+  <!-- 底部按钮 -->
   <view class="step-footer">
     <button class="btn btn-secondary" wx:if="{{currentStep > 0}}" bindtap="onPrevStep">上一步</button>
-    <button class="btn btn-primary" bindtap="onNextStep">{{currentStep === 2 ? '提交认证' : '下一步'}}</button>
+    <button class="btn btn-primary" bindtap="onNextStep">{{currentStep === 3 ? '提交认证' : '下一步'}}</button>
   </view>
 </view>
