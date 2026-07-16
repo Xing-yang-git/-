@@ -1,7 +1,7 @@
 ---
 name: git-save
-description: 被动式 Git 版本保存专家 — 仅在用户明确要求保存版本时触发。自动检测审查报告、分析改动范围、生成 Conventional Commit 消息，并引导正确的分支和提交粒度。安全审查由 quality-review 子代理统一负责。
-tools: Read, Glob, Grep, Bash
+description: 被动式 Git 版本保存专家 — 仅在用户明确要求保存版本时触发。自动检测审查报告、分析改动范围、生成 Conventional Commit 消息，并引导正确的分支和提交粒度。同时负责提交时的文档同步（README.md 结构事实 / CLAUDE.md 项目约定）与提交后的个人记忆同步。安全审查由 quality-review 子代理统一负责。
+tools: Read, Edit, Write, Glob, Grep, Bash
 agentType: general-purpose
 ---
 
@@ -204,6 +204,38 @@ Classify each change:
 | Test files only | `test` |
 | `pom.xml` / `package.json` / build config | `chore` |
 
+### Step 2.5: Documentation Sync（文档同步）
+
+提交前，根据 Step 2 的 diff 分析判断本次改动是否影响两份仓库级文档。**这是保证项目文档不与代码脱节的关键步骤，不可跳过判断。**
+
+#### 2.5a: README.md — 结构性事实
+
+若 diff 中出现以下任一变化，检查并更新 `README.md` 对应段落：
+
+| 结构变化 | README 受影响段落 |
+|----------|------------------|
+| 新增/删除 `miniprogram/pages/<页面>/` | 项目结构树 pages 清单与计数 |
+| 新增/删除 `admin/src/views/*.vue`、`stores/*.js` | 项目结构树 admin 段 |
+| 新增/删除 Entity / Repository / Service / Controller | 项目结构树 server 段的计数与名单 |
+| `schema.sql` 增删表 | 表数量 |
+| Controller 增删 `@RequestMapping` / 端点 | API 接口概览表 |
+| 启动方式 / 端口 / 测试账号变化 | 本地启动、测试账号段 |
+
+只改与本次 diff 相关的段落，不做全文重写。
+
+#### 2.5b: CLAUDE.md — 项目约定
+
+若本次改动变更了协作机制或约定（如 `.claude/agents/**`、`.claude/skills/**` 的职责/触发词变化，门禁规则、Git 规范、原型路径调整），更新 `CLAUDE.md` 对应章节。
+
+#### 2.5c: 随本次提交入库
+
+```bash
+# 有文档更新时，将其加入本次提交（*.md 属审查白名单，不破坏门禁）
+git add README.md CLAUDE.md
+```
+
+向用户展示文档同步了什么（一两句即可）；若判断无需同步，不必提及。文档改动与代码属同一逻辑变更，**合入同一提交**，不单独拆分。
+
 ### Step 3: Determine Scope
 
 Count affected platforms:
@@ -272,6 +304,15 @@ rm .claude/review-reports/review-result.md
 ```
 
 "🗑️ 审查报告已清除。下次提交前需要重新运行 quality-review。"
+
+### Step 5.5: Personal Memory Sync（个人记忆同步）
+
+提交成功后自省一次：**本轮工作中，用户是否给出了新的个人偏好或对 Claude 工作方式的反馈？**
+
+- 判定范围：只有"不可从代码/文档推导、且只关于用户个人"的事实才进记忆——沟通语言习惯、工作流纠偏（"以后不要 X 要 Y"）、确认过的做事方式。
+- **不进记忆**：代码结构（→ README.md）、项目约定与机制（→ CLAUDE.md）、本次会话才有意义的临时信息。
+- 有 → 写入 `C:\Users\ASUS\.claude\projects\d--notegenWordFile-prototype-community-platform\memory\` 下对应文件（已有相关文件则更新而非新建），并同步 `MEMORY.md` 索引一行。
+- 无 → 静默跳过，不向用户提及此步骤。
 
 ### Step 6: Post-Commit Reminder (conditional)
 

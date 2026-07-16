@@ -18,6 +18,7 @@ This skill is **language-agnostic** — it defines the methodology. The calling 
 3. **Explain intent, not syntax.** `// Set x to 1` adds zero value. `// Default threshold from UX study (see CONFIG-42)` adds value.
 4. **Public surface first.** Public APIs, exported functions, and shared types carry the highest documentation burden. Private internals self-document through naming and structure.
 5. **No performance comments.** Don't comment on language semantics or obvious behavior. The reader knows the language.
+6. **Comment language must match the project convention.** If the project declares a comment language (in its CLAUDE.md, contributing guide, or calling agent's context), every substantive comment must use it. Technical terms, identifiers, and third-party/vendored code are exempt. Flag comments written in a different language as a quality finding — mixed-language comment bases decay fastest, because nobody feels ownership of the "other" language's comments. The skill does not prescribe which language; the project does.
 
 ## Coverage Measurement
 
@@ -236,6 +237,7 @@ jwt:
    - Does each comment explain *why*?
    - Is any comment outdated (doesn't match current code)?
    - Are there sections that *should* be commented but aren't?
+   - Is the comment written in the project's declared comment language (if one is declared)?
 
 ## Review Checklist
 

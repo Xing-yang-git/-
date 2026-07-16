@@ -128,6 +128,9 @@ Map changed files to platforms:
 4. ANNOTATION CHECK  ← Skill("annotation-guarantee")
    → Count comment lines vs total lines per file
    → Check: 20-30% coverage, public API documentation, comment quality
+   → Check: 注释语言 — 本项目注释必须为中文（技术术语如 JWT/WebSocket/token 保留英文）
+     · 发现成段英文注释 → 报 High（见 CLAUDE.md 第 7 节「注释规范」）
+     · node_modules/ 等第三方代码与被注释掉的代码不检查
    → Flag files below tier target
 4.5. TEST CHECK  ← Skill("test-guarantee")
    → Run coverage tool (JaCoCo / Vitest --coverage / Jest --coverage) if available
