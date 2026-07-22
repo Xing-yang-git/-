@@ -23,12 +23,12 @@ public class AuthController {
     }
 
     @PostMapping("/wx-login")
-    public Result<?> wxLogin(@RequestBody WxLoginRequest req) {
+    public Result<?> wxLogin(@Valid @RequestBody WxLoginRequest req) {
         return Result.ok(authService.wxLogin(req));
     }
 
     @PostMapping("/login")
-    public Result<?> adminLogin(@RequestBody LoginRequest req) {
+    public Result<?> adminLogin(@Valid @RequestBody LoginRequest req) {
         return Result.ok(authService.adminLogin(req));
     }
 
@@ -38,7 +38,7 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public Result<?> register(@RequestBody RegisterRequest req, Authentication auth) {
+    public Result<?> register(@Valid @RequestBody RegisterRequest req, Authentication auth) {
         // 公开注册：未先经过 wxLogin 时 auth 可能为 null
         Long userId = auth != null ? Long.valueOf(auth.getName()) : null;
         return Result.ok(authService.register(req, userId));

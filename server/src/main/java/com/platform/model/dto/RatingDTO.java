@@ -15,7 +15,6 @@ public class RatingDTO {
     private Long id;
     private String fromUserName;
     private Integer score;
+    private String feedback;
     private LocalDateTime createdAt;
-    private Double averageScore;
-    private int totalRatings;
 }

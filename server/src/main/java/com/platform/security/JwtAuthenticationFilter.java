@@ -1,5 +1,6 @@
 package com.platform.security;
 
+import com.platform.common.BizStatus;
 import com.platform.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -54,7 +55,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 Integer ver = jwtProvider.getTokenVersion(token);
                 UserRepository.AuthProbe probe = null;
                 try { probe = userRepository.findAuthProbeById(Long.valueOf(userId)); }
-                catch (NumberFormatException ignored) { }
+                catch (NumberFormatException ignored) { log.debug("JWT过滤：解析userId格式失败 userId={}", userId, ignored); }
                 if (ver == null || probe == null || !ver.equals(probe.getTokenVersion())) {
                     // 对 /api/auth/ 下的端点（审核状态查询、申诉等），即使 token 版本过期也放行。
                     // 场景：管理员驳回/封禁 → tokenVersion+1 → 用户点刷新仍需看到最新状态，
@@ -68,7 +69,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     log.debug("Allowing stale token for auth endpoint: userId={}, uri={}", userId, uri);
                 }
                 // 未审核通过的账号只放行白名单前缀，其余业务接口一律 403
-                if (!"approved".equals(probe.getAuthStatus()) && !isAllowedForUnapproved(uri)) {
+                // 若 probe 为 null（用户已不存在，token 过期且命中 /api/auth/ 端点放行），
+                // 跳过审核状态检查——由 controller 层按实际用户状态处理
+                if (probe != null && !BizStatus.APPROVED.equals(probe.getAuthStatus()) && !isAllowedForUnapproved(uri)) {
                     log.info("Rejecting unapproved user {} on {} — authStatus={}", userId, uri, probe.getAuthStatus());
                     response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                     response.setContentType("application/json;charset=UTF-8");

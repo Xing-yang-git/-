@@ -38,4 +38,8 @@ public class HelpResponseDTO {
     private Double rating;
     private Long helpCount;
     private Long helpedCount;
+    // 「以往记录」弹层五项统计的其余三项（口径见 UserActivityService.interactionStats）
+    private Long borrowCount;
+    private Long lendCount;
+    private String returnRate;
 }

@@ -1,5 +1,6 @@
 package com.platform.model.entity;
 
+import com.platform.common.BizStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDate;
@@ -36,7 +37,7 @@ public class BorrowRequest {
 
     @Column(nullable = false, length = 20)
     @Builder.Default
-    private String status = "pending";
+    private String status = BizStatus.PENDING;
 
     @Column(name = "handoff_photos", columnDefinition = "TEXT")
     private String handoffPhotos;

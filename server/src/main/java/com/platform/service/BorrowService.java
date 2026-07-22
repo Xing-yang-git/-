@@ -1,16 +1,16 @@
 package com.platform.service;
 
+import com.platform.common.BizStatus;
+import com.platform.common.PostType;
 import com.platform.model.dto.ApproveRequest;
 import com.platform.model.dto.BorrowRequestDTO;
 import com.platform.model.dto.BorrowResponseDTO;
 import com.platform.model.dto.ReturnRequest;
 import com.platform.model.entity.BorrowRequest;
 import com.platform.model.entity.IdleItem;
-import com.platform.model.entity.Notification;
 import com.platform.model.entity.User;
 import com.platform.repository.BorrowRequestRepository;
 import com.platform.repository.IdleItemRepository;
-import com.platform.repository.NotificationRepository;
 import com.platform.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -29,18 +30,18 @@ public class BorrowService {
 
     private final BorrowRequestRepository borrowRequestRepository;
     private final IdleItemRepository idleItemRepository;
-    private final NotificationRepository notificationRepository;
+    private final NotificationService notificationService;
     private final UserRepository userRepository;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public BorrowService(BorrowRequestRepository borrowRequestRepository,
                          IdleItemRepository idleItemRepository,
-                         NotificationRepository notificationRepository,
+                         NotificationService notificationService,
                          UserRepository userRepository) {
         this.borrowRequestRepository = borrowRequestRepository;
         this.idleItemRepository = idleItemRepository;
-        this.notificationRepository = notificationRepository;
+        this.notificationService = notificationService;
         this.userRepository = userRepository;
     }
 
@@ -51,11 +52,13 @@ public class BorrowService {
     }
 
     public BorrowResponseDTO apply(Long borrowerId, BorrowRequestDTO req) {
-        IdleItem idleItem = idleItemRepository.findById(req.getIdleId())
+        // 悲观写锁（SELECT ... FOR UPDATE）：防止两个住户同时申请借入同一物品，
+        // 确保"检查状态 → 创建申请 → 标记 reserved"三步在锁保护下原子执行
+        IdleItem idleItem = idleItemRepository.findByIdWithLock(req.getIdleId())
                 .orElseThrow(() -> new RuntimeException("物品不存在"));
 
-        if (!"online".equals(idleItem.getStatus())) {
-            throw new RuntimeException("该物品已下架");
+        if (!BizStatus.ONLINE.equals(idleItem.getStatus())) {
+            throw new RuntimeException("该物品已被其他住户抢先申请，请浏览其他物品");
         }
 
         if (idleItem.getUserId().equals(borrowerId)) {
@@ -68,11 +71,15 @@ public class BorrowService {
         borrowRequest.setDurationType(req.getDurationType() != null ? req.getDurationType() : "day");
         borrowRequest.setDurationDays(req.getDurationDays() != null ? req.getDurationDays() : 7);
         borrowRequest.setNote(req.getNote());
-        borrowRequest.setStatus("pending");
+        borrowRequest.setStatus(BizStatus.PENDING);
         borrowRequest.setCreatedAt(LocalDateTime.now());
         borrowRequest = borrowRequestRepository.save(borrowRequest);
 
-        boolean wanted = "WANTED".equals(idleItem.getPostType());
+        // 标记物品为"已被预定"，使详情页按钮显示"已申请"而非"我要借出"
+        idleItem.setStatus(BizStatus.RESERVED);
+        idleItemRepository.save(idleItem);
+
+        boolean wanted = PostType.WANTED.equals(idleItem.getPostType());
         createNotification(idleItem.getUserId(), "borrow_request",
                 wanted ? "新的借出意向" : "新的借入申请",
                 wanted ? ("有人愿意借出给您：" + idleItem.getTitle())
@@ -82,49 +89,75 @@ public class BorrowService {
         return toDTO(borrowRequest);
     }
 
+    /**
+     * 审批借入申请：同意或拒绝。
+     */
     public BorrowResponseDTO approveReject(Long ownerId, Long borrowId, ApproveRequest req) {
         BorrowRequest borrowRequest = borrowRequestRepository.findById(borrowId)
                 .orElseThrow(() -> new RuntimeException("借入申请不存在"));
-
         IdleItem idleItem = idleItemRepository.findById(borrowRequest.getIdleId())
                 .orElseThrow(() -> new RuntimeException("物品不存在"));
 
         if (!idleItem.getUserId().equals(ownerId)) {
             throw new RuntimeException("无权操作该申请");
         }
-
-        if (!"pending".equals(borrowRequest.getStatus())) {
+        if (!BizStatus.PENDING.equals(borrowRequest.getStatus())) {
             throw new RuntimeException("该申请已被处理，无法重复操作");
         }
 
-        borrowRequest.setStatus(req.getApproved() ? "approved" : "rejected");
+        boolean approved = req.getApproved();
+        borrowRequest.setStatus(approved ? BizStatus.APPROVED : BizStatus.REJECTED);
         borrowRequest = borrowRequestRepository.save(borrowRequest);
 
-        // 同步 IdleItem 状态
-        if (req.getApproved()) {
-            idleItem.setStatus("borrowing");
-            idleItemRepository.save(idleItem);
-        }
+        syncIdleItemAfterApproveReject(idleItem, borrowRequest, approved);
+        notifyBorrowResult(borrowRequest, idleItem, req);
 
-        // WANTED(需求借入) 帖：对方(borrowerId) 其实是出借方，通知文案按"借出意向"表述
-        boolean wanted = "WANTED".equals(idleItem.getPostType());
-        String title = req.getApproved()
+        return toDTO(borrowRequest);
+    }
+
+    /**
+     * 审批通过/拒绝后同步闲置物品状态。
+     */
+    private void syncIdleItemAfterApproveReject(IdleItem idleItem, BorrowRequest borrowRequest, boolean approved) {
+        if (approved) {
+            idleItem.setStatus("borrowing");
+            borrowRequest.setStartDate(LocalDate.now());
+            idleItemRepository.save(idleItem);
+        } else {
+            // 拒绝时：若该物品没有其他待审批的申请，恢复为 online
+            List<BorrowRequest> pendingForItem = borrowRequestRepository
+                    .findByIdleIdInAndStatus(List.of(borrowRequest.getIdleId()), BizStatus.PENDING);
+            if (pendingForItem.isEmpty()) {
+                idleItem.setStatus(BizStatus.ONLINE);
+                idleItemRepository.save(idleItem);
+            }
+        }
+    }
+
+    /**
+     * 审批后发送通知给借入申请人。
+     */
+    private void notifyBorrowResult(BorrowRequest borrowRequest, IdleItem idleItem, ApproveRequest req) {
+        boolean approved = req.getApproved();
+        boolean wanted = PostType.WANTED.equals(idleItem.getPostType());
+
+        String title = approved
                 ? (wanted ? "借出意向已被确认" : "借入申请已通过")
                 : (wanted ? "借出意向被拒绝" : "借入申请被拒绝");
+
         String content;
-        if (req.getApproved()) {
+        if (approved) {
             content = wanted
                     ? "您对「" + idleItem.getTitle() + "」的借出意向已被确认"
                     : "您对物品「" + idleItem.getTitle() + "」的借入申请已通过";
         } else {
+            String reason = req.getReason() != null ? "，原因：" + req.getReason() : "";
             content = (wanted
                     ? "您对「" + idleItem.getTitle() + "」的借出意向被拒绝"
-                    : "您对物品「" + idleItem.getTitle() + "」的借入申请被拒绝")
-                    + (req.getReason() != null ? "，原因：" + req.getReason() : "");
+                    : "您对物品「" + idleItem.getTitle() + "」的借入申请被拒绝") + reason;
         }
-        createNotification(borrowRequest.getBorrowerId(), "borrow_result", title, content, borrowRequest.getId());
 
-        return toDTO(borrowRequest);
+        createNotification(borrowRequest.getBorrowerId(), "borrow_result", title, content, borrowRequest.getId());
     }
 
     public List<BorrowResponseDTO> getMyApplications(Long userId) {
@@ -137,7 +170,7 @@ public class BorrowService {
         List<Long> myItemIds = myItems.stream().map(IdleItem::getId).collect(Collectors.toList());
         if (myItemIds.isEmpty()) return new ArrayList<>();
         List<BorrowRequest> pendingRequests = borrowRequestRepository
-                .findByIdleIdInAndStatus(myItemIds, "pending");
+                .findByIdleIdInAndStatus(myItemIds, BizStatus.PENDING);
         return pendingRequests.stream().map(this::toDTO).collect(Collectors.toList());
     }
 
@@ -159,7 +192,7 @@ public class BorrowService {
             throw new RuntimeException("无权操作该记录");
         }
 
-        if (!"approved".equals(borrowRequest.getStatus())) {
+        if (!BizStatus.APPROVED.equals(borrowRequest.getStatus())) {
             throw new RuntimeException("该借入不在进行中，无法归还");
         }
 
@@ -169,11 +202,11 @@ public class BorrowService {
         borrowRequest.setDamageNote(req.getDamageNote());
         borrowRequest.setIsOnTime(req.getIsOnTime());
         borrowRequest.setReturnPhotos(req.getReturnPhotos());
-        borrowRequest.setStatus("returned");
+        borrowRequest.setStatus(BizStatus.RETURNED);
         borrowRequest = borrowRequestRepository.save(borrowRequest);
 
         if (idleItem != null) {
-            idleItem.setStatus("completed");
+            idleItem.setStatus(BizStatus.COMPLETED);
             idleItemRepository.save(idleItem);
         }
 
@@ -182,7 +215,7 @@ public class BorrowService {
         if (peerId != null) {
             String itemTitle = idleItem != null ? idleItem.getTitle() : "物品";
             createNotification(peerId, "return_confirm",
-                    "物品已归还", "「" + itemTitle + "」的借用已归还，交易完成",
+                    "物品已归还", "「" + itemTitle + "」的借用已归还，交易完成，请及时评价此次互助",
                     borrowRequest.getId());
         }
 
@@ -229,14 +262,6 @@ public class BorrowService {
     }
 
     private void createNotification(Long userId, String type, String title, String content, Long relatedId) {
-        Notification notification = new Notification();
-        notification.setUserId(userId);
-        notification.setType(type);
-        notification.setTitle(title);
-        notification.setContent(content);
-        notification.setRelatedId(relatedId);
-        notification.setIsRead(false);
-        notification.setCreatedAt(LocalDateTime.now());
-        notificationRepository.save(notification);
+        notificationService.create(userId, type, title, content, relatedId);
     }
 }

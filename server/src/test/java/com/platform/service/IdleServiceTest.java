@@ -5,11 +5,11 @@ import com.platform.model.dto.IdleItemRequest;
 import com.platform.model.dto.PageDTO;
 import com.platform.model.entity.IdleItem;
 import com.platform.model.entity.User;
-import com.platform.repository.BorrowRequestRepository;
 import com.platform.repository.IdleItemRepository;
 import com.platform.repository.RatingRepository;
 import com.platform.repository.RoomRepository;
 import com.platform.repository.UserRepository;
+import com.platform.common.BizStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,7 +42,7 @@ class IdleServiceTest {
     @Mock
     private RoomRepository roomRepository;
     @Mock
-    private BorrowRequestRepository borrowRequestRepository;
+    private UserActivityService userActivityService;
     @Mock
     private RatingRepository ratingRepository;
 
@@ -199,8 +199,8 @@ class IdleServiceTest {
         when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(idleItem));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(ratingRepository.getAverageScore(userId)).thenReturn(4.5);
-        when(borrowRequestRepository.countReturnedByOwnerId(userId)).thenReturn(10L);
-        when(borrowRequestRepository.countOnTimeReturnedByOwnerId(userId)).thenReturn(8L);
+        when(userActivityService.interactionStats(userId))
+                .thenReturn(new UserActivityService.InteractionStats(0, 10, 0, 0, 10, 8));
 
         // 执行
         IdleItemDTO result = idleService.getDetail(itemId);
@@ -231,7 +231,8 @@ class IdleServiceTest {
         when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(idleItem));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(ratingRepository.getAverageScore(userId)).thenReturn(null);
-        when(borrowRequestRepository.countReturnedByOwnerId(userId)).thenReturn(0L);
+        when(userActivityService.interactionStats(userId))
+                .thenReturn(new UserActivityService.InteractionStats(0, 0, 0, 0, 0, 0));
 
         // 执行
         IdleItemDTO result = idleService.getDetail(itemId);
@@ -325,8 +326,8 @@ class IdleServiceTest {
         IdleItemDTO result = idleService.deleteItem(userId, itemId);
 
         // 断言
-        assertThat(result.getStatus()).isEqualTo("deleted");
-        assertThat(idleItem.getStatus()).isEqualTo("deleted");
+        assertThat(result.getStatus()).isEqualTo(BizStatus.DELETED);
+        assertThat(idleItem.getStatus()).isEqualTo(BizStatus.DELETED);
     }
 
     @Test

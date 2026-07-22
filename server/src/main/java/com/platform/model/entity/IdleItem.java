@@ -1,5 +1,7 @@
 package com.platform.model.entity;
 
+import com.platform.common.BizStatus;
+import com.platform.common.PostType;
 import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
@@ -24,7 +26,7 @@ public class IdleItem {
 
     @Column(name = "post_type", nullable = false, length = 10)
     @Builder.Default
-    private String postType = "LEND";
+    private String postType = PostType.LEND;
 
     @Column(nullable = false, length = 100)
     private String title;
@@ -37,7 +39,7 @@ public class IdleItem {
 
     @Column(nullable = false, length = 10)
     @Builder.Default
-    private String condition = "normal";
+    private String condition = BizStatus.NORMAL;
 
     @Column(nullable = false, precision = 10, scale = 2)
     @Builder.Default
@@ -60,7 +62,7 @@ public class IdleItem {
 
     @Column(nullable = false, length = 20)
     @Builder.Default
-    private String status = "online";
+    private String status = BizStatus.ONLINE;
 
     @Column(name = "delist_reason", length = 200)
     private String delistReason;
@@ -81,7 +83,7 @@ public class IdleItem {
     @Column(name = "violated_at")
     private LocalDateTime violatedAt;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
     @Column(name = "updated_at", nullable = false)

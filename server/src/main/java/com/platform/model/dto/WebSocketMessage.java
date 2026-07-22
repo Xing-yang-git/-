@@ -15,6 +15,9 @@ public class WebSocketMessage {
     private String fromUserName;
     private String content;
     private String messageType;
+    /** 消息在 DB 中的真实 id（服务端落库后回填），客户端乐观更新时用此 id 替换临时 id */
+    private Long id;
+    /** 消息创建时间（ISO 格式字符串），供客户端渲染时间戳 */
     private String createdAt;
     private String metric;
     private Object value;

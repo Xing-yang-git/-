@@ -6,11 +6,10 @@ import com.platform.model.dto.BorrowResponseDTO;
 import com.platform.model.dto.ReturnRequest;
 import com.platform.model.entity.BorrowRequest;
 import com.platform.model.entity.IdleItem;
-import com.platform.model.entity.Notification;
+import com.platform.model.dto.NotificationDTO;
 import com.platform.model.entity.User;
 import com.platform.repository.BorrowRequestRepository;
 import com.platform.repository.IdleItemRepository;
-import com.platform.repository.NotificationRepository;
 import com.platform.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -38,7 +37,7 @@ class BorrowServiceTest {
     @Mock
     private IdleItemRepository idleItemRepository;
     @Mock
-    private NotificationRepository notificationRepository;
+    private NotificationService notificationService;
     @Mock
     private UserRepository userRepository;
 
@@ -138,13 +137,13 @@ class BorrowServiceTest {
         req.setDurationDays(14);
         req.setNote("测试备注");
 
-        when(idleItemRepository.findById(idleId)).thenReturn(Optional.of(idleItem));
+        when(idleItemRepository.findByIdWithLock(idleId)).thenReturn(Optional.of(idleItem));
         when(borrowRequestRepository.save(any(BorrowRequest.class))).thenAnswer(inv -> {
             BorrowRequest br = inv.getArgument(0);
             br.setId(borrowId);
             return br;
         });
-        when(notificationRepository.save(any(Notification.class))).thenReturn(new Notification());
+        when(notificationService.create(any(), any(), any(), any(), any())).thenReturn(new NotificationDTO());
 
         // 执行
         BorrowResponseDTO result = borrowService.apply(borrowerId, req);
@@ -153,7 +152,7 @@ class BorrowServiceTest {
         assertThat(result).isNotNull();
         assertThat(result.getBorrowerId()).isEqualTo(borrowerId);
         assertThat(result.getStatus()).isEqualTo("pending");
-        verify(notificationRepository).save(any(Notification.class));
+        verify(notificationService).create(any(), any(), any(), any(), any());
         verify(borrowRequestRepository).save(any(BorrowRequest.class));
     }
 
@@ -163,7 +162,7 @@ class BorrowServiceTest {
         // 准备
         BorrowRequestDTO req = new BorrowRequestDTO();
         req.setIdleId(idleId);
-        when(idleItemRepository.findById(idleId)).thenReturn(Optional.empty());
+        when(idleItemRepository.findByIdWithLock(idleId)).thenReturn(Optional.empty());
 
         // 执行 & 断言
         assertThatThrownBy(() -> borrowService.apply(borrowerId, req))
@@ -178,12 +177,12 @@ class BorrowServiceTest {
         idleItem.setStatus("offline");
         BorrowRequestDTO req = new BorrowRequestDTO();
         req.setIdleId(idleId);
-        when(idleItemRepository.findById(idleId)).thenReturn(Optional.of(idleItem));
+        when(idleItemRepository.findByIdWithLock(idleId)).thenReturn(Optional.of(idleItem));
 
         // 执行 & 断言
         assertThatThrownBy(() -> borrowService.apply(borrowerId, req))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessage("该物品已下架");
+                .hasMessage("该物品已被其他住户抢先申请，请浏览其他物品");
     }
 
     @Test
@@ -193,7 +192,7 @@ class BorrowServiceTest {
         idleItem.setUserId(borrowerId);
         BorrowRequestDTO req = new BorrowRequestDTO();
         req.setIdleId(idleId);
-        when(idleItemRepository.findById(idleId)).thenReturn(Optional.of(idleItem));
+        when(idleItemRepository.findByIdWithLock(idleId)).thenReturn(Optional.of(idleItem));
 
         // 执行 & 断言
         assertThatThrownBy(() -> borrowService.apply(borrowerId, req))
@@ -208,13 +207,13 @@ class BorrowServiceTest {
         BorrowRequestDTO req = new BorrowRequestDTO();
         req.setIdleId(idleId);
 
-        when(idleItemRepository.findById(idleId)).thenReturn(Optional.of(idleItem));
+        when(idleItemRepository.findByIdWithLock(idleId)).thenReturn(Optional.of(idleItem));
         when(borrowRequestRepository.save(any(BorrowRequest.class))).thenAnswer(inv -> {
             BorrowRequest br = inv.getArgument(0);
             br.setId(borrowId);
             return br;
         });
-        when(notificationRepository.save(any(Notification.class))).thenReturn(new Notification());
+        when(notificationService.create(any(), any(), any(), any(), any())).thenReturn(new NotificationDTO());
 
         // 执行
         BorrowResponseDTO result = borrowService.apply(borrowerId, req);
@@ -237,7 +236,7 @@ class BorrowServiceTest {
         when(idleItemRepository.findById(idleId)).thenReturn(Optional.of(idleItem));
         when(borrowRequestRepository.save(any(BorrowRequest.class))).thenReturn(borrowRequest);
         when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
-        when(notificationRepository.save(any(Notification.class))).thenReturn(new Notification());
+        when(notificationService.create(any(), any(), any(), any(), any())).thenReturn(new NotificationDTO());
         when(userRepository.findById(ownerId)).thenReturn(Optional.of(owner));
         when(userRepository.findById(borrowerId)).thenReturn(Optional.of(borrower));
 
@@ -247,7 +246,7 @@ class BorrowServiceTest {
         // 断言
         assertThat(result.getStatus()).isEqualTo("approved");
         assertThat(idleItem.getStatus()).isEqualTo("borrowing");
-        verify(notificationRepository, atLeastOnce()).save(any(Notification.class));
+        verify(notificationService, atLeastOnce()).create(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -261,7 +260,7 @@ class BorrowServiceTest {
         when(borrowRequestRepository.findById(borrowId)).thenReturn(Optional.of(borrowRequest));
         when(idleItemRepository.findById(idleId)).thenReturn(Optional.of(idleItem));
         when(borrowRequestRepository.save(any(BorrowRequest.class))).thenReturn(borrowRequest);
-        when(notificationRepository.save(any(Notification.class))).thenReturn(new Notification());
+        when(notificationService.create(any(), any(), any(), any(), any())).thenReturn(new NotificationDTO());
         when(userRepository.findById(ownerId)).thenReturn(Optional.of(owner));
         when(userRepository.findById(borrowerId)).thenReturn(Optional.of(borrower));
 
@@ -270,7 +269,7 @@ class BorrowServiceTest {
 
         // 断言
         assertThat(result.getStatus()).isEqualTo("rejected");
-        verify(notificationRepository, atLeastOnce()).save(any(Notification.class));
+        verify(notificationService, atLeastOnce()).create(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -394,7 +393,7 @@ class BorrowServiceTest {
         when(borrowRequestRepository.save(any(BorrowRequest.class))).thenReturn(returnedBorrow);
         when(idleItemRepository.findById(idleId)).thenReturn(Optional.of(idleItem));
         when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
-        when(notificationRepository.save(any(Notification.class))).thenReturn(new Notification());
+        when(notificationService.create(any(), any(), any(), any(), any())).thenReturn(new NotificationDTO());
         when(userRepository.findById(ownerId)).thenReturn(Optional.of(owner));
         when(userRepository.findById(borrowerId)).thenReturn(Optional.of(borrower));
 

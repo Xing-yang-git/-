@@ -50,7 +50,7 @@ class ChatServiceTest {
         when(userRepository.findById(fromUserId)).thenReturn(Optional.of(sender));
 
         // 执行
-        chatService.relayMessage(fromUserId, toUserId, "你好", "text", "session-abc");
+        chatService.sendMessage(fromUserId, toUserId, "你好", "text", "session-abc");
 
         // 断言
         ArgumentCaptor<WebSocketMessage> captor = ArgumentCaptor.forClass(WebSocketMessage.class);
@@ -73,7 +73,7 @@ class ChatServiceTest {
         when(userRepository.findById(fromUserId)).thenReturn(Optional.empty());
 
         // 执行
-        chatService.relayMessage(fromUserId, toUserId, "测试内容", "image", "session-xyz");
+        chatService.sendMessage(fromUserId, toUserId, "测试内容", "image", "session-xyz");
 
         // 断言
         ArgumentCaptor<WebSocketMessage> captor = ArgumentCaptor.forClass(WebSocketMessage.class);
@@ -91,7 +91,7 @@ class ChatServiceTest {
         when(userRepository.findById(fromUserId)).thenReturn(Optional.empty());
 
         // 执行
-        chatService.relayMessage(fromUserId, toUserId, "空类型消息", null, "session-1");
+        chatService.sendMessage(fromUserId, toUserId, "空类型消息", null, "session-1");
 
         // 断言
         ArgumentCaptor<WebSocketMessage> captor = ArgumentCaptor.forClass(WebSocketMessage.class);

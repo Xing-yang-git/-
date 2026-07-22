@@ -34,6 +34,10 @@ public class IdleItemDTO {
     private Double rating;
     private Long lendCount;
     private String returnRate;
+    // 「以往记录」弹层五项统计的其余三项（口径见 UserActivityService.interactionStats）
+    private Long borrowCount;
+    private Long helpCount;
+    private Long helpedCount;
 
     // 当前用户对该物品的借用申请状态（null = 未申请）
     private String userBorrowStatus;  // null | "pending" | "approved" | "returned"

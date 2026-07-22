@@ -1,5 +1,6 @@
 package com.platform.config;
 
+import com.platform.common.BizStatus;
 import com.platform.model.entity.Building;
 import com.platform.model.entity.Room;
 import com.platform.model.entity.Tenant;
@@ -67,10 +68,10 @@ public class DataInitializer implements CommandLineRunner {
                 .name("系统管理员")
                 .userType("super_admin")
                 .tenantId(tenantId)
-                .authStatus("approved")
+                .authStatus(BizStatus.APPROVED)
                 .build();
         userRepository.save(admin);
-        log.info("Created super_admin: admin / admin123 (tenant_id={})", tenantId);
+        log.info("Created super_admin: admin (tenant_id={})", tenantId);
     }
 
     private Long seedTenant() {

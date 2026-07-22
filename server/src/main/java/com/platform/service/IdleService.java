@@ -1,5 +1,7 @@
 package com.platform.service;
 
+import com.platform.common.BizStatus;
+import com.platform.common.UserFormatter;
 import com.platform.model.dto.IdleItemDTO;
 import com.platform.model.dto.IdleItemRequest;
 import com.platform.model.dto.PageDTO;
@@ -31,17 +33,20 @@ public class IdleService {
     private final RoomRepository roomRepository;
     private final BorrowRequestRepository borrowRequestRepository;
     private final RatingRepository ratingRepository;
+    private final UserActivityService userActivityService;
 
     public IdleService(IdleItemRepository idleItemRepository,
                        UserRepository userRepository,
                        RoomRepository roomRepository,
                        BorrowRequestRepository borrowRequestRepository,
-                       RatingRepository ratingRepository) {
+                       RatingRepository ratingRepository,
+                       UserActivityService userActivityService) {
         this.idleItemRepository = idleItemRepository;
         this.userRepository = userRepository;
         this.roomRepository = roomRepository;
         this.borrowRequestRepository = borrowRequestRepository;
         this.ratingRepository = ratingRepository;
+        this.userActivityService = userActivityService;
     }
 
     public IdleItemDTO publish(Long userId, IdleItemRequest req) {
@@ -55,13 +60,13 @@ public class IdleService {
         item.setDescription(req.getDescription());
         item.setPostType(req.getPostType());
         item.setCategory(req.getCategory());
-        item.setCondition(req.getCondition() != null ? req.getCondition() : "normal");
+        item.setCondition(req.getCondition() != null ? req.getCondition() : BizStatus.NORMAL);
         item.setImages(req.getImages());
         item.setPrice(req.getPrice() != null ? req.getPrice() : BigDecimal.ZERO);
         item.setMaxDuration(req.getMaxDuration() != null ? req.getMaxDuration() : 7);
         item.setDurationUnit(req.getDurationUnit() != null ? req.getDurationUnit() : "day");
         item.setPickupMethod(req.getPickupMethod() != null ? req.getPickupMethod() : "self_pickup");
-        item.setStatus("online");
+        item.setStatus(BizStatus.ONLINE);
         item.setCreatedAt(LocalDateTime.now());
         item = idleItemRepository.save(item);
 
@@ -73,8 +78,8 @@ public class IdleService {
         Long tenantId = user != null ? user.getTenantId() : null;
         PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<IdleItem> itemPage = tenantId != null
-                ? idleItemRepository.findByStatusAndPostTypeAndTenantId("online", postType, tenantId, pageRequest)
-                : idleItemRepository.findByStatusAndPostType("online", postType, pageRequest);
+                ? idleItemRepository.findByStatusAndPostTypeAndTenantId(BizStatus.ONLINE, postType, tenantId, pageRequest)
+                : idleItemRepository.findByStatusAndPostType(BizStatus.ONLINE, postType, pageRequest);
 
         List<IdleItemDTO> dtos = itemPage.getContent().stream()
                 .map(this::toDTO)
@@ -122,9 +127,9 @@ public class IdleService {
         Long tenantId = user != null ? user.getTenantId() : null;
         PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<IdleItem> itemPage = tenantId != null
-                ? idleItemRepository.searchByTenant("online", postType, tenantId, keyword, keyword, pageRequest)
+                ? idleItemRepository.searchByTenant(BizStatus.ONLINE, postType, tenantId, keyword, keyword, pageRequest)
                 : idleItemRepository.findByStatusAndPostTypeAndTitleContainingOrDescriptionContaining(
-                        "online", postType, keyword, keyword, pageRequest);
+                        BizStatus.ONLINE, postType, keyword, keyword, pageRequest);
 
         List<IdleItemDTO> dtos = itemPage.getContent().stream()
                 .map(this::toDTO)
@@ -154,7 +159,7 @@ public class IdleService {
             throw new RuntimeException("无权操作该物品");
         }
 
-        item.setStatus("offline");
+        item.setStatus(BizStatus.OFFLINE);
         item = idleItemRepository.save(item);
         return toDTO(item);
     }
@@ -167,7 +172,7 @@ public class IdleService {
             throw new RuntimeException("无权操作该物品");
         }
 
-        item.setStatus("deleted");
+        item.setStatus(BizStatus.DELETED);
         item = idleItemRepository.save(item);
         return toDTO(item);
     }
@@ -194,9 +199,10 @@ public class IdleService {
         item.setDurationUnit(req.getDurationUnit() != null ? req.getDurationUnit() : item.getDurationUnit());
         item.setPickupMethod(req.getPickupMethod() != null ? req.getPickupMethod() : item.getPickupMethod());
 
-        // 自动重新上架：completed/offline → online
-        if ("completed".equals(item.getStatus()) || "offline".equals(item.getStatus())) {
-            item.setStatus("online");
+        // 自动重新上架：completed/offline → online，并刷新发布时间
+        if (BizStatus.COMPLETED.equals(item.getStatus()) || BizStatus.OFFLINE.equals(item.getStatus())) {
+            item.setStatus(BizStatus.ONLINE);
+            item.setCreatedAt(LocalDateTime.now());
         }
 
         item = idleItemRepository.save(item);
@@ -211,23 +217,23 @@ public class IdleService {
         // 暂无评分时默认 5.0（无互助记录的新用户）
         dto.setRating(avgScore != null ? Math.round(avgScore * 10.0) / 10.0 : 5.0);
 
-        long totalReturned = borrowRequestRepository.countReturnedByOwnerId(userId);
-        dto.setLendCount(totalReturned);
-
-        if (totalReturned > 0) {
-            long onTime = borrowRequestRepository.countOnTimeReturnedByOwnerId(userId);
-            dto.setReturnRate(Math.round(onTime * 100.0 / totalReturned) + "%");
-        } else {
-            // 尚无归还记录时默认 100%
-            dto.setReturnRate("100%");
-        }
+        // 「以往记录」弹层五项统计 — 全站统一口径：已完成且被对方评价才计数。
+        // 借入/借出按真实角色分流（WANTED 帖 owner/borrower 反转），归还率不设评价门槛。
+        UserActivityService.InteractionStats stats = userActivityService.interactionStats(userId);
+        dto.setBorrowCount((long) stats.borrowCount());
+        dto.setLendCount((long) stats.lendCount());
+        dto.setHelpCount((long) stats.helpReqCount());
+        dto.setHelpedCount((long) stats.helpProCount());
+        dto.setReturnRate(stats.returnedCount() > 0
+                ? Math.round(stats.onTimeCount() * 100.0 / stats.returnedCount()) + "%"
+                : "100%");
         return dto;
     }
 
     private IdleItemDTO toDTO(IdleItem item) {
         User user = userRepository.findById(item.getUserId()).orElse(null);
         String userName = user != null ? user.getName() : "未知用户";
-        String roomInfo = formatRoom(user);
+        String roomInfo = UserFormatter.formatRoomWithType(user);
 
         return IdleItemDTO.builder()
                 .id(item.getId())
@@ -251,42 +257,4 @@ public class IdleService {
                 .build();
     }
 
-    private String formatRoom(User user) {
-        if (user == null || user.getRoom() == null) {
-            return "";
-        }
-        try {
-            String buildingName = "";
-            String unitName = "";
-            String roomNumber = "";
-
-            if (user.getRoom().getUnit() != null) {
-                unitName = user.getRoom().getUnit().getName() != null
-                        ? user.getRoom().getUnit().getName() : "";
-                if (user.getRoom().getUnit().getBuilding() != null) {
-                    buildingName = user.getRoom().getUnit().getBuilding().getName() != null
-                            ? user.getRoom().getUnit().getBuilding().getName() : "";
-                }
-            }
-            roomNumber = user.getRoom().getRoomNumber() != null
-                    ? user.getRoom().getRoomNumber() : "";
-
-            String typeLabel = getUserTypeLabel(user.getUserType());
-            String addr = buildingName + unitName + roomNumber + "号";
-            return typeLabel.isEmpty() ? addr : addr + "(" + typeLabel + ")";
-        } catch (Exception e) {
-            return "";
-        }
-    }
-
-    private String getUserTypeLabel(String userType) {
-        if (userType == null) return "";
-        switch (userType) {
-            case "owner": return "业主";
-            case "tenant": return "租客";
-            case "admin": return "管理员";
-            case "super_admin": return "超级管理员";
-            default: return userType != null ? userType : "";
-        }
-    }
 }

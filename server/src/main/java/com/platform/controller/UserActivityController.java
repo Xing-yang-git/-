@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 
 @RestController
-@RequestMapping("/api/user")
+@RequestMapping("/api/users")
 public class UserActivityController {
 
     private final UserActivityService userActivityService;
@@ -41,12 +41,22 @@ public class UserActivityController {
 
     /**
      * 待审批事项 — 审批 tab。
-     * @param type "borrow" | "help"
+     * @param type "borrow" | "lend" | "help"
      */
     @GetMapping("/approvals")
     public Result<?> approvals(@RequestParam String type, Authentication auth) {
         Long userId = Long.valueOf(auth.getName());
         return Result.ok(userActivityService.getApprovals(userId, type));
+    }
+
+    /**
+     * 待审批数量统计 — tabBar「管理」红点与审批 tab 角标。
+     * 返回 { borrow, lend, help, total }。
+     */
+    @GetMapping("/approvals/count")
+    public Result<?> approvalsCount(Authentication auth) {
+        Long userId = Long.valueOf(auth.getName());
+        return Result.ok(userActivityService.getApprovalCounts(userId));
     }
 
     /**

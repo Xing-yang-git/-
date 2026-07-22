@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.*;
 
 
 @RestController
-@RequestMapping("/api/notification")
+@RequestMapping("/api/notifications")
 public class NotificationController {
 
     private final NotificationService notificationService;
@@ -32,6 +32,14 @@ public class NotificationController {
     public Result<?> markAllRead(Authentication auth) {
         Long userId = Long.valueOf(auth.getName());
         notificationService.markAllRead(userId);
+        return Result.ok();
+    }
+
+    /** 清空当前用户全部通知 */
+    @DeleteMapping("/all")
+    public Result<?> deleteAll(Authentication auth) {
+        Long userId = Long.valueOf(auth.getName());
+        notificationService.deleteAll(userId);
         return Result.ok();
     }
 }

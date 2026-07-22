@@ -4,13 +4,14 @@ import com.platform.common.Result;
 import com.platform.model.dto.ApproveRequest;
 import com.platform.model.dto.HelpRequestDTO;
 import com.platform.service.HelpService;
+import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/help")
+@RequestMapping("/api/help-requests")
 public class HelpController {
 
     private final HelpService helpService;
@@ -20,7 +21,7 @@ public class HelpController {
     }
 
     @PostMapping
-    public Result<?> publish(@RequestBody HelpRequestDTO req, Authentication auth) {
+    public Result<?> publish(@Valid @RequestBody HelpRequestDTO req, Authentication auth) {
         Long userId = Long.valueOf(auth.getName());
         return Result.ok(helpService.publish(userId, req));
     }
@@ -62,7 +63,7 @@ public class HelpController {
     }
 
     @PostMapping("/{id}/apply")
-    public Result<?> apply(@PathVariable Long id, @RequestBody Map<String, String> body,
+    public Result<?> apply(@PathVariable Long id, @Valid @RequestBody Map<String, String> body,
                            Authentication auth) {
         Long userId = Long.valueOf(auth.getName());
         helpService.apply(userId, id, body.getOrDefault("note", ""));
@@ -70,7 +71,7 @@ public class HelpController {
     }
 
     @PutMapping("/applications/{appId}/approve")
-    public Result<?> approveApplication(@PathVariable Long appId, @RequestBody ApproveRequest req,
+    public Result<?> approveApplication(@PathVariable Long appId, @Valid @RequestBody ApproveRequest req,
                                         Authentication auth) {
         Long userId = Long.valueOf(auth.getName());
         helpService.approveReject(userId, appId, req);
@@ -90,7 +91,7 @@ public class HelpController {
     }
 
     @PutMapping("/{id}")
-    public Result<?> update(@PathVariable Long id, @RequestBody HelpRequestDTO req,
+    public Result<?> update(@PathVariable Long id, @Valid @RequestBody HelpRequestDTO req,
                             Authentication auth) {
         Long userId = Long.valueOf(auth.getName());
         return Result.ok(helpService.update(userId, id, req));

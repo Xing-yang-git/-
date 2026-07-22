@@ -13,4 +13,5 @@ public class RatingRequest {
     private Long targetId;        // 对应 borrowId 或 helpApplicationId
     private String ratingType;    // "borrow" 或 "help"
     private Integer overallScore; // 对应 score
+    private String feedback;      // 互助感想文本
 }

@@ -4,10 +4,13 @@ import com.platform.model.entity.HelpRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import jakarta.persistence.LockModeType;
 import java.util.List;
+import java.util.Optional;
 
 public interface HelpRequestRepository extends JpaRepository<HelpRequest, Long> {
 
@@ -40,4 +43,11 @@ public interface HelpRequestRepository extends JpaRepository<HelpRequest, Long> 
     long countByStatus(String status);
 
     List<HelpRequest> findByStatus(String status);
+
+    /**
+     * 带悲观写锁的按 ID 查询，防并发双人申请同一求助。
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT h FROM HelpRequest h WHERE h.id = :id")
+    Optional<HelpRequest> findByIdWithLock(@Param("id") Long id);
 }

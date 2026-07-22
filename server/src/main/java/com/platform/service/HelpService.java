@@ -1,5 +1,7 @@
 package com.platform.service;
 
+import com.platform.common.BizStatus;
+import com.platform.common.UserFormatter;
 import com.platform.model.dto.ApproveRequest;
 import com.platform.model.dto.HelpRequestDTO;
 import com.platform.model.dto.HelpResponseDTO;
@@ -10,7 +12,6 @@ import com.platform.model.entity.Notification;
 import com.platform.model.entity.User;
 import com.platform.repository.HelpApplicationRepository;
 import com.platform.repository.HelpRequestRepository;
-import com.platform.repository.NotificationRepository;
 import com.platform.repository.RatingRepository;
 import com.platform.repository.RoomRepository;
 import com.platform.repository.UserRepository;
@@ -36,23 +37,26 @@ public class HelpService {
 
     private final HelpRequestRepository helpRequestRepository;
     private final HelpApplicationRepository helpApplicationRepository;
-    private final NotificationRepository notificationRepository;
+    private final NotificationService notificationService;
     private final UserRepository userRepository;
     private final RoomRepository roomRepository;
     private final RatingRepository ratingRepository;
+    private final UserActivityService userActivityService;
 
     public HelpService(HelpRequestRepository helpRequestRepository,
                        HelpApplicationRepository helpApplicationRepository,
-                       NotificationRepository notificationRepository,
+                       NotificationService notificationService,
                        UserRepository userRepository,
                        RoomRepository roomRepository,
-                       RatingRepository ratingRepository) {
+                       RatingRepository ratingRepository,
+                       UserActivityService userActivityService) {
         this.helpRequestRepository = helpRequestRepository;
         this.helpApplicationRepository = helpApplicationRepository;
-        this.notificationRepository = notificationRepository;
+        this.notificationService = notificationService;
         this.userRepository = userRepository;
         this.roomRepository = roomRepository;
         this.ratingRepository = ratingRepository;
+        this.userActivityService = userActivityService;
     }
 
     private static final DateTimeFormatter DT_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
@@ -83,7 +87,7 @@ public class HelpService {
             }
         }
         helpRequest.setImages(req.getImages());
-        helpRequest.setStatus("online");
+        helpRequest.setStatus(BizStatus.ONLINE);
         helpRequest.setIsProxy(false);
         helpRequest.setCreatedAt(LocalDateTime.now());
         helpRequest = helpRequestRepository.save(helpRequest);
@@ -97,8 +101,8 @@ public class HelpService {
         PageRequest pageRequest = PageRequest.of(page, size,
                 Sort.by(Sort.Direction.DESC, "isUrgent", "createdAt"));
         Page<HelpRequest> helpPage = tenantId != null
-                ? helpRequestRepository.findByStatusAndTenantId("online", tenantId, pageRequest)
-                : helpRequestRepository.findByStatus("online", pageRequest);
+                ? helpRequestRepository.findByStatusAndTenantId(BizStatus.ONLINE, tenantId, pageRequest)
+                : helpRequestRepository.findByStatus(BizStatus.ONLINE, pageRequest);
 
         List<HelpResponseDTO> dtos = helpPage.getContent().stream()
                 .map(this::toDTO)
@@ -126,9 +130,9 @@ public class HelpService {
         PageRequest pageRequest = PageRequest.of(page, size,
                 Sort.by(Sort.Direction.DESC, "isUrgent", "createdAt"));
         Page<HelpRequest> helpPage = tenantId != null
-                ? helpRequestRepository.searchByTenant("online", tenantId, keyword, keyword, pageRequest)
+                ? helpRequestRepository.searchByTenant(BizStatus.ONLINE, tenantId, keyword, keyword, pageRequest)
                 : helpRequestRepository.findByStatusAndTitleContainingOrDescriptionContaining(
-                        "online", keyword, keyword, pageRequest);
+                        BizStatus.ONLINE, keyword, keyword, pageRequest);
 
         List<HelpResponseDTO> dtos = helpPage.getContent().stream()
                 .map(this::toDTO)
@@ -156,17 +160,32 @@ public class HelpService {
             throw new RuntimeException("无权操作该求助");
         }
 
-        helpRequest.setStatus("offline");
+        helpRequest.setStatus(BizStatus.OFFLINE);
         helpRequest = helpRequestRepository.save(helpRequest);
+
+        // 将所有待处理的帮助申请设为已拒绝，并通知申请人
+        List<HelpApplication> pendingApps = helpApplicationRepository
+                .findByHelpIdAndStatus(helpId, BizStatus.PENDING);
+        for (HelpApplication app : pendingApps) {
+            app.setStatus(BizStatus.REJECTED);
+            helpApplicationRepository.save(app);
+            // 通知申请人该求助已被发布者下架
+            createNotification(app.getHelperId(), "help_rejected",
+                    "帮助申请已失效",
+                    "求助「" + helpRequest.getTitle() + "」已下架，您的帮助申请已自动失效",
+                    app.getId());
+        }
+
         return toDTO(helpRequest);
     }
 
     public HelpResponseDTO apply(Long helperId, Long helpId, String note) {
-        HelpRequest helpRequest = helpRequestRepository.findById(helpId)
+        // 悲观写锁防并发：两个人同时申请同一求助时，后到达的事务需等待前者提交
+        HelpRequest helpRequest = helpRequestRepository.findByIdWithLock(helpId)
                 .orElseThrow(() -> new RuntimeException("求助信息不存在"));
 
-        if (!"online".equals(helpRequest.getStatus())) {
-            throw new RuntimeException("该求助已关闭");
+        if (!BizStatus.ONLINE.equals(helpRequest.getStatus())) {
+            throw new RuntimeException("该求助已被其他人抢先申请，请浏览其他求助");
         }
 
         if (helpRequest.getUserId().equals(helperId)) {
@@ -175,7 +194,7 @@ public class HelpService {
 
         // 防重复：同一用户对同一求助已有 pending/approved 申请时拒绝
         if (helpApplicationRepository.existsByHelpIdAndHelperIdAndStatusIn(
-                helpId, helperId, List.of("pending", "approved"))) {
+                helpId, helperId, List.of(BizStatus.PENDING, BizStatus.APPROVED))) {
             throw new RuntimeException("您已申请过该求助，请勿重复提交");
         }
 
@@ -183,12 +202,16 @@ public class HelpService {
         application.setHelpId(helpId);
         application.setHelperId(helperId);
         application.setNote(note);
-        application.setStatus("pending");
+        application.setStatus(BizStatus.PENDING);
         application.setCreatedAt(LocalDateTime.now());
         application = helpApplicationRepository.save(application);
 
+        // 标记求助为"已被申请"，首页列表不再展示（与闲置物品 reserved 模式一致）
+        helpRequest.setStatus(BizStatus.RESERVED);
+        helpRequestRepository.save(helpRequest);
+
         createNotification(helpRequest.getUserId(), "help_application",
-                "新的帮助申请", "有人想帮助您：[" + helpRequest.getTitle() + "]",
+                "新的帮助申请", "有人想帮助您：" + helpRequest.getTitle(),
                 application.getId());
 
         return toDTO(helpRequest);
@@ -205,25 +228,39 @@ public class HelpService {
             throw new RuntimeException("无权操作该申请");
         }
 
-        if (!"pending".equals(application.getStatus())) {
+        if (!BizStatus.PENDING.equals(application.getStatus())) {
             throw new RuntimeException("该申请已被处理，无法重复操作");
         }
 
-        application.setStatus(req.getApproved() ? "approved" : "rejected");
+        application.setStatus(req.getApproved() ? BizStatus.APPROVED : BizStatus.REJECTED);
         helpApplicationRepository.save(application);
 
         // 同步 HelpRequest 状态
         if (req.getApproved()) {
             helpRequest.setStatus("helping");
             helpRequestRepository.save(helpRequest);
+        } else {
+            // 拒绝时：若该求助没有其他待审批的申请，恢复为 online（首页重新可见）
+            List<HelpApplication> pendingForHelp = helpApplicationRepository
+                    .findByHelpIdAndStatus(application.getHelpId(), BizStatus.PENDING);
+            if (pendingForHelp.isEmpty()) {
+                helpRequest.setStatus(BizStatus.ONLINE);
+                helpRequestRepository.save(helpRequest);
+            }
         }
 
-        String title = req.getApproved() ? "帮助申请已通过" : "帮助申请被拒绝";
-        String content = req.getApproved()
-                ? "您对求助「" + helpRequest.getTitle() + "」的帮助申请已通过"
-                : "您对求助「" + helpRequest.getTitle() + "」的帮助申请被拒绝"
-                        + (req.getReason() != null ? "，原因：" + req.getReason() : "");
-        createNotification(application.getHelperId(), "help_result", title, content, application.getId());
+        if (req.getApproved()) {
+            createNotification(application.getHelperId(), "help_approved",
+                    "帮助申请已通过",
+                    "您对求助「" + helpRequest.getTitle() + "」的帮助申请已通过",
+                    application.getId());
+        } else {
+            createNotification(application.getHelperId(), "help_rejected",
+                    "帮助申请被拒绝",
+                    "您对求助「" + helpRequest.getTitle() + "」的帮助申请被拒绝"
+                            + (req.getReason() != null ? "，原因：" + req.getReason() : ""),
+                    application.getId());
+        }
 
         return toDTO(helpRequest);
     }
@@ -249,22 +286,22 @@ public class HelpService {
             throw new RuntimeException("无权操作该申请");
         }
 
-        if (!"approved".equals(application.getStatus())) {
+        if (!BizStatus.APPROVED.equals(application.getStatus())) {
             throw new RuntimeException("只能完成进行中的帮助申请");
         }
 
-        application.setStatus("completed");
+        application.setStatus(BizStatus.COMPLETED);
         application.setCompletedAt(LocalDateTime.now());
         helpApplicationRepository.save(application);
 
-        helpRequest.setStatus("completed");
+        helpRequest.setStatus(BizStatus.COMPLETED);
         helpRequestRepository.save(helpRequest);
 
         // 通知对方（发起人是求助方则通知帮助方，反之亦然）
         Long peerId = isRequester ? application.getHelperId() : helpRequest.getUserId();
         if (peerId != null) {
             createNotification(peerId, "help_result",
-                    "帮助已完成", "「" + helpRequest.getTitle() + "」的互助已确认完成",
+                    "帮助已完成", "「" + helpRequest.getTitle() + "」的互助已确认完成，请及时评价此次互助",
                     application.getId());
         }
 
@@ -300,9 +337,10 @@ public class HelpService {
         }
         helpRequest.setImages(req.getImages());
 
-        // 自动重新上架：completed/offline → online
-        if ("completed".equals(helpRequest.getStatus()) || "offline".equals(helpRequest.getStatus())) {
-            helpRequest.setStatus("online");
+        // 自动重新上架：completed/offline → online，并刷新发布时间
+        if (BizStatus.COMPLETED.equals(helpRequest.getStatus()) || BizStatus.OFFLINE.equals(helpRequest.getStatus())) {
+            helpRequest.setStatus(BizStatus.ONLINE);
+            helpRequest.setCreatedAt(LocalDateTime.now());
         }
 
         helpRequest = helpRequestRepository.save(helpRequest);
@@ -325,8 +363,12 @@ public class HelpService {
         List<HelpRequest> myRequests = helpRequestRepository.findByUserId(userId);
         List<HelpResponseDTO> result = new ArrayList<>();
         for (HelpRequest hr : myRequests) {
+            // 仅对在线中的帖子返回待审批申请（已下架/已完成的帖子不展示审批项）
+            if (!BizStatus.ONLINE.equals(hr.getStatus())) {
+                continue;
+            }
             List<HelpApplication> pendingApps = helpApplicationRepository
-                    .findByHelpIdAndStatus(hr.getId(), "pending");
+                    .findByHelpIdAndStatus(hr.getId(), BizStatus.PENDING);
             for (HelpApplication app : pendingApps) {
                 User helper = userRepository.findById(app.getHelperId()).orElse(null);
                 HelpResponseDTO dto = toDTO(hr);
@@ -348,17 +390,21 @@ public class HelpService {
         Double avgScore = ratingRepository.getAverageScore(userId);
         dto.setRating(avgScore != null ? Math.round(avgScore * 10.0) / 10.0 : null);
 
-        long helpCount = helpRequestRepository.findByUserId(userId).size();
-        dto.setHelpCount(helpCount);
-
-        long helpedCount = helpApplicationRepository.countByHelperIdAndStatus(userId, "approved");
-        dto.setHelpedCount(helpedCount);
+        // 「以往记录」弹层五项统计 — 全站统一口径：已完成且被对方评价才计数
+        UserActivityService.InteractionStats stats = userActivityService.interactionStats(userId);
+        dto.setHelpCount((long) stats.helpReqCount());
+        dto.setHelpedCount((long) stats.helpProCount());
+        dto.setBorrowCount((long) stats.borrowCount());
+        dto.setLendCount((long) stats.lendCount());
+        dto.setReturnRate(stats.returnedCount() > 0
+                ? Math.round(stats.onTimeCount() * 100.0 / stats.returnedCount()) + "%"
+                : "100%");
         return dto;
     }
 
     private HelpResponseDTO toDTO(HelpRequest hr) {
         User user = userRepository.findById(hr.getUserId()).orElse(null);
-        String userRoom = formatRoom(user);
+        String userRoom = UserFormatter.formatRoomWithType(user);
         return HelpResponseDTO.builder()
                 .id(hr.getId())
                 .userId(hr.getUserId())
@@ -378,54 +424,7 @@ public class HelpService {
                 .build();
     }
 
-    private String formatRoom(User user) {
-        if (user == null || user.getRoom() == null) {
-            return "";
-        }
-        try {
-            String buildingName = "";
-            String unitName = "";
-            String roomNumber = "";
-
-            if (user.getRoom().getUnit() != null) {
-                unitName = user.getRoom().getUnit().getName() != null
-                        ? user.getRoom().getUnit().getName() : "";
-                if (user.getRoom().getUnit().getBuilding() != null) {
-                    buildingName = user.getRoom().getUnit().getBuilding().getName() != null
-                            ? user.getRoom().getUnit().getBuilding().getName() : "";
-                }
-            }
-            roomNumber = user.getRoom().getRoomNumber() != null
-                    ? user.getRoom().getRoomNumber() : "";
-
-            String typeLabel = getUserTypeLabel(user.getUserType());
-            String addr = buildingName + unitName + roomNumber + "号";
-            return typeLabel.isEmpty() ? addr : addr + "(" + typeLabel + ")";
-        } catch (Exception e) {
-            return "";
-        }
-    }
-
-    private String getUserTypeLabel(String userType) {
-        if (userType == null) return "";
-        switch (userType) {
-            case "owner": return "业主";
-            case "tenant": return "租客";
-            case "admin": return "管理员";
-            case "super_admin": return "超级管理员";
-            default: return userType != null ? userType : "";
-        }
-    }
-
     private void createNotification(Long userId, String type, String title, String content, Long relatedId) {
-        Notification notification = new Notification();
-        notification.setUserId(userId);
-        notification.setType(type);
-        notification.setTitle(title);
-        notification.setContent(content);
-        notification.setRelatedId(relatedId);
-        notification.setIsRead(false);
-        notification.setCreatedAt(LocalDateTime.now());
-        notificationRepository.save(notification);
+        notificationService.create(userId, type, title, content, relatedId);
     }
 }

@@ -3,6 +3,7 @@ package com.platform.controller;
 import com.platform.common.Result;
 import com.platform.model.dto.*;
 import com.platform.service.AdminService;
+import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -40,7 +41,7 @@ public class AdminController {
     }
 
     @PutMapping("/audits/{userId}")
-    public Result<?> auditUser(@PathVariable Long userId, @RequestBody AuditRequest req,
+    public Result<?> auditUser(@PathVariable Long userId, @Valid @RequestBody AuditRequest req,
                                Authentication auth) {
         Long adminId = Long.valueOf(auth.getName());
         adminService.auditUser(adminId, userId, req);
@@ -72,7 +73,7 @@ public class AdminController {
     }
 
     @PutMapping("/content/{id}/offline")
-    public Result<?> offlineContent(@PathVariable Long id, @RequestBody ContentOfflineRequest req,
+    public Result<?> offlineContent(@PathVariable Long id, @Valid @RequestBody ContentOfflineRequest req,
                                      Authentication auth) {
         Long adminId = Long.valueOf(auth.getName());
         return Result.ok(adminService.removeContent(adminId, id, req));
@@ -94,14 +95,14 @@ public class AdminController {
 
     // ===== 个人信息 =====
     @PutMapping("/profile")
-    public Result<?> updateProfile(@RequestBody Map<String, String> body, Authentication auth) {
+    public Result<?> updateProfile(@Valid @RequestBody Map<String, String> body, Authentication auth) {
         Long adminId = Long.valueOf(auth.getName());
         return Result.ok(adminService.updateProfile(adminId, body.get("name")));
     }
 
     // ===== 修改密码 =====
     @PutMapping("/password")
-    public Result<?> updatePassword(@RequestBody Map<String, String> body, Authentication auth) {
+    public Result<?> updatePassword(@Valid @RequestBody Map<String, String> body, Authentication auth) {
         Long adminId = Long.valueOf(auth.getName());
         adminService.updatePassword(adminId, body.get("oldPassword"), body.get("newPassword"));
         return Result.ok();
@@ -115,7 +116,7 @@ public class AdminController {
     }
 
     @PostMapping("/admins")
-    public Result<?> createAdmin(@RequestBody Map<String, String> body, Authentication auth) {
+    public Result<?> createAdmin(@Valid @RequestBody Map<String, String> body, Authentication auth) {
         Long adminId = Long.valueOf(auth.getName());
         return Result.ok(adminService.createAdmin(adminId,
                 body.get("name"), body.get("phone"), body.get("password")));
@@ -142,13 +143,13 @@ public class AdminController {
 
     // ===== 物业代发 =====
     @PostMapping("/proxy/idle")
-    public Result<?> proxyPublishIdle(@RequestBody IdleItemRequest req, Authentication auth) {
+    public Result<?> proxyPublishIdle(@Valid @RequestBody IdleItemRequest req, Authentication auth) {
         Long adminId = Long.valueOf(auth.getName());
         return Result.ok(adminService.proxyPublishIdle(adminId, req));
     }
 
     @PostMapping("/proxy/help")
-    public Result<?> proxyPublishHelp(@RequestBody HelpRequestDTO req, Authentication auth) {
+    public Result<?> proxyPublishHelp(@Valid @RequestBody HelpRequestDTO req, Authentication auth) {
         Long adminId = Long.valueOf(auth.getName());
         return Result.ok(adminService.proxyPublishHelp(adminId, req));
     }

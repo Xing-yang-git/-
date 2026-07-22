@@ -1,30 +1,59 @@
 package com.platform.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.platform.common.BizStatus;
 import com.platform.model.dto.NotificationDTO;
+import com.platform.model.dto.WebSocketMessage;
+import com.platform.model.entity.BorrowRequest;
+import com.platform.model.entity.HelpApplication;
 import com.platform.model.entity.Notification;
+import com.platform.repository.BorrowRequestRepository;
+import com.platform.repository.HelpApplicationRepository;
 import com.platform.repository.NotificationRepository;
+import com.platform.repository.RatingRepository;
+import com.platform.websocket.ChatWebSocketHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
 @Transactional
 public class NotificationService {
 
-    private final NotificationRepository notificationRepository;
+    private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
 
-    public NotificationService(NotificationRepository notificationRepository) {
+    private final NotificationRepository notificationRepository;
+    private final BorrowRequestRepository borrowRequestRepository;
+    private final HelpApplicationRepository helpApplicationRepository;
+    private final RatingRepository ratingRepository;
+    private final ChatWebSocketHandler chatWebSocketHandler;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public NotificationService(NotificationRepository notificationRepository,
+                               BorrowRequestRepository borrowRequestRepository,
+                               HelpApplicationRepository helpApplicationRepository,
+                               RatingRepository ratingRepository,
+                               ChatWebSocketHandler chatWebSocketHandler) {
         this.notificationRepository = notificationRepository;
+        this.borrowRequestRepository = borrowRequestRepository;
+        this.helpApplicationRepository = helpApplicationRepository;
+        this.ratingRepository = ratingRepository;
+        this.chatWebSocketHandler = chatWebSocketHandler;
     }
 
     public List<NotificationDTO> getNotifications(Long userId) {
         List<Notification> notifications = notificationRepository
                 .findByUserIdOrderByCreatedAtDesc(userId);
 
-        return notifications.stream().map(this::toDTO).collect(Collectors.toList());
+        return notifications.stream()
+                .map(n -> toDTO(n, userId))
+                .collect(Collectors.toList());
     }
 
     public long getUnreadCount(Long userId) {
@@ -33,6 +62,11 @@ public class NotificationService {
 
     public void markAllRead(Long userId) {
         notificationRepository.markAllRead(userId);
+    }
+
+    /** 删除当前用户全部通知（服务通知清空） */
+    public void deleteAll(Long userId) {
+        notificationRepository.deleteAllByUserId(userId);
     }
 
     public NotificationDTO create(Long userId, String type, String title, String content, Long relatedId) {
@@ -46,18 +80,88 @@ public class NotificationService {
         notification.setCreatedAt(LocalDateTime.now());
         notification = notificationRepository.save(notification);
 
-        return toDTO(notification);
+        NotificationDTO dto = toDTO(notification, userId);
+
+        // 通过 WebSocket 实时推送给目标用户
+        try {
+            WebSocketMessage msg = new WebSocketMessage();
+            msg.setType("notification");
+            msg.setContent(objectMapper.writeValueAsString(dto));
+            chatWebSocketHandler.sendToUser(String.valueOf(userId), msg);
+        } catch (Exception e) {
+            log.warn("WebSocket 推送通知失败: userId={}, title={}", userId, title, e);
+        }
+
+        return dto;
     }
 
-    private NotificationDTO toDTO(Notification notification) {
+    private NotificationDTO toDTO(Notification notification, Long userId) {
+        String type = notification.getType();
+        Long relatedId = notification.getRelatedId();
+        boolean rateable = computeRateable(type, relatedId, userId);
+        boolean actionable = computeActionable(type, relatedId, userId);
+
         return NotificationDTO.builder()
                 .id(notification.getId())
-                .type(notification.getType())
+                .type(type)
                 .title(notification.getTitle())
                 .content(notification.getContent())
-                .relatedId(notification.getRelatedId())
+                .relatedId(relatedId)
                 .isRead(notification.getIsRead())
                 .createdAt(notification.getCreatedAt())
+                .rateable(rateable)
+                .actionable(actionable)
                 .build();
+    }
+
+    /**
+     * 验证通知是否确实可评价：关联记录必须处于已完成状态，且当前用户尚未评分。
+     */
+    private boolean computeRateable(String type, Long relatedId, Long userId) {
+        if (relatedId == null) return false;
+
+        if ("return_confirm".equals(type)) {
+            Optional<BorrowRequest> brOpt = borrowRequestRepository.findById(relatedId);
+            if (brOpt.isEmpty()) return false;
+            if (!BizStatus.RETURNED.equals(brOpt.get().getStatus())) return false;
+            return ratingRepository.findByBorrowIdAndFromUserId(relatedId, userId).isEmpty();
+        }
+
+        if ("help_result".equals(type)) {
+            Optional<HelpApplication> appOpt = helpApplicationRepository.findById(relatedId);
+            if (appOpt.isEmpty()) return false;
+            if (!BizStatus.COMPLETED.equals(appOpt.get().getStatus())) return false;
+            return ratingRepository.findByHelpApplicationIdAndFromUserId(relatedId, userId).isEmpty();
+        }
+
+        return false;
+    }
+
+    /**
+     * 验证通知的预期操作是否仍然有效：
+     * - 审批类（borrow_request / help_application）：关联记录仍为待处理状态
+     * - 评价类（return_confirm / help_result）：同 rateable
+     */
+    private boolean computeActionable(String type, Long relatedId, Long userId) {
+        if (relatedId == null) return false;
+
+        // 审批类：借入申请 / 借出意向是否仍处于待审批
+        if ("borrow_request".equals(type)) {
+            Optional<BorrowRequest> brOpt = borrowRequestRepository.findById(relatedId);
+            return brOpt.isPresent() && BizStatus.PENDING.equals(brOpt.get().getStatus());
+        }
+
+        // 审批类：帮助申请是否仍处于待审批
+        if ("help_application".equals(type)) {
+            Optional<HelpApplication> appOpt = helpApplicationRepository.findById(relatedId);
+            return appOpt.isPresent() && BizStatus.PENDING.equals(appOpt.get().getStatus());
+        }
+
+        // 评价类：同 rateable
+        if ("return_confirm".equals(type) || "help_result".equals(type)) {
+            return computeRateable(type, relatedId, userId);
+        }
+
+        return false;
     }
 }

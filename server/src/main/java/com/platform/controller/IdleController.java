@@ -1,14 +1,16 @@
 package com.platform.controller;
 
+import com.platform.common.PostType;
 import com.platform.common.Result;
 import com.platform.model.dto.IdleItemRequest;
 import com.platform.service.IdleService;
+import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 
 @RestController
-@RequestMapping("/api/idle")
+@RequestMapping("/api/idle-items")
 public class IdleController {
 
     private final IdleService idleService;
@@ -18,13 +20,13 @@ public class IdleController {
     }
 
     @PostMapping
-    public Result<?> publish(@RequestBody IdleItemRequest req, Authentication auth) {
+    public Result<?> publish(@Valid @RequestBody IdleItemRequest req, Authentication auth) {
         Long userId = Long.valueOf(auth.getName());
         return Result.ok(idleService.publish(userId, req));
     }
 
     @GetMapping("/home")
-    public Result<?> homeList(@RequestParam(defaultValue = "LEND") String postType,
+    public Result<?> homeList(@RequestParam(defaultValue = PostType.LEND) String postType,
                                @RequestParam(defaultValue = "0") int page,
                                @RequestParam(defaultValue = "10") int size,
                                Authentication auth) {
@@ -35,19 +37,15 @@ public class IdleController {
     @GetMapping("/{id}")
     public Result<?> detail(@PathVariable Long id, Authentication auth) {
         Long currentUserId = null;
-        if (auth != null && auth.getName() != null) {
-            try {
-                currentUserId = Long.valueOf(auth.getName());
-            } catch (IllegalArgumentException e) {
-                // 忽略 — 视为未登录
-            }
+        if (auth != null && auth.getName() != null && auth.getName().matches("\\d+")) {
+            currentUserId = Long.valueOf(auth.getName());
         }
         return Result.ok(idleService.getDetail(id, currentUserId));
     }
 
     @GetMapping("/search")
     public Result<?> search(@RequestParam String keyword,
-                             @RequestParam(defaultValue = "LEND") String postType,
+                             @RequestParam(defaultValue = PostType.LEND) String postType,
                              @RequestParam(defaultValue = "0") int page,
                              @RequestParam(defaultValue = "10") int size,
                              Authentication auth) {
@@ -57,7 +55,7 @@ public class IdleController {
     }
 
     @GetMapping("/my")
-    public Result<?> myPosts(@RequestParam(defaultValue = "LEND") String postType,
+    public Result<?> myPosts(@RequestParam(defaultValue = PostType.LEND) String postType,
                               Authentication auth) {
         Long userId = Long.valueOf(auth.getName());
         return Result.ok(idleService.getMyPosts(userId, postType));
@@ -78,7 +76,7 @@ public class IdleController {
     }
 
     @PutMapping("/{id}")
-    public Result<?> update(@PathVariable Long id, @RequestBody IdleItemRequest req,
+    public Result<?> update(@PathVariable Long id, @Valid @RequestBody IdleItemRequest req,
                             Authentication auth) {
         Long userId = Long.valueOf(auth.getName());
         return Result.ok(idleService.update(userId, id, req));

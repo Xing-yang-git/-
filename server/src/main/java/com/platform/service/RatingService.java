@@ -1,5 +1,6 @@
 package com.platform.service;
 
+import com.platform.common.BizStatus;
 import com.platform.model.dto.RatingDTO;
 import com.platform.model.dto.RatingRequest;
 import com.platform.model.entity.BorrowRequest;
@@ -48,8 +49,25 @@ public class RatingService {
         this.userRepository = userRepository;
     }
 
+    /**
+     * 提交评价（借用评价 / 帮助评价），由评价发起方调用。
+     */
     public Map<String, Object> submitRating(Long fromUserId, RatingRequest req) {
-        // 将 C端字段名归一化为后端字段名
+        normalizeRatingRequest(req);
+
+        if (req.getBorrowId() != null) {
+            return submitBorrowRating(fromUserId, req);
+        }
+        if (req.getHelpApplicationId() != null) {
+            return submitHelpRating(fromUserId, req);
+        }
+        throw new RuntimeException("请指定要评价的借入记录或帮助申请");
+    }
+
+    /**
+     * 将 C端字段名归一化为后端字段名。
+     */
+    private void normalizeRatingRequest(RatingRequest req) {
         if (req.getBorrowId() == null && req.getHelpApplicationId() == null && req.getTargetId() != null) {
             if ("help".equals(req.getRatingType())) {
                 req.setHelpApplicationId(req.getTargetId());
@@ -60,97 +78,100 @@ public class RatingService {
         if (req.getScore() == null && req.getOverallScore() != null) {
             req.setScore(req.getOverallScore());
         }
+    }
 
-        if (req.getBorrowId() != null) {
-            BorrowRequest borrowRequest = borrowRequestRepository.findById(req.getBorrowId())
-                    .orElseThrow(() -> new RuntimeException("借入记录不存在"));
+    /**
+     * 提交借用评价：校验权限 → 防重复 → 保存评价。
+     */
+    private Map<String, Object> submitBorrowRating(Long fromUserId, RatingRequest req) {
+        BorrowRequest borrowRequest = borrowRequestRepository.findById(req.getBorrowId())
+                .orElseThrow(() -> new RuntimeException("借入记录不存在"));
 
-            if (!"returned".equals(borrowRequest.getStatus())) {
-                throw new RuntimeException("只能对已归还的借入记录进行评价");
-            }
-
-            IdleItem idleItem = idleItemRepository.findById(borrowRequest.getIdleId()).orElse(null);
-            Long ownerId = idleItem != null ? idleItem.getUserId() : null;
-            Long borrowerId = borrowRequest.getBorrowerId();
-
-            // 借入双方（借入方 / 物品所有者）任一方均可评价对方
-            boolean isBorrower = borrowerId.equals(fromUserId);
-            boolean isOwner = ownerId != null && ownerId.equals(fromUserId);
-            if (!isBorrower && !isOwner) {
-                throw new RuntimeException("无权评价该借入记录");
-            }
-            Long toUserId = isBorrower ? ownerId : borrowerId;
-            // 物品被删除时 ownerId 为 null——to_user_id 是 NOT NULL 列，
-            // 在业务层给出明确报错，而不是落库时抛数据库约束异常
-            if (toUserId == null) {
-                throw new RuntimeException("对方用户信息缺失，无法评价");
-            }
-
-            boolean alreadyRated = ratingRepository
-                    .findByBorrowIdAndFromUserId(req.getBorrowId(), fromUserId).isPresent();
-            if (alreadyRated) {
-                throw new RuntimeException("您已经评价过该借入记录");
-            }
-
-            Rating rating = new Rating();
-            rating.setFromUserId(fromUserId);
-            rating.setToUserId(toUserId);
-            rating.setBorrowId(req.getBorrowId());
-            rating.setScore(req.getScore());
-            rating.setCreatedAt(LocalDateTime.now());
-            ratingRepository.save(rating);
-
-            Map<String, Object> result = new HashMap<>();
-            result.put("success", true);
-            result.put("message", "评价成功");
-            return result;
+        if (!BizStatus.RETURNED.equals(borrowRequest.getStatus())) {
+            throw new RuntimeException("只能对已归还的借入记录进行评价");
         }
 
-        if (req.getHelpApplicationId() != null) {
-            HelpApplication application = helpApplicationRepository.findById(req.getHelpApplicationId())
-                    .orElseThrow(() -> new RuntimeException("帮助申请不存在"));
+        IdleItem idleItem = idleItemRepository.findById(borrowRequest.getIdleId()).orElse(null);
+        Long ownerId = idleItem != null ? idleItem.getUserId() : null;
+        Long borrowerId = borrowRequest.getBorrowerId();
 
-            if (!"completed".equals(application.getStatus())) {
-                throw new RuntimeException("只能对已完成的帮助进行评价");
-            }
-
-            HelpRequest helpRequest = helpRequestRepository.findById(application.getHelpId()).orElse(null);
-            Long requesterId = helpRequest != null ? helpRequest.getUserId() : null;
-            Long helperId = application.getHelperId();
-
-            // 互助双方（帮助方 / 求助方）任一方均可评价对方
-            boolean isHelper = helperId.equals(fromUserId);
-            boolean isRequester = requesterId != null && requesterId.equals(fromUserId);
-            if (!isHelper && !isRequester) {
-                throw new RuntimeException("无权评价该帮助");
-            }
-            Long toUserId = isHelper ? requesterId : helperId;
-            // 求助被删除时 requesterId 为 null——同上，业务层防御 NOT NULL 约束
-            if (toUserId == null) {
-                throw new RuntimeException("对方用户信息缺失，无法评价");
-            }
-
-            boolean alreadyRated = ratingRepository
-                    .findByHelpApplicationIdAndFromUserId(req.getHelpApplicationId(), fromUserId).isPresent();
-            if (alreadyRated) {
-                throw new RuntimeException("您已经评价过该帮助");
-            }
-
-            Rating rating = new Rating();
-            rating.setFromUserId(fromUserId);
-            rating.setToUserId(toUserId);
-            rating.setHelpApplicationId(req.getHelpApplicationId());
-            rating.setScore(req.getScore());
-            rating.setCreatedAt(LocalDateTime.now());
-            ratingRepository.save(rating);
-
-            Map<String, Object> result = new HashMap<>();
-            result.put("success", true);
-            result.put("message", "评价成功");
-            return result;
+        // 借入双方任一方均可评价对方
+        boolean isBorrower = borrowerId.equals(fromUserId);
+        boolean isOwner = ownerId != null && ownerId.equals(fromUserId);
+        if (!isBorrower && !isOwner) {
+            throw new RuntimeException("无权评价该借入记录");
+        }
+        Long toUserId = isBorrower ? ownerId : borrowerId;
+        if (toUserId == null) {
+            throw new RuntimeException("对方用户信息缺失，无法评价");
         }
 
-        throw new RuntimeException("请指定要评价的借入记录或帮助申请");
+        if (ratingRepository.findByBorrowIdAndFromUserId(req.getBorrowId(), fromUserId).isPresent()) {
+            throw new RuntimeException("您已经评价过该借入记录");
+        }
+
+        Rating rating = new Rating();
+        rating.setFromUserId(fromUserId);
+        rating.setToUserId(toUserId);
+        rating.setBorrowId(req.getBorrowId());
+        rating.setScore(req.getScore());
+        rating.setFeedback(req.getFeedback());
+        rating.setCreatedAt(LocalDateTime.now());
+        ratingRepository.save(rating);
+
+        return ratingSuccessResult();
+    }
+
+    /**
+     * 提交帮助评价：校验权限 → 防重复 → 保存评价。
+     */
+    private Map<String, Object> submitHelpRating(Long fromUserId, RatingRequest req) {
+        HelpApplication application = helpApplicationRepository.findById(req.getHelpApplicationId())
+                .orElseThrow(() -> new RuntimeException("帮助申请不存在"));
+
+        if (!BizStatus.COMPLETED.equals(application.getStatus())) {
+            throw new RuntimeException("只能对已完成的帮助进行评价");
+        }
+
+        HelpRequest helpRequest = helpRequestRepository.findById(application.getHelpId()).orElse(null);
+        Long requesterId = helpRequest != null ? helpRequest.getUserId() : null;
+        Long helperId = application.getHelperId();
+
+        // 互助双方任一方均可评价对方
+        boolean isHelper = helperId.equals(fromUserId);
+        boolean isRequester = requesterId != null && requesterId.equals(fromUserId);
+        if (!isHelper && !isRequester) {
+            throw new RuntimeException("无权评价该帮助");
+        }
+        Long toUserId = isHelper ? requesterId : helperId;
+        if (toUserId == null) {
+            throw new RuntimeException("对方用户信息缺失，无法评价");
+        }
+
+        if (ratingRepository.findByHelpApplicationIdAndFromUserId(req.getHelpApplicationId(), fromUserId).isPresent()) {
+            throw new RuntimeException("您已经评价过该帮助");
+        }
+
+        Rating rating = new Rating();
+        rating.setFromUserId(fromUserId);
+        rating.setToUserId(toUserId);
+        rating.setHelpApplicationId(req.getHelpApplicationId());
+        rating.setScore(req.getScore());
+        rating.setFeedback(req.getFeedback());
+        rating.setCreatedAt(LocalDateTime.now());
+        ratingRepository.save(rating);
+
+        return ratingSuccessResult();
+    }
+
+    /**
+     * 构建评价成功的结果 Map。
+     */
+    private Map<String, Object> ratingSuccessResult() {
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("message", "评价成功");
+        return result;
     }
 
     public Map<String, Object> getUserRatings(Long userId) {
@@ -176,6 +197,7 @@ public class RatingService {
                 .id(rating.getId())
                 .fromUserName(fromUser != null ? fromUser.getName() : "未知用户")
                 .score(rating.getScore())
+                .feedback(rating.getFeedback())
                 .createdAt(rating.getCreatedAt())
                 .build();
     }

@@ -36,8 +36,10 @@ public class MyPostItemDTO {
     private String status;          // 数据库原始状态
     private String displayStatus;   // "在线"/"已下架"/"进行中"/"已完成"
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 
     // 对方信息字段
+    private Long personId;          // 对方用户ID（用于点击跳转聊天）
     private String personName;      // "3栋2单元1502号(业主)"
     private String personRoom;      // "3栋2单元1502号"
     private String personType;      // "业主"/"租客"
@@ -53,8 +55,13 @@ public class MyPostItemDTO {
     // 申请说明 (借用说明/借入说明/求助说明)
     private String note;
 
+    // 求助时间范围（仅 HELP 使用，格式 "yyyy-MM-dd HH:mm"）
+    private String timeStart;
+    private String timeEnd;
+
     // 进行中字段
     private Integer remainingDays;
+    private Integer remainingHours;
     private Integer expectedReturnDays;
     private Boolean isOverdue;
     private String roleLabel;       // "借出住户"/"借走住户"/"帮助住户"/"求助住户"

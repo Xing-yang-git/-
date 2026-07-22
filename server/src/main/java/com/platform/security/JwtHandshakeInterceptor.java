@@ -1,5 +1,6 @@
 package com.platform.security;
 
+import com.platform.common.BizStatus;
 import com.platform.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,14 +49,14 @@ public class JwtHandshakeInterceptor implements HandshakeInterceptor {
             Integer ver = jwtProvider.getTokenVersion(token);
             UserRepository.AuthProbe probe = null;
             try { probe = userRepository.findAuthProbeById(Long.valueOf(userId)); }
-            catch (NumberFormatException ignored) { }
+            catch (NumberFormatException ignored) { log.debug("WS握手：解析userId格式失败 userId={}", userId, ignored); }
             if (ver == null || probe == null || !ver.equals(probe.getTokenVersion())) {
                 log.info("WS handshake rejected: stale token for user {} — tokenVer={}, currentVer={}",
                         userId, ver, probe == null ? null : probe.getTokenVersion());
                 return false;
             }
             // 未审核用户不允许建立聊天 WS 连接
-            if (!"approved".equals(probe.getAuthStatus())) {
+            if (!BizStatus.APPROVED.equals(probe.getAuthStatus())) {
                 log.info("WS handshake rejected: unapproved user {} — authStatus={}", userId, probe.getAuthStatus());
                 return false;
             }

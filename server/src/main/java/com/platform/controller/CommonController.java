@@ -41,4 +41,11 @@ public class CommonController {
         String url = commonService.uploadFile(file);
         return Result.ok(java.util.Map.of("url", url));
     }
+
+    /** 语音上传 — 仅接受 mp3/wav/aac/m4a 音频格式 */
+    @PostMapping("/upload-voice")
+    public Result<?> uploadVoice(@RequestParam("file") MultipartFile file) {
+        String url = commonService.uploadVoice(file);
+        return Result.ok(java.util.Map.of("url", url));
+    }
 }

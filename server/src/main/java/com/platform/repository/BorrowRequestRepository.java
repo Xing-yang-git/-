@@ -20,12 +20,6 @@ public interface BorrowRequestRepository extends JpaRepository<BorrowRequest, Lo
 
     List<BorrowRequest> findByStatus(String status);
 
-    @Query("SELECT COUNT(br) FROM BorrowRequest br WHERE br.idleItem.userId = :ownerId AND br.status = 'returned'")
-    long countReturnedByOwnerId(@Param("ownerId") Long ownerId);
-
-    @Query("SELECT COUNT(br) FROM BorrowRequest br WHERE br.idleItem.userId = :ownerId AND br.status = 'returned' AND br.isOnTime = true")
-    long countOnTimeReturnedByOwnerId(@Param("ownerId") Long ownerId);
-
     List<BorrowRequest> findByBorrowerIdAndStatus(Long borrowerId, String status);
 
     @Query("SELECT br FROM BorrowRequest br WHERE br.idleItem.userId = :ownerId AND br.status = :status")

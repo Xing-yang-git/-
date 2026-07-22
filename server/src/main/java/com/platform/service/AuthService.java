@@ -3,6 +3,8 @@ package com.platform.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.platform.common.BizStatus;
+import com.platform.common.UserFormatter;
 import com.platform.model.dto.LoginRequest;
 import com.platform.model.dto.PhoneLoginRequest;
 import com.platform.model.dto.RegisterRequest;
@@ -35,7 +37,7 @@ import java.util.Map;
 public class AuthService {
 
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final UserRepository userRepository;
     private final RoomRepository roomRepository;
@@ -88,19 +90,19 @@ public class AuthService {
             user.setOpenid(openid);
             user.setName(req.getName() != null ? req.getName() : "微信用户");
             user.setUserType("业主");
-            user.setAuthStatus("registering");
+            user.setAuthStatus(BizStatus.REGISTERING);
             user.setCreatedAt(LocalDateTime.now());
             user = userRepository.save(user);
             needRegister = true;
-        } else if ("pending".equals(user.getAuthStatus()) && user.getRoom() == null) {
+        } else if (BizStatus.PENDING.equals(user.getAuthStatus()) && user.getRoom() == null) {
             // 历史数据修复：用户被创建为 pending 状态但从未完成注册
-            user.setAuthStatus("registering");
+            user.setAuthStatus(BizStatus.REGISTERING);
             user = userRepository.save(user);
             needRegister = true;
         } else if (user.getPhone() != null && !user.getPhone().isEmpty()) {
             // 用户已用手机号完成注册——不再跳转注册页
             // 除非其明确处于 'registering' 状态
-            if (!"registering".equals(user.getAuthStatus())) {
+            if (!BizStatus.REGISTERING.equals(user.getAuthStatus())) {
                 needRegister = false;
             }
         }
@@ -149,7 +151,7 @@ public class AuthService {
             throw new RuntimeException("密码错误");
         }
 
-        if ("banned".equals(user.getAuthStatus())) {
+        if (BizStatus.BANNED.equals(user.getAuthStatus())) {
             String reason = user.getBannedReason() != null ? user.getBannedReason() : "如有疑问请联系物业";
             throw new RuntimeException("账号已被封禁：" + reason);
         }
@@ -162,64 +164,83 @@ public class AuthService {
     }
 
     @Transactional
+    /**
+     * 用户注册：校验唯一性 → 创建/更新用户 → 签发 token。
+     * @param userId 已有用户 ID（wxLogin 预创建），为 null 时新建用户
+     */
     public Map<String, Object> register(RegisterRequest req, Long userId) {
-        // ── 先解析房间（唯一性校验需要用到）──
         Room room = resolveRoom(req.getTenantId(), req.getBuilding(), req.getUnit(), req.getRoom());
+        validateUniqueness(req, userId, room);
 
-        // ── 唯一性校验：小区内手机号 + 房间 ──
-        if (req.getPhone() != null && !req.getPhone().isEmpty() && req.getTenantId() != null) {
-            // 校验 1：手机号是否已在本小区注册？
-            userRepository.findByPhoneAndTenantId(req.getPhone(), req.getTenantId())
-                    .ifPresent(existing -> {
-                        if (userId != null && existing.getId().equals(userId)) return;
-                        throw new RuntimeException("该手机号已在本小区注册");
-                    });
+        User user = getOrCreateUser(userId);
+        fillUserProfile(user, req, room);
+        user = userRepository.save(user);
 
-            // 校验 2：房间是否已被注册？
-            userRepository.findByRoomId(room.getId())
-                    .ifPresent(existing -> {
-                        if (userId != null && existing.getId().equals(userId)) return;
-                        throw new RuntimeException("该住户已被注册");
-                    });
+        String token = issueUserToken(user);
+        Map<String, Object> result = new HashMap<>();
+        result.put("token", token);
+        result.put("user", toDTO(user));
+        return result;
+    }
+
+    /**
+     * 校验手机号与房间/身份的注册唯一性。
+     */
+    private void validateUniqueness(RegisterRequest req, Long userId, Room room) {
+        if (req.getPhone() == null || req.getPhone().isEmpty() || req.getTenantId() == null) {
+            return;
         }
+        // 手机号是否已在本小区注册？
+        userRepository.findByPhoneAndTenantId(req.getPhone(), req.getTenantId())
+                .ifPresent(existing -> {
+                    if (userId != null && existing.getId().equals(userId)) return;
+                    throw new RuntimeException("该手机号已在本小区注册");
+                });
+        // 同一房间同一身份只能注册一个住户
+        String mappedUserType = mapUserType(req.getUserType());
+        if (mappedUserType == null || mappedUserType.isEmpty()) {
+            throw new RuntimeException("请选择住户身份");
+        }
+        userRepository.findByRoomIdAndUserType(room.getId(), mappedUserType)
+                .ifPresent(existing -> {
+                    if (userId != null && existing.getId().equals(userId)) return;
+                    throw new RuntimeException("该房间已有" + mappedUserType + "注册");
+                });
+    }
 
-        // ── 获取或创建用户 ──
-        User user;
+    /**
+     * 获取已有用户或创建新用户。
+     */
+    private User getOrCreateUser(Long userId) {
         if (userId != null) {
-            // 已有流程：wxLogin 预先创建的用户
-            user = userRepository.findById(userId)
+            return userRepository.findById(userId)
                     .orElseThrow(() -> new RuntimeException("用户不存在"));
-        } else {
-            // 公开注册：创建新用户
-            user = new User();
-            user.setCreatedAt(LocalDateTime.now());
         }
+        User user = new User();
+        user.setCreatedAt(LocalDateTime.now());
+        return user;
+    }
 
+    /**
+     * 填充用户基本资料字段：姓名、手机、密码、身份、证件图片、房间。
+     */
+    private void fillUserProfile(User user, RegisterRequest req, Room room) {
         user.setName(req.getName());
         user.setPhone(req.getPhone());
         user.setTenantId(req.getTenantId());
 
-        // 注册时若提供了密码则设置
         if (req.getPassword() != null && !req.getPassword().isEmpty()) {
-            if (req.getPassword().length() < 8 || req.getPassword().length() > 20) {
-                throw new RuntimeException("密码长度需要8-20位");
-            }
-            if (!req.getPassword().matches(".*[a-zA-Z].*") || !req.getPassword().matches(".*[0-9].*")) {
-                throw new RuntimeException("密码需要包含字母和数字");
-            }
-            user.setPasswordHash(passwordEncoder.encode(req.getPassword()));
+            validateAndSetPassword(user, req.getPassword());
         }
-
         if (req.getUserType() != null) {
             user.setUserType(mapUserType(req.getUserType()));
         }
-        user.setAuthStatus("pending");
+        user.setAuthStatus(BizStatus.PENDING);
         user.setRejectReason(null);
 
-        // 将 docImages 以 JSON 数组形式存储
         if (req.getDocImages() != null && !req.getDocImages().isEmpty()) {
             try {
-                user.setDocImages(objectMapper.writeValueAsString(req.getDocImages()));
+                user.setDocImages(OBJECT_MAPPER.writeValueAsString(req.getDocImages()));
             } catch (JsonProcessingException e) {
                 log.warn("Failed to serialize docImages: {}", e.getMessage());
             }
@@ -227,15 +248,19 @@ public class AuthService {
 
         user.setRoomId(room.getId());
         user.setRoom(room);
+    }
 
-        user = userRepository.save(user);
-
-        // 返回 token，使客户端可立即完成认证
-        String token = issueUserToken(user);
-        Map<String, Object> result = new HashMap<>();
-        result.put("token", token);
-        result.put("user", toDTO(user));
-        return result;
+    /**
+     * 校验密码强度并设置加密后的密码哈希。
+     */
+    private void validateAndSetPassword(User user, String password) {
+        if (password.length() < 8 || password.length() > 20) {
+            throw new RuntimeException("密码长度需要8-20位");
+        }
+        if (!password.matches(".*[a-zA-Z].*") || !password.matches(".*[0-9].*")) {
+            throw new RuntimeException("密码需要包含字母和数字");
+        }
+        user.setPasswordHash(passwordEncoder.encode(password));
     }
 
     /**
@@ -305,11 +330,11 @@ public class AuthService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("用户不存在"));
 
-        if (!"banned".equals(user.getAuthStatus())) {
+        if (!BizStatus.BANNED.equals(user.getAuthStatus())) {
             throw new RuntimeException("当前状态不支持申诉");
         }
 
-        user.setAuthStatus("pending");
+        user.setAuthStatus(BizStatus.PENDING);
         user.setRejectReason(null);
         userRepository.save(user);
 
@@ -323,7 +348,7 @@ public class AuthService {
         List<String> docImages = Collections.emptyList();
         if (user.getDocImages() != null && !user.getDocImages().isEmpty()) {
             try {
-                docImages = objectMapper.readValue(user.getDocImages(), new TypeReference<List<String>>() {});
+                docImages = OBJECT_MAPPER.readValue(user.getDocImages(), new TypeReference<List<String>>() {});
             } catch (Exception e) {
                 log.debug("Failed to parse docImages JSON: {}", e.getMessage());
             }
@@ -339,31 +364,13 @@ public class AuthService {
                 .authStatus(user.getAuthStatus())
                 .roomId(user.getRoom() != null ? user.getRoom().getId() : null)
                 .tenantId(user.getTenantId())
-                .userRoom(formatRoom(user))
+                .userRoom(UserFormatter.formatRoomWithType(user))
                 .tenantName(resolveTenantName(user))
                 .docImages(docImages)
                 .rejectReason(user.getRejectReason())
                 .bannedReason(user.getBannedReason())
                 .createdAt(user.getCreatedAt())
                 .build();
-    }
-
-    private String formatRoom(User user) {
-        if (user.getRoom() == null) {
-            return "";
-        }
-        try {
-            String buildingName = user.getRoom().getUnit() != null
-                    && user.getRoom().getUnit().getBuilding() != null
-                    ? user.getRoom().getUnit().getBuilding().getName() : "";
-            String unitName = user.getRoom().getUnit() != null
-                    ? user.getRoom().getUnit().getName() : "";
-            String roomNumber = user.getRoom().getRoomNumber() != null
-                    ? user.getRoom().getRoomNumber() : "";
-            return buildingName + unitName + roomNumber + "号";
-        } catch (Exception e) {
-            return "";
-        }
     }
 
     private String resolveTenantName(User user) {

@@ -15,6 +15,7 @@ import com.platform.repository.UnitRepository;
 import com.platform.repository.UserRepository;
 import com.platform.security.JwtTokenProvider;
 import com.platform.websocket.ChatWebSocketHandler;
+import com.platform.common.BizStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -151,7 +152,7 @@ class AuthServiceTest {
 
         // 断言
         assertThat(result.get("needRegister")).isEqualTo(true);
-        assertThat(user.getAuthStatus()).isEqualTo("registering");
+        assertThat(user.getAuthStatus()).isEqualTo(BizStatus.REGISTERING);
     }
 
     @Test
@@ -323,9 +324,9 @@ class AuthServiceTest {
         when(buildingRepository.findByTenantIdAndName(tenantId, "3栋")).thenReturn(Optional.of(building));
         when(unitRepository.findByBuildingIdAndName(building.getId(), "2单元")).thenReturn(Optional.of(unit));
         when(roomRepository.findByUnitIdAndRoomNumber(unit.getId(), "1502")).thenReturn(Optional.of(room));
-        // 唯一性校验：手机号与房间均未被占用
+        // 唯一性校验：手机号未被占用，该房间无同身份住户
         when(userRepository.findByPhoneAndTenantId("13800138000", tenantId)).thenReturn(Optional.empty());
-        when(userRepository.findByRoomId(room.getId())).thenReturn(Optional.empty());
+        when(userRepository.findByRoomIdAndUserType(room.getId(), "业主")).thenReturn(Optional.empty());
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenReturn(user);
         when(jwtTokenProvider.generateToken(userId.toString(), "业主", 1)).thenReturn("mock-token");
@@ -342,6 +343,166 @@ class AuthServiceTest {
         assertThat(user.getRoomId()).isEqualTo(room.getId());
         // 注册保存 + issueUserToken 更新版本各一次
         verify(userRepository, atLeastOnce()).save(any(User.class));
+    }
+
+    @Test
+    @DisplayName("用户注册 - 同房间不同身份可并存：已有业主时租客仍可注册")
+    void should_registerTenant_when_roomOnlyHasOwner() {
+        // 准备：房间查重按 (房间, 身份) 维度进行，业主的存在不会命中租客的查重
+        Long tenantId = 10L;
+        RegisterRequest req = new RegisterRequest();
+        req.setTenantId(tenantId);
+        req.setBuilding("3");
+        req.setUnit("2");
+        req.setRoom("1502");
+        req.setName("李四");
+        req.setPhone("13900139000");
+        req.setUserType("tenant");
+
+        Building building = Building.builder().id(100L).tenantId(tenantId).name("3栋").build();
+        Unit unit = Unit.builder().id(200L).buildingId(building.getId()).name("2单元").build();
+        Room room = Room.builder().id(300L).unitId(unit.getId()).roomNumber("1502").build();
+
+        when(buildingRepository.findByTenantIdAndName(tenantId, "3栋")).thenReturn(Optional.of(building));
+        when(unitRepository.findByBuildingIdAndName(building.getId(), "2单元")).thenReturn(Optional.of(unit));
+        when(roomRepository.findByUnitIdAndRoomNumber(unit.getId(), "1502")).thenReturn(Optional.of(room));
+        when(userRepository.findByPhoneAndTenantId("13900139000", tenantId)).thenReturn(Optional.empty());
+        // 该房间尚无租客——即便已有业主，同身份查重也不会命中
+        when(userRepository.findByRoomIdAndUserType(room.getId(), "租客")).thenReturn(Optional.empty());
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenReturn(user);
+        when(jwtTokenProvider.generateToken(userId.toString(), "租客", 1)).thenReturn("mock-token");
+
+        // 执行
+        Map<String, Object> result = authService.register(req, userId);
+
+        // 断言：注册成功，且前端编码 tenant 已映射为数据库值"租客"参与查重
+        assertThat(result.get("token")).isEqualTo("mock-token");
+        assertThat(user.getUserType()).isEqualTo("租客");
+        verify(userRepository).findByRoomIdAndUserType(room.getId(), "租客");
+    }
+
+    @Test
+    @DisplayName("用户注册 - 同房间已有业主时拦截业主注册")
+    void should_throwException_when_roomAlreadyHasOwner() {
+        // 准备：房间 300 已被另一位业主（id=99）注册
+        Long tenantId = 10L;
+        RegisterRequest req = new RegisterRequest();
+        req.setTenantId(tenantId);
+        req.setBuilding("3");
+        req.setUnit("2");
+        req.setRoom("1502");
+        req.setPhone("13800138000");
+        req.setUserType("owner");
+
+        Building building = Building.builder().id(100L).tenantId(tenantId).name("3栋").build();
+        Unit unit = Unit.builder().id(200L).buildingId(building.getId()).name("2单元").build();
+        Room room = Room.builder().id(300L).unitId(unit.getId()).roomNumber("1502").build();
+        User existingOwner = User.builder().id(99L).userType("业主").build();
+
+        when(buildingRepository.findByTenantIdAndName(tenantId, "3栋")).thenReturn(Optional.of(building));
+        when(unitRepository.findByBuildingIdAndName(building.getId(), "2单元")).thenReturn(Optional.of(unit));
+        when(roomRepository.findByUnitIdAndRoomNumber(unit.getId(), "1502")).thenReturn(Optional.of(room));
+        when(userRepository.findByPhoneAndTenantId("13800138000", tenantId)).thenReturn(Optional.empty());
+        when(userRepository.findByRoomIdAndUserType(room.getId(), "业主")).thenReturn(Optional.of(existingOwner));
+
+        // 执行 & 断言：提示需体现身份
+        assertThatThrownBy(() -> authService.register(req, userId))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("该房间已有业主注册");
+    }
+
+    @Test
+    @DisplayName("用户注册 - 同房间已有租客时拦截租客注册")
+    void should_throwException_when_roomAlreadyHasTenant() {
+        // 准备：房间 300 已被另一位租客（id=99）注册
+        Long tenantId = 10L;
+        RegisterRequest req = new RegisterRequest();
+        req.setTenantId(tenantId);
+        req.setBuilding("3");
+        req.setUnit("2");
+        req.setRoom("1502");
+        req.setPhone("13800138000");
+        req.setUserType("tenant");
+
+        Building building = Building.builder().id(100L).tenantId(tenantId).name("3栋").build();
+        Unit unit = Unit.builder().id(200L).buildingId(building.getId()).name("2单元").build();
+        Room room = Room.builder().id(300L).unitId(unit.getId()).roomNumber("1502").build();
+        User existingTenant = User.builder().id(99L).userType("租客").build();
+
+        when(buildingRepository.findByTenantIdAndName(tenantId, "3栋")).thenReturn(Optional.of(building));
+        when(unitRepository.findByBuildingIdAndName(building.getId(), "2单元")).thenReturn(Optional.of(unit));
+        when(roomRepository.findByUnitIdAndRoomNumber(unit.getId(), "1502")).thenReturn(Optional.of(room));
+        when(userRepository.findByPhoneAndTenantId("13800138000", tenantId)).thenReturn(Optional.empty());
+        when(userRepository.findByRoomIdAndUserType(room.getId(), "租客")).thenReturn(Optional.of(existingTenant));
+
+        // 执行 & 断言
+        assertThatThrownBy(() -> authService.register(req, userId))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("该房间已有租客注册");
+    }
+
+    @Test
+    @DisplayName("用户注册 - 同一用户重复提交时放行查重")
+    void should_passUniquenessCheck_when_sameUserResubmits() {
+        // 准备：手机号与房间查重命中的都是本人（如被驳回后重新提交），应放行
+        Long tenantId = 10L;
+        RegisterRequest req = new RegisterRequest();
+        req.setTenantId(tenantId);
+        req.setBuilding("3");
+        req.setUnit("2");
+        req.setRoom("1502");
+        req.setName("张三");
+        req.setPhone("13800138000");
+        req.setUserType("owner");
+
+        Building building = Building.builder().id(100L).tenantId(tenantId).name("3栋").build();
+        Unit unit = Unit.builder().id(200L).buildingId(building.getId()).name("2单元").build();
+        Room room = Room.builder().id(300L).unitId(unit.getId()).roomNumber("1502").build();
+
+        when(buildingRepository.findByTenantIdAndName(tenantId, "3栋")).thenReturn(Optional.of(building));
+        when(unitRepository.findByBuildingIdAndName(building.getId(), "2单元")).thenReturn(Optional.of(unit));
+        when(roomRepository.findByUnitIdAndRoomNumber(unit.getId(), "1502")).thenReturn(Optional.of(room));
+        // 两项查重命中的用户 id 均等于当前 userId
+        when(userRepository.findByPhoneAndTenantId("13800138000", tenantId)).thenReturn(Optional.of(user));
+        when(userRepository.findByRoomIdAndUserType(room.getId(), "业主")).thenReturn(Optional.of(user));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenReturn(user);
+        when(jwtTokenProvider.generateToken(userId.toString(), "业主", 1)).thenReturn("mock-token");
+
+        // 执行
+        Map<String, Object> result = authService.register(req, userId);
+
+        // 断言：未被唯一性校验拦截
+        assertThat(result.get("token")).isEqualTo("mock-token");
+    }
+
+    @Test
+    @DisplayName("用户注册 - 未选择住户身份时抛出异常")
+    void should_throwException_when_userTypeMissing() {
+        // 准备：userType 缺失时无法按 (房间, 身份) 查重，应在校验前明确拒绝
+        Long tenantId = 10L;
+        RegisterRequest req = new RegisterRequest();
+        req.setTenantId(tenantId);
+        req.setBuilding("3");
+        req.setUnit("2");
+        req.setRoom("1502");
+        req.setPhone("13800138000");
+        // 不设置 userType
+
+        Building building = Building.builder().id(100L).tenantId(tenantId).name("3栋").build();
+        Unit unit = Unit.builder().id(200L).buildingId(building.getId()).name("2单元").build();
+        Room room = Room.builder().id(300L).unitId(unit.getId()).roomNumber("1502").build();
+
+        when(buildingRepository.findByTenantIdAndName(tenantId, "3栋")).thenReturn(Optional.of(building));
+        when(unitRepository.findByBuildingIdAndName(building.getId(), "2单元")).thenReturn(Optional.of(unit));
+        when(roomRepository.findByUnitIdAndRoomNumber(unit.getId(), "1502")).thenReturn(Optional.of(room));
+        when(userRepository.findByPhoneAndTenantId("13800138000", tenantId)).thenReturn(Optional.empty());
+
+        // 执行 & 断言
+        assertThatThrownBy(() -> authService.register(req, userId))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("请选择住户身份");
     }
 
     @Test

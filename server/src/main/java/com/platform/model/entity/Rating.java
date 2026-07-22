@@ -31,6 +31,9 @@ public class Rating {
     @Builder.Default
     private Integer score = 5;
 
+    @Column(length = 500)
+    private String feedback;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

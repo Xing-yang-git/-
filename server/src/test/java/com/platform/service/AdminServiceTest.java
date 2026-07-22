@@ -4,6 +4,7 @@ import com.platform.model.dto.*;
 import com.platform.model.entity.*;
 import com.platform.repository.*;
 import com.platform.websocket.ChatWebSocketHandler;
+import com.platform.common.BizStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -42,6 +44,7 @@ class AdminServiceTest {
     @Mock private RoomRepository roomRepository;
     @Mock private RatingRepository ratingRepository;
     @Mock private PasswordEncoder passwordEncoder;
+    @Mock private NotificationService notificationService;
     @Mock private ChatWebSocketHandler chatWebSocketHandler;
 
     @InjectMocks
@@ -158,7 +161,7 @@ class AdminServiceTest {
     void should_returnAllNonRegistering_when_statusEmpty() {
         // 准备
         Page<User> userPage = new PageImpl<>(List.of(user), PageRequest.of(0, 10), 1);
-        when(userRepository.findByAuthStatusNot(eq("registering"), any(PageRequest.class)))
+        when(userRepository.findByAuthStatusNot(eq(BizStatus.REGISTERING), any(PageRequest.class)))
                 .thenReturn(userPage);
 
         // 执行
@@ -177,7 +180,7 @@ class AdminServiceTest {
         when(userRepository.countByAuthStatus("pending")).thenReturn(5L);
         when(userRepository.countByAuthStatusAndUserTypeNotIn(eq("approved"), anyList())).thenReturn(10L);
         when(userRepository.countByAuthStatus("rejected")).thenReturn(2L);
-        when(userRepository.countByAuthStatusNot("registering")).thenReturn(17L);
+        when(userRepository.countByAuthStatusNot(BizStatus.REGISTERING)).thenReturn(17L);
 
         // 执行
         Map<String, Long> result = adminService.getAuditCounts();
@@ -201,7 +204,6 @@ class AdminServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
         when(userRepository.save(any(User.class))).thenReturn(user);
-        when(notificationRepository.save(any(Notification.class))).thenReturn(new Notification());
         when(operationLogRepository.save(any(OperationLog.class))).thenReturn(new OperationLog());
 
         // 执行
@@ -213,7 +215,6 @@ class AdminServiceTest {
         assertThat(user.getAuthStatus()).isEqualTo("approved");
         assertThat(user.getRejectReason()).isNull();
         verify(operationLogRepository).save(any(OperationLog.class));
-        verify(notificationRepository).save(any(Notification.class));
     }
 
     @Test
@@ -227,7 +228,6 @@ class AdminServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
         when(userRepository.save(any(User.class))).thenReturn(user);
-        when(notificationRepository.save(any(Notification.class))).thenReturn(new Notification());
         when(operationLogRepository.save(any(OperationLog.class))).thenReturn(new OperationLog());
 
         // 执行
@@ -266,8 +266,8 @@ class AdminServiceTest {
         when(helpRequestRepository.countByStatus("helping")).thenReturn(2L);
         when(idleItemRepository.countByStatus("completed")).thenReturn(8L);
         when(helpRequestRepository.countByStatus("completed")).thenReturn(4L);
-        when(idleItemRepository.countByStatus("deleted")).thenReturn(1L);
-        when(helpRequestRepository.countByStatus("deleted")).thenReturn(1L);
+        when(idleItemRepository.countByStatus(BizStatus.DELETED)).thenReturn(1L);
+        when(helpRequestRepository.countByStatus(BizStatus.DELETED)).thenReturn(1L);
 
         // 执行
         Map<String, Long> result = adminService.getContentCounts();
@@ -315,6 +315,248 @@ class AdminServiceTest {
     }
 
     @Test
+    @DisplayName("获取内容详情 - idle借用中状态包含对方信息和时间范围")
+    void should_returnBorrowingPeerInfo_when_idleStatusBorrowing() {
+        // 准备：借用中的闲置物品
+        IdleItem borrowingItem = IdleItem.builder()
+                .id(itemId)
+                .userId(userId)
+                .tenantId(tenantId)
+                .title("借用中的物品")
+                .postType("LEND")
+                .status("borrowing")
+                .isProxy(false)
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        User borrower = User.builder()
+                .id(3L)
+                .name("借入人")
+                .userType("业主")
+                .tenantId(tenantId)
+                .build();
+
+        BorrowRequest borrowRequest = BorrowRequest.builder()
+                .id(300L)
+                .idleId(itemId)
+                .borrowerId(3L)
+                .status("active")
+                .startDate(LocalDate.of(2026, 7, 20))
+                .durationDays(7)
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(borrowingItem));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(borrowRequestRepository.findByIdleId(itemId)).thenReturn(List.of(borrowRequest));
+        when(userRepository.findById(3L)).thenReturn(Optional.of(borrower));
+
+        // 执行
+        ContentItemDTO result = adminService.getContentDetail(itemId, "idle");
+
+        // 断言：对方信息和时间范围已填充
+        assertThat(result).isNotNull();
+        assertThat(result.getPeerName()).isEqualTo("借入人");
+        assertThat(result.getTimeStart()).isEqualTo(LocalDate.of(2026, 7, 20).atStartOfDay());
+        assertThat(result.getTimeEnd()).isEqualTo(LocalDate.of(2026, 7, 27).atStartOfDay());
+        // 已完成特有字段应为空
+        assertThat(result.getPeerRating()).isNull();
+        assertThat(result.getPublisherRatingStars()).isNull();
+        assertThat(result.getApplyAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("获取内容详情 - idle已完成状态包含评价和时间线")
+    void should_returnCompletedPeerInfo_when_idleStatusCompleted() {
+        // 准备：已完成的闲置物品
+        IdleItem completedItem = IdleItem.builder()
+                .id(itemId)
+                .userId(userId)
+                .tenantId(tenantId)
+                .title("已完成的物品")
+                .postType("LEND")
+                .status("completed")
+                .isProxy(false)
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        User borrower = User.builder()
+                .id(3L)
+                .name("借入人")
+                .userType("业主")
+                .tenantId(tenantId)
+                .build();
+
+        LocalDateTime now = LocalDateTime.now();
+        BorrowRequest completedBorrow = BorrowRequest.builder()
+                .id(300L)
+                .idleId(itemId)
+                .borrowerId(3L)
+                .status("returned")
+                .startDate(LocalDate.of(2026, 7, 15))
+                .durationDays(5)
+                .createdAt(now.minusDays(10))
+                .build();
+        completedBorrow.setUpdatedAt(now);
+
+        Rating pubRating = Rating.builder()
+                .id(1L)
+                .borrowId(300L)
+                .fromUserId(3L)
+                .score(5)
+                .build();
+
+        Rating peerRating = Rating.builder()
+                .id(2L)
+                .borrowId(300L)
+                .fromUserId(userId)
+                .score(4)
+                .build();
+
+        when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(completedItem));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(borrowRequestRepository.findByIdleId(itemId)).thenReturn(List.of(completedBorrow));
+        when(userRepository.findById(3L)).thenReturn(Optional.of(borrower));
+        when(ratingRepository.getAverageScore(3L)).thenReturn(4.5);
+        when(ratingRepository.findByBorrowIdAndFromUserId(300L, 3L)).thenReturn(Optional.of(pubRating));
+        when(ratingRepository.findByBorrowIdAndFromUserId(300L, userId)).thenReturn(Optional.of(peerRating));
+
+        // 执行
+        ContentItemDTO result = adminService.getContentDetail(itemId, "idle");
+
+        // 断言：对方信息
+        assertThat(result).isNotNull();
+        assertThat(result.getPeerName()).isEqualTo("借入人");
+        assertThat(result.getPeerRating()).isEqualTo(4.5);
+        // 时间范围
+        assertThat(result.getTimeStart()).isEqualTo(LocalDate.of(2026, 7, 15).atStartOfDay());
+        assertThat(result.getTimeEnd()).isEqualTo(LocalDate.of(2026, 7, 20).atStartOfDay());
+        // 评价
+        assertThat(result.getPublisherRatingScore()).isEqualTo(5.0);
+        assertThat(result.getPeerRatingScore()).isEqualTo(4.0);
+        // 时间线
+        assertThat(result.getApplyAt()).isEqualTo(completedBorrow.getCreatedAt());
+        assertThat(result.getApproveAt()).isEqualTo(LocalDate.of(2026, 7, 15).atStartOfDay());
+        assertThat(result.getCompleteAt()).isEqualTo(now);
+    }
+
+    @Test
+    @DisplayName("获取内容详情 - help帮助中状态包含对方信息")
+    void should_returnHelpingPeerInfo_when_helpStatusHelping() {
+        // 准备
+        HelpRequest helpingItem = HelpRequest.builder()
+                .id(helpId)
+                .userId(userId)
+                .tenantId(tenantId)
+                .title("帮助中的求助")
+                .status("helping")
+                .isProxy(false)
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        User helper = User.builder()
+                .id(4L)
+                .name("帮助者")
+                .userType("业主")
+                .tenantId(tenantId)
+                .build();
+
+        HelpApplication activeApp = HelpApplication.builder()
+                .id(500L)
+                .helpId(helpId)
+                .helperId(4L)
+                .status(BizStatus.APPROVED)
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpingItem));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(helpApplicationRepository.findByHelpId(helpId)).thenReturn(List.of(activeApp));
+        when(userRepository.findById(4L)).thenReturn(Optional.of(helper));
+
+        // 执行
+        ContentItemDTO result = adminService.getContentDetail(helpId, "help");
+
+        // 断言
+        assertThat(result).isNotNull();
+        assertThat(result.getType()).isEqualTo("help");
+        assertThat(result.getPeerName()).isEqualTo("帮助者");
+        // 已完成特有字段应为空
+        assertThat(result.getPeerRating()).isNull();
+        assertThat(result.getPublisherRatingStars()).isNull();
+        assertThat(result.getApplyAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("获取内容详情 - help已完成状态包含评价和时间线")
+    void should_returnHelpCompletedPeerInfo_when_helpStatusCompleted() {
+        // 准备
+        HelpRequest completedItem = HelpRequest.builder()
+                .id(helpId)
+                .userId(userId)
+                .tenantId(tenantId)
+                .title("已完成的求助")
+                .status("completed")
+                .timeStart(LocalDateTime.of(2026, 7, 10, 9, 0))
+                .isProxy(false)
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        User helper = User.builder()
+                .id(4L)
+                .name("帮助者")
+                .userType("业主")
+                .tenantId(tenantId)
+                .build();
+
+        LocalDateTime now = LocalDateTime.now();
+        HelpApplication completedApp = HelpApplication.builder()
+                .id(500L)
+                .helpId(helpId)
+                .helperId(4L)
+                .status("completed")
+                .createdAt(now.minusDays(5))
+                .build();
+        completedApp.setCompletedAt(now);
+
+        Rating pubRating = Rating.builder()
+                .id(1L)
+                .helpApplicationId(500L)
+                .fromUserId(4L)
+                .score(5)
+                .build();
+
+        Rating peerR = Rating.builder()
+                .id(2L)
+                .helpApplicationId(500L)
+                .fromUserId(userId)
+                .score(3)
+                .build();
+
+        when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(completedItem));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(helpApplicationRepository.findByHelpId(helpId)).thenReturn(List.of(completedApp));
+        when(userRepository.findById(4L)).thenReturn(Optional.of(helper));
+        when(ratingRepository.getAverageScore(4L)).thenReturn(4.0);
+        when(ratingRepository.findByHelpApplicationIdAndFromUserId(500L, 4L)).thenReturn(Optional.of(pubRating));
+        when(ratingRepository.findByHelpApplicationIdAndFromUserId(500L, userId)).thenReturn(Optional.of(peerR));
+
+        // 执行
+        ContentItemDTO result = adminService.getContentDetail(helpId, "help");
+
+        // 断言
+        assertThat(result).isNotNull();
+        assertThat(result.getPeerName()).isEqualTo("帮助者");
+        assertThat(result.getPeerRating()).isEqualTo(4.0);
+        assertThat(result.getPublisherRatingScore()).isEqualTo(5.0);
+        assertThat(result.getPeerRatingScore()).isEqualTo(3.0);
+        // 时间线：approveAt 用 item.getTimeStart()
+        assertThat(result.getApplyAt()).isEqualTo(completedApp.getCreatedAt());
+        assertThat(result.getApproveAt()).isEqualTo(LocalDateTime.of(2026, 7, 10, 9, 0));
+        assertThat(result.getCompleteAt()).isEqualTo(now);
+    }
+
+    @Test
     @DisplayName("获取内容详情 - 不支持的类型抛出异常")
     void should_throwException_when_unsupportedType() {
         // 执行 & 断言
@@ -336,7 +578,6 @@ class AdminServiceTest {
 
         when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(idleItem));
         when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
-        when(notificationRepository.save(any(Notification.class))).thenReturn(new Notification());
         when(operationLogRepository.save(any(OperationLog.class))).thenReturn(new OperationLog());
 
         // 执行
@@ -345,7 +586,7 @@ class AdminServiceTest {
         // 断言
         assertThat(result.get("success")).isEqualTo(true);
         assertThat(result.get("message")).isEqualTo("内容已删除");
-        assertThat(idleItem.getStatus()).isEqualTo("deleted");
+        assertThat(idleItem.getStatus()).isEqualTo(BizStatus.DELETED);
         assertThat(idleItem.getViolationType()).isEqualTo("违规内容");
         verify(operationLogRepository).save(any(OperationLog.class));
     }
@@ -360,7 +601,6 @@ class AdminServiceTest {
 
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
         when(helpRequestRepository.save(any(HelpRequest.class))).thenReturn(helpRequest);
-        when(notificationRepository.save(any(Notification.class))).thenReturn(new Notification());
         when(operationLogRepository.save(any(OperationLog.class))).thenReturn(new OperationLog());
 
         // 执行
@@ -368,7 +608,7 @@ class AdminServiceTest {
 
         // 断言
         assertThat(result.get("success")).isEqualTo(true);
-        assertThat(helpRequest.getStatus()).isEqualTo("deleted");
+        assertThat(helpRequest.getStatus()).isEqualTo(BizStatus.DELETED);
     }
 
     @Test
@@ -381,7 +621,6 @@ class AdminServiceTest {
 
         when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(idleItem));
         when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
-        when(notificationRepository.save(any(Notification.class))).thenReturn(new Notification());
         when(operationLogRepository.save(any(OperationLog.class))).thenReturn(new OperationLog());
 
         // 执行

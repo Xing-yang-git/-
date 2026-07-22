@@ -1,5 +1,6 @@
 package com.platform.model.entity;
 
+import com.platform.common.BizStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
@@ -7,7 +8,7 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "users", uniqueConstraints = {
     @UniqueConstraint(columnNames = {"phone", "tenant_id"}),
-    @UniqueConstraint(columnNames = {"room_id"})
+    @UniqueConstraint(columnNames = {"room_id", "user_type"})
 })
 @Data
 @NoArgsConstructor
@@ -52,7 +53,7 @@ public class User {
 
     @Column(name = "auth_status", nullable = false, length = 20)
     @Builder.Default
-    private String authStatus = "pending";
+    private String authStatus = BizStatus.PENDING;
 
     @Column(name = "banned_reason", length = 200)
     private String bannedReason;

@@ -56,7 +56,30 @@ public class SchemaMigration implements CommandLineRunner {
 
     // MIGRATIONS 已清空：所有表已在 schema.sql 中以 BIGINT IDENTITY 重建。
     // 后续 schema 变更时在此追加新迁移。
-    private static final List<Migration> MIGRATIONS = List.of();
+    private static final List<Migration> MIGRATIONS = List.of(
+        // 评分表增加互助感想文本字段
+        addColumn("ratings", "feedback", "VARCHAR(500)"),
+
+        /** 清洗旧通知：下架导致的被拒通知，文案改为自然语序 + 标题改为"已失效" */
+        new Migration("data: clean old delist rejection notification text") {
+            public boolean exists(JdbcTemplate j) {
+                Integer c = j.queryForObject(
+                    "SELECT COUNT(*) FROM notifications WHERE content LIKE '%因求助下架被自动拒绝%'",
+                    Integer.class);
+                return c == null || c == 0;
+            }
+            public void apply(JdbcTemplate j) {
+                int updated = j.update(
+                    "UPDATE notifications SET type = 'help_rejected'," +
+                    " title = '帮助申请已失效'," +
+                    " content = regexp_replace(content," +
+                    " '您对求助「(.+)」的帮助申请因求助下架被自动拒绝'," +
+                    " '求助「\\1」已下架，您的帮助申请已自动失效')" +
+                    " WHERE content LIKE '%因求助下架被自动拒绝%'");
+                log.info("  → 已更新 {} 条旧通知文案", updated);
+            }
+        }
+    );
 
     // ── 辅助方法 ──
 

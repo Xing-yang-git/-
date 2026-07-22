@@ -24,7 +24,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByPhoneAndTenantIdAndRoomId(String phone, Long tenantId, Long roomId);
 
-    Optional<User> findByRoomId(Long roomId);
+    /** 注册房间查重按 (房间, 身份) 维度：同一房间业主与租客可并存 */
+    Optional<User> findByRoomIdAndUserType(Long roomId, String userType);
 
     /** 鉴权探针：一次查询同时取 token 版本与审核状态 */
     interface AuthProbe {
