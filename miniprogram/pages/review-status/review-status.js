@@ -1,9 +1,10 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
+const { STATUS } = require('../../utils/constants');
 
 Page({
   data: {
-    status: 'pending',
+    status: STATUS.PENDING,
     rejectReason: '',
     banReason: '',
     loading: true
@@ -15,7 +16,7 @@ Page({
       wx.reLaunch({ url: '/pages/login/login' });
       return;
     }
-    const state = options.state || 'pending';
+    const state = options.state || STATUS.PENDING;
     this.setData({ status: state });
     this.checkStatus();
   },
@@ -39,12 +40,12 @@ Page({
           const app = getApp();
           if (app) app.globalData.userInfo = userInfo;
         }
-        if (authStatus === 'approved') {
+        if (authStatus === STATUS.APPROVED) {
           wx.switchTab({ url: '/pages/home/home' });
           return;
         }
         this.setData({
-          status: authStatus || 'pending',
+          status: authStatus || STATUS.PENDING,
           rejectReason: data.rejectReason || '',
           banReason: data.bannedReason || '', // 修复：服务端返回键名是 bannedReason
           loading: false

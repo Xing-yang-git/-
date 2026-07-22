@@ -1,6 +1,6 @@
 .container {
-  padding: 16px;
-  padding-bottom: 80px;
+  padding: 32rpx;
+  padding-bottom: 160rpx;
   background: var(--bg);
   min-height: 100vh;
 }
@@ -9,56 +9,56 @@
 .summary-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 24rpx;
 }
 
 .item-img {
-  width: 60px;
-  height: 60px;
-  border-radius: 8px;
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 16rpx;
 }
 
 .item-placeholder {
-  width: 60px;
-  height: 60px;
-  border-radius: 8px;
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 16rpx;
   background: var(--fill-quaternary);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 28px;
+  font-size: 56rpx;
 }
 
 .item-info {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8rpx;
 }
 
 .item-title {
-  font-size: 15px;
+  font-size: 30rpx;
   color: var(--text);
   font-weight: 500;
 }
 
 .borrower-name {
-  font-size: 13px;
+  font-size: 26rpx;
   color: var(--text-tertiary);
 }
 
 /* 切换行 */
 .toggle-row {
   display: flex;
-  gap: 12px;
+  gap: 24rpx;
 }
 
 .toggle-item {
   flex: 1;
   text-align: center;
-  padding: 10px 0;
-  border: 1px solid var(--separator);
-  border-radius: 8px;
-  font-size: 15px;
+  padding: 20rpx 0;
+  border: 2rpx solid var(--separator);
+  border-radius: 16rpx;
+  font-size: 30rpx;
   color: var(--text-secondary);
 }
 
@@ -79,18 +79,18 @@
 .status-cards {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  gap: 20rpx;
 }
 
 .status-card {
   text-align: center;
-  padding: 16px 8px;
-  border: 2px solid var(--separator);
-  border-radius: 12px;
+  padding: 32rpx 16rpx;
+  border: 4rpx solid var(--separator);
+  border-radius: 24rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 12rpx;
 }
 
 .status-card.selected {
@@ -98,26 +98,26 @@
 }
 
 .status-card.selected.green {
-  background: #e8f8e8;
+  background: var(--green-bg);
   border-color: var(--green);
 }
 
 .status-card.selected.yellow {
-  background: #fff8e8;
+  background: var(--orange-bg);
   border-color: var(--orange);
 }
 
 .status-card.selected.red {
-  background: #ffe8e8;
+  background: var(--red-bg);
   border-color: var(--red);
 }
 
 .status-icon {
-  font-size: 24px;
+  font-size: 48rpx;
 }
 
 .status-label {
-  font-size: 13px;
+  font-size: 26rpx;
   color: var(--text);
 }
 
@@ -125,38 +125,38 @@
 .damage-options {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  gap: 20rpx;
 }
 
 .damage-item {
   text-align: center;
-  padding: 12px 4px;
-  border: 2px solid var(--separator);
-  border-radius: 8px;
-  font-size: 13px;
+  padding: 24rpx 8rpx;
+  border: 4rpx solid var(--separator);
+  border-radius: 16rpx;
+  font-size: 26rpx;
   color: var(--text-secondary);
 }
 
 .damage-item.selected.green-bg {
-  background: #e8f8e8;
+  background: var(--green-bg);
   border-color: var(--green);
   color: var(--green);
 }
 
 .damage-item.selected.yellow-bg {
-  background: #fff8e8;
+  background: var(--orange-bg);
   border-color: var(--orange);
   color: var(--orange);
 }
 
 .damage-item.selected.red-bg {
-  background: #ffe8e8;
+  background: var(--red-bg);
   border-color: var(--red);
   color: var(--red);
 }
 
 .add-icon {
-  font-size: 36px;
+  font-size: 72rpx;
   color: var(--text-quaternary);
 }
 

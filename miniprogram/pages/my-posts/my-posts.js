@@ -1,5 +1,6 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
+const { STATUS, POST_TYPE } = require('../../utils/constants');
 
 Page({
   data: {
@@ -12,7 +13,7 @@ Page({
     mainTab: 'publish',
 
     // 「我发布的」子 tab
-    publishSubTab: 'online',
+    publishSubTab: STATUS.ONLINE,
     onlineCount: 0,
     offlineCount: 0,
     onlinePosts: [],
@@ -23,6 +24,7 @@ Page({
     borrowApprovals: [],
     lendApprovals: [],
     helpApprovals: [],
+    approvalCount: 0,   // 待审批总数（三个子列表之和），驱动审批 tab 角标
 
     // 「进行中」子 tab：borrow | lend | helpReq | helpPro
     inProgressSubTab: 'borrow',
@@ -56,6 +58,7 @@ Page({
     progressSheetType: '',
     progressSheetRating: 0,
     progressSheetFeedback: '',
+    progressSheetCondition: '',
 
     // Completed Sheet (已完成 detail)
     showCompletedSheet: false,
@@ -80,9 +83,9 @@ Page({
 
     // Edit Sheet — mirrors publish-idle form fields
     showEditSheet: false,
-    editSource: 'online',
+    editSource: STATUS.ONLINE,
     editTargetId: null,
-    editPostType: 'LEND',
+    editPostType: POST_TYPE.LEND,
     editTitle: '',
     editCategory: '',
     editCustomType: '',
@@ -94,55 +97,182 @@ Page({
     editPickupMethod: 'self_pickup',
     editCondition: 'normal',
     editUrgency: 'normal',
+    // 时间段编辑（HELP 专用）
+    editTimeStartDate: '',
+    editTimeStartHour: 9,
+    editTimeEndDate: '',
+    editTimeEndHour: 18,
+    // 拒绝原因（选填，开关控制）
+    enableRejectReason: false,
+    rejectReason: '',
     hourOptions: []
   },
 
   onLoad() {
     if (!auth.ensureAccess()) return;   // 登录/审核门禁：未通过则已跳转
+    const app = getApp();
+    app.ensureWebSocket(); // 确保全局 WS 已连接（管理页入口也需维持长连接接收服务通知）
     const hours = [];
     for (let i = 0; i < 24; i++) {
       hours.push((i < 10 ? '0' : '') + i + ':00');
     }
     this.setData({ hourOptions: hours });
 
-    // 首次加载：onLoad → loadAllData，onShow 不再重复触发
+    // 首次加载：仅加载默认 tab（发布）的数据 + 审批角标，onShow 不再重复触发
     this._initialLoad = true;
-    this.loadAllData();
+    this._loadCurrentTabAndBadge({ showLoading: true });
   },
 
   onShow() {
     if (!auth.ensureAccess()) return; // 登录/审核门禁：覆盖 tab 切换与后台切回
-    // 跳过首次 onShow（onLoad 已触发 loadAllData）
+
+    // 检查是否有来自服务通知「去评价」的跳转请求
+    if (this._handlePendingCompletedTarget()) return;
+
+    // 检查是否有来自服务通知「去审批」的跳转请求
+    if (this._handlePendingApprovalTarget()) return;
+
+    const app = getApp();
+    app.ensureWebSocket();       // 确保全局 WS 连接
+    app._updateTabBarBadge();    // 刷新消息红点
+    app.refreshNoticeBadge();    // 从服务端拉最新通知未读数，兜底 WS 推送丢失
+
+    // 跳过首次 onShow（onLoad 已触发数据加载）
     if (this._initialLoad) {
       this._initialLoad = false;
       return;
     }
-    // 后续切回 tab 时刷新数据（静默刷新，不显示全屏 loading）
-    this._isRefresh = true;
-    this.loadAllData();
+    // 后续切回 tab 时仅刷新当前 tab 数据 + 审批角标（静默刷新）
+    this._loadCurrentTabAndBadge({ isRefresh: true });
   },
 
-  // 重试加载（用户点击错误提示中的重试按钮）
+  /**
+   * 处理来自服务通知「去评价」的跳转：切换到已完成 tab，定位到对应子选项并弹出详情弹框。
+   * @returns {boolean} 是否消费了 pendingCompletedTarget
+   */
+  _handlePendingCompletedTarget() {
+    const app = getApp();
+    const target = app.globalData.pendingCompletedTarget;
+    if (!target) return false;
+
+    // 立即清除，防止重复触发
+    app.globalData.pendingCompletedTarget = null;
+
+    const { relatedId, type } = target;
+    // return_confirm → 借入/借出；help_result → 求助/帮助
+    const searchRoles = type === 'return_confirm' ? ['borrow', 'lend'] : ['helpReq', 'helpPro'];
+
+    // 切换到已完成 tab 并加载四个角色数据
+    this.setData({ mainTab: 'completed', loading: true });
+    Promise.all([
+      this.loadCompleted('borrow'),
+      this.loadCompleted('lend'),
+      this.loadCompleted('helpReq'),
+      this.loadCompleted('helpPro')
+    ]).then(() => {
+      this.setData({ loading: false });
+      const keyMap = {
+        borrow: 'completedBorrows', lend: 'completedLends',
+        helpReq: 'completedHelpReqs', helpPro: 'completedHelpPros'
+      };
+      for (const role of searchRoles) {
+        const list = this.data[keyMap[role]] || [];
+        const item = list.find(i => i.id === relatedId);
+        if (item) {
+          this.setData({
+            completedSubTab: role,
+            showCompletedSheet: true,
+            completedSheetItem: { ...item },
+            completedRating: 0,
+            completedFeedback: ''
+          });
+          return;
+        }
+      }
+      // 未找到匹配项（数据可能已被清理），仅停留在已完成 tab 不做额外提示
+    }).catch(() => {
+      this.setData({ loading: false });
+    });
+
+    return true;
+  },
+
+  /**
+   * 处理来自服务通知「去审批」的跳转：切换到审批 tab，定位到对应子选项并弹出审批弹框。
+   * @returns {boolean} 是否消费了 pendingApprovalTarget
+   */
+  _handlePendingApprovalTarget() {
+    const app = getApp();
+    const target = app.globalData.pendingApprovalTarget;
+    if (!target) return false;
+
+    // 立即清除，防止重复触发
+    app.globalData.pendingApprovalTarget = null;
+
+    const { relatedId, type } = target;
+    // help_application → 帮助审批；borrow_request → 借入/借出审批（需搜索两个子 tab）
+    const searchTypes = type === 'help_application' ? ['help'] : ['borrow', 'lend'];
+
+    // 切换到审批 tab 并加载数据
+    this.setData({ mainTab: 'approval', loading: true });
+    const loadTasks = searchTypes.map(t => this.loadApprovals(t));
+    // 同时加载所有类型以获取匹配项
+    if (type !== 'help_application') {
+      loadTasks.push(this.loadApprovals('help')); // borrow_request 时也加载 help 审批
+    } else {
+      loadTasks.push(this.loadApprovals('borrow'));
+      loadTasks.push(this.loadApprovals('lend'));
+    }
+
+    Promise.all(loadTasks).then(() => {
+      this.setData({ loading: false });
+      const keyMap = { borrow: 'borrowApprovals', lend: 'lendApprovals', help: 'helpApprovals' };
+      for (const at of searchTypes) {
+        const list = this.data[keyMap[at]] || [];
+        const item = list.find(i => i.id === relatedId);
+        if (item) {
+          this.setData({
+            approvalSubTab: at,
+            showApprovalSheet: true,
+            approvalSheetItem: { ...item, approvalType: at }
+          });
+          return;
+        }
+      }
+      // 未找到匹配项（审批可能已被处理），仅停留在审批 tab
+    }).catch(() => {
+      this.setData({ loading: false });
+    });
+
+    return true;
+  },
+
+  // 重试加载（用户点击错误提示中的重试按钮，仅重试当前 tab）
   onRetryLoad() {
-    this._initialLoad = true;  // 模拟首次加载，显示 loading
-    this._isRefresh = false;
-    this.loadAllData();
+    this._loadCurrentTabAndBadge({ showLoading: true, loadBadge: false });
   },
 
-  // 下拉刷新：静默重载全部列表（发布/审批/进行中/已完成），完成后收起刷新动画
+  // 下拉刷新：仅刷新当前 tab 数据，完成后收起刷新动画
   onPullRefresh() {
     this.setData({ refreshing: true });
-    this._isRefresh = true;   // 复用静默刷新分支，不弹全屏 loading
-    this.loadAllData().finally(() => {
+    this._loadCurrentTabAndBadge({ isRefresh: true, loadBadge: false }).finally(() => {
       this.setData({ refreshing: false });
     });
   },
 
   // ================================================================
-  // 数据加载（API 驱动）
+  // 数据加载（按需懒加载 — 仅加载当前选中 tab 的数据）
   // ================================================================
-  async loadAllData() {
-    // 重置上一次的错误
+
+  /**
+   * 加载当前 tab 的数据，可选同时加载审批角标。
+   * @param {Object} options
+   * @param {boolean} [options.showLoading] — 是否显示全屏 loading（仅首次加载）
+   * @param {boolean} [options.isRefresh]   — 静默刷新（不弹 loading）
+   * @param {boolean} [options.loadBadge]   — 是否加载审批角标，默认 true；下拉刷新/重试时无需重复加载
+   */
+  async _loadCurrentTabAndBadge(options = {}) {
+    const { showLoading = false, isRefresh = false, loadBadge = true } = options;
     this._lastError = null;
 
     // 检查登录状态 —— 管理页所有接口都需要 JWT 认证
@@ -168,53 +298,91 @@ Page({
       return;
     }
 
-    // 仅首次加载显示全屏 loading，后续切回 tab 时静默刷新
-    const isRefresh = this._isRefresh;
-    this._isRefresh = false;
-
-    if (!isRefresh) {
+    if (showLoading) {
       this.setData({ loading: true, loadError: false, loadErrorMsg: '' });
     }
 
-    // 并行加载所有数据（每个子函数内部 catch 错误，返回 number 计数）
-    const counts = await Promise.all([
-      this.loadMyPosts(),
-      this.loadApprovals('borrow'),
-      this.loadApprovals('lend'),
-      this.loadApprovals('help'),
-      this.loadInProgress('borrow'),
-      this.loadInProgress('lend'),
-      this.loadInProgress('helpReq'),
-      this.loadInProgress('helpPro'),
-      this.loadCompleted('borrow'),
-      this.loadCompleted('lend'),
-      this.loadCompleted('helpReq'),
-      this.loadCompleted('helpPro')
-    ]);
+    const tab = this.data.mainTab;
+
+    // 当前 tab 的数据
+    const tasks = [this._loadDataForTab(tab)];
+
+    // 审批角标：onLoad / onShow 时加载以保证 badge 准确，下拉刷新 / 重试时跳过
+    if (loadBadge && tab !== 'approval') {
+      tasks.push(this._loadApprovalBadge());
+    }
+
+    const results = await Promise.all(tasks);
+    const tabResult = results[0];
 
     this.setData({ loading: false });
 
-    // 统计总数据量
-    const totalItems = counts.reduce((sum, c) => sum + (typeof c === 'number' ? c : 0), 0);
-    const allFailed = this._lastError && totalItems === 0;
-
-    // 首次加载时，所有请求都失败 → 展示错误提示
-    if (!isRefresh && allFailed) {
+    // 首次加载时当前 tab 数据全部失败 → 展示错误提示
+    if (showLoading && tabResult && tabResult.allFailed) {
       const errMsg = this._lastError;
       this.setData({ loadError: true, loadErrorMsg: errMsg });
-      // 401 错误由 api.js 统一处理 reLaunch，此处不重复提示
       if (errMsg !== '请先登录') {
         wx.showToast({ title: errMsg, icon: 'none', duration: 2500 });
       }
     }
   },
 
+  /**
+   * 加载指定主 tab 下所有子 tab 的数据。
+   * @returns {{ allFailed: boolean }} 是否所有子请求均失败
+   */
+  async _loadDataForTab(tab) {
+    let tasks;
+    switch (tab) {
+      case 'publish':
+        tasks = [this.loadMyPosts()];
+        break;
+      case 'approval':
+        tasks = [
+          this.loadApprovals('borrow'),
+          this.loadApprovals('lend'),
+          this.loadApprovals('help')
+        ];
+        break;
+      case 'inProgress':
+        tasks = [
+          this.loadInProgress('borrow'),
+          this.loadInProgress('lend'),
+          this.loadInProgress('helpReq'),
+          this.loadInProgress('helpPro')
+        ];
+        break;
+      case 'completed':
+        tasks = [
+          this.loadCompleted('borrow'),
+          this.loadCompleted('lend'),
+          this.loadCompleted('helpReq'),
+          this.loadCompleted('helpPro')
+        ];
+        break;
+      default:
+        return { allFailed: false };
+    }
+    const results = await Promise.all(tasks);
+    const total = results.reduce((sum, r) => sum + (typeof r === 'number' ? r : 0), 0);
+    return { allFailed: this._lastError && total === 0 };
+  },
+
+  /** 仅加载审批数据（用于更新角标，不影响当前 tab 展示） */
+  async _loadApprovalBadge() {
+    await Promise.all([
+      this.loadApprovals('borrow'),
+      this.loadApprovals('lend'),
+      this.loadApprovals('help')
+    ]);
+  },
+
   async loadMyPosts() {
     try {
-      const data = await api.get('/api/user/posts');
+      const data = await api.get('/api/users/posts');
       const allPosts = Array.isArray(data) ? data : [];
-      const onlinePosts = allPosts.filter(p => p.displayStatus === '在线').map(p => this.formatPostFromDTO(p, 'online'));
-      const offlinePosts = allPosts.filter(p => p.displayStatus === '已下架').map(p => this.formatPostFromDTO(p, 'offline'));
+      const onlinePosts = allPosts.filter(p => p.displayStatus === '在线').map(p => this.formatPostFromDTO(p, STATUS.ONLINE));
+      const offlinePosts = allPosts.filter(p => p.displayStatus === '已下架').map(p => this.formatPostFromDTO(p, STATUS.OFFLINE));
       this.setData({ onlinePosts, onlineCount: onlinePosts.length, offlinePosts, offlineCount: offlinePosts.length });
       return onlinePosts.length + offlinePosts.length;
     } catch (e) {
@@ -229,23 +397,32 @@ Page({
     const durationNum = dto.maxDuration || 7;
     const durationUnit = dto.durationUnit || 'day';
     const durationLabel = '可借 ≤' + durationNum + (durationUnit === 'hour' ? '小时' : '天');
-    const timeText = status === 'offline'
-      ? (dto.updatedAt ? this.formatRelativeTime(new Date(dto.updatedAt).getTime()) + '下架' : '')
-      : (dto.createdAt ? this.formatRelativeTime(new Date(dto.createdAt).getTime()) + '发布' : '');
+    const timeOnly = dto.createdAt ? this.formatRelativeTime(new Date(dto.createdAt).getTime()) : '';
+    const timeText = status === STATUS.OFFLINE
+      ? (dto.updatedAt
+          ? this.formatRelativeTime(new Date(dto.updatedAt).getTime()) + '下架'
+          : (timeOnly ? timeOnly + '下架' : ''))
+      : (timeOnly ? timeOnly + '发布' : '');
+
+    // 发布类型中文标签
+    const postType = isIdle ? (dto.postType || POST_TYPE.LEND) : POST_TYPE.HELP;
+    const typeLabelMap = { [POST_TYPE.LEND]: '闲置借出', [POST_TYPE.WANTED]: '需求借入', [POST_TYPE.HELP]: '技能求助' };
+    const typeLabel = typeLabelMap[postType] || '';
 
     const base = {
       id: dto.id,
-      postType: isIdle ? (dto.postType || 'LEND') : 'HELP',
+      postType: postType,
       title: dto.title,
       category: dto.category || '',
       customType: '',
       description: dto.description || '',
       createTime: dto.createdAt ? new Date(dto.createdAt).getTime() : Date.now(),
       status: status,
-      statusText: status === 'online' ? '在线' : '已下架',
-      statusTagClass: status === 'online' ? 'post-status-tag-blue' : 'post-status-tag-fill',
+      statusText: status === STATUS.ONLINE ? '在线' : '已下架',
+      statusTagClass: status === STATUS.ONLINE ? 'post-status-tag-blue' : 'post-status-tag-fill',
       durationLabel: durationLabel,
       conditionLabel: isIdle ? this.conditionText(dto.condition) : '',
+      typeLabel: typeLabel,
       timeText: timeText,
       isProxy: dto.isProxy
     };
@@ -253,7 +430,7 @@ Page({
     if (isIdle) {
       return { ...base, iconBg: '#E8F0FE', iconSrc: '../../images/icon-wrench.svg', price: dto.price || '', maxDuration: durationNum, durationUnit: durationUnit, pickupMethod: dto.pickupMethod || 'self_pickup', condition: dto.condition || 'normal' };
     } else {
-      return { ...base, iconBg: '#FFF3E0', iconSrc: '../../images/icon-heart.svg', urgency: dto.isUrgent ? 'urgent' : 'normal', timeStart: '', timeEnd: '', timeStartHour: 9, timeEndHour: 18 };
+      return { ...base, iconBg: '#FFF3E0', iconSrc: '../../images/icon-heart.svg', urgency: dto.isUrgent ? 'urgent' : 'normal', timeStart: dto.timeStart || '', timeEnd: dto.timeEnd || '' };
     }
   },
 
@@ -267,7 +444,7 @@ Page({
   // ================================================================
   async loadApprovals(type) {
     try {
-      const data = await api.get('/api/user/approvals', { type });
+      const data = await api.get('/api/users/approvals', { type });
       const items = (Array.isArray(data) ? data : []).map(dto => ({
         id: dto.id,
         itemTitle: dto.title || '',
@@ -275,17 +452,23 @@ Page({
         applicantName: dto.personName || '',
         applicantAddress: dto.personRoom || '',
         applicantType: dto.personType || '',
+        applicantUserId: dto.personId || null,
         applicantRating: (dto.personRating || 5).toFixed(1),
         borrowCount: dto.borrowCount || 0,
         borrowReturnRate: dto.borrowReturnRate != null ? dto.borrowReturnRate : 100,
         lendCount: dto.lendCount || 0,
         helpReqCount: dto.helpReqCount || 0,
         helpProCount: dto.helpProCount || 0,
-        status: dto.status || 'pending',
-        note: dto.note || ''
+        status: dto.status || STATUS.PENDING,
+        note: dto.note || '',
+        maxDuration: dto.maxDuration || 0,
+        durationUnit: dto.durationUnit || 'day',
+        timeStart: dto.timeStart || '',
+        timeEnd: dto.timeEnd || ''
       }));
       const keyMap = { borrow: 'borrowApprovals', lend: 'lendApprovals', help: 'helpApprovals' };
       this.setData({ [keyMap[type] || 'borrowApprovals']: items });
+      this._syncApprovalCount();
       return items.length;
     } catch (e) {
       console.error('Load ' + type + ' approvals failed:', e);
@@ -294,22 +477,37 @@ Page({
     }
   },
 
+  /**
+   * 汇总三个审批子列表 → 审批 tab 角标数，并同步 tabBar「管理」红点。
+   * 审批列表只含 pending 记录，列表长度即待审批数。
+   */
+  _syncApprovalCount() {
+    const total = this.data.borrowApprovals.length
+      + this.data.lendApprovals.length
+      + this.data.helpApprovals.length;
+    this.setData({ approvalCount: total });
+    const app = getApp();
+    if (app && app.setManageBadge) app.setManageBadge(total);
+  },
+
   // ================================================================
   // 进行中数据
   // ================================================================
   async loadInProgress(role) {
     try {
-      const data = await api.get('/api/user/in-progress', { role });
+      const data = await api.get('/api/users/in-progress', { role });
       const items = (Array.isArray(data) ? data : []).map(dto => ({
         id: dto.id,
         personName: dto.personName || '',
         personAddress: dto.personRoom || '',
         personType: dto.personType || '',
+        personUserId: dto.personId || null,
         personRating: (dto.personRating || 5).toFixed(1),
         itemTitle: dto.title || '',
         postType: dto.postType || '',
         metaText: dto.metaText || '',
         remainingDays: dto.remainingDays || 0,
+        remainingHours: dto.remainingHours || 0,
         expectedReturnDays: dto.expectedReturnDays || 0,
         isOverdue: dto.isOverdue || false,
         roleLabel: dto.roleLabel || '',
@@ -330,7 +528,7 @@ Page({
   // ================================================================
   async loadCompleted(role) {
     try {
-      const data = await api.get('/api/user/completed', { role });
+      const data = await api.get('/api/users/completed', { role });
       const keyMap = { borrow: 'completedBorrows', lend: 'completedLends', helpReq: 'completedHelpReqs', helpPro: 'completedHelpPros' };
       const roleLabelMap = { borrow: '借出住户', lend: '借走住户', helpReq: '帮忙用户', helpPro: '求助住户' };
       const typeMap = { borrow: 'borrow', lend: 'lend', helpReq: 'helpReq', helpPro: 'helpPro' };
@@ -351,6 +549,7 @@ Page({
         type: typeMap[role],
         personName: dto.personName || '',
         personAddress: dto.personRoom || '',
+        personUserId: dto.personId || null,
         personType: dto.personType || '',
         roleLabel: roleLabelMap[role]
       }));
@@ -371,21 +570,35 @@ Page({
   // 已完成项通用格式化（列表 + 详情弹层）
   formatCompletedItem(item, opts) {
     const isBorrow = opts.type === 'borrow' || opts.type === 'lend';
-    const metaText = isBorrow
-      ? (item.isOverdue ? ('超时 ' + item.overdueDays + ' 天归还') : ('已于 ' + this.formatDate(item.completedTime) + ' 归还'))
-      : ('已于 ' + this.formatDate(item.completedTime) + ' 结束');
+    let borrowMeta;
+    if (isBorrow && item.isOverdue) {
+      // 小于1天显示小时，否则显示天数；都不足则只显示"超时归还"
+      const overdueDays = item.overdueDays || 0;
+      const overdueHours = item.remainingHours ? Math.abs(item.remainingHours) : 0;
+      if (overdueDays >= 1) {
+        borrowMeta = '超时 ' + overdueDays + ' 天归还';
+      } else if (overdueHours > 0) {
+        borrowMeta = '超时 ' + overdueHours + ' 小时归还';
+      } else {
+        borrowMeta = '超时归还';
+      }
+    } else if (isBorrow) {
+      borrowMeta = '已于 ' + this.formatDate(item.completedTime) + ' 归还';
+    }
+    const metaText = isBorrow ? borrowMeta : ('已于 ' + this.formatDate(item.completedTime) + ' 结束');
     return {
       id: item.id,
       type: opts.type,
       postType: item.postType || '',
       personName: opts.personName,
       personAddress: opts.personAddress,
+      personUserId: opts.personUserId || null,
       personType: opts.personType,
       roleLabel: opts.roleLabel,
       itemTitle: item.itemTitle || item.helpTitle,
       metaText: metaText,
       statusText: item.isOverdue ? '超时归还' : '已完成',
-      statusTagClass: item.isOverdue ? 'post-status-tag-red' : 'post-status-tag-green',
+      statusTagClass: item.isOverdue ? 'post-status-tag-red' : 'post-status-tag-fill',
       // 已完成详情弹层的字段
       myRating: item.myRating != null ? Number(item.myRating).toFixed(1) : null,
       myFeedback: this.sanitizeFeedback(item.myFeedback),
@@ -399,7 +612,11 @@ Page({
   // Tab 切换
   // ================================================================
   onMainTabTap(e) {
-    this.setData({ mainTab: e.currentTarget.dataset.tab });
+    const tab = e.currentTarget.dataset.tab;
+    if (tab === this.data.mainTab) return;           // 重复点击同一 tab，忽略
+    this.setData({ mainTab: tab });
+    // 切换到目标 tab 时立即加载该 tab 的数据，确保数据始终最新
+    this._loadDataForTab(tab);
   },
 
   onPublishSubTap(e) {
@@ -460,7 +677,7 @@ Page({
     if (!id) return;
 
     // 调后端持久化下架：HELP → /api/help，LEND/WANTED → /api/idle
-    const endpoint = postType === 'HELP' ? `/api/help/${id}/delist` : `/api/idle/${id}/delist`;
+    const endpoint = postType === POST_TYPE.HELP ? `/api/help-requests/${id}/delist` : `/api/idle-items/${id}/delist`;
     wx.showLoading({ title: '下架中...' });
     try {
       await api.put(endpoint);
@@ -471,7 +688,7 @@ Page({
       const idx = onlinePosts.findIndex(p => p.id === id);
       if (idx >= 0) {
         const item = { ...onlinePosts[idx] };
-        item.status = 'offline';
+        item.status = STATUS.OFFLINE;
         item.statusText = '已下架';
         item.statusTagClass = 'post-status-tag-fill';
         item.timeText = this.formatRelativeTime(Date.now()) + '下架';
@@ -497,7 +714,7 @@ Page({
   onOpenEdit(e) {
     const post = e.currentTarget.dataset.post;
     const type = e.currentTarget.dataset.type;
-    const source = e.currentTarget.dataset.source || 'online';
+    const source = e.currentTarget.dataset.source || STATUS.ONLINE;
     if (!post) return;
 
     const unit = post.durationUnit || 'day';
@@ -510,22 +727,68 @@ Page({
       durationIndex = Math.max(0, Math.min((post.maxDuration || 7) - 1, 6));
     }
 
+    const postType = post.postType || (type === 'help' ? POST_TYPE.HELP : POST_TYPE.LEND);
+
+    // HELP：解析时间段为日期和小时组件（在 _originalPost 和 setData 之前计算）
+    let startDate = '', startHour = 9, endDate = '', endHour = 18;
+    if (postType === POST_TYPE.HELP) {
+      const fmtStart = post.timeStart ? this.formatDateTime(post.timeStart) : '';
+      const fmtEnd = post.timeEnd ? this.formatDateTime(post.timeEnd) : '';
+      const parseParts = (str, defaultHour) => {
+        if (!str) return { date: '', hour: defaultHour };
+        const parts = str.split(' ');
+        const timeParts = (parts[1] || defaultHour + ':00').split(':');
+        return { date: parts[0] || '', hour: parseInt(timeParts[0]) || defaultHour };
+      };
+      const start = parseParts(fmtStart, 9);
+      const end = parseParts(fmtEnd, 18);
+      startDate = start.date;
+      startHour = Math.max(0, Math.min(start.hour, 23));
+      endDate = end.date;
+      endHour = Math.max(0, Math.min(end.hour, 23));
+    }
+
+    // 存储原始值，用于保存时检测是否有修改
+    this._originalPost = {
+      title: post.title || '',
+      category: post.category || '',
+      customType: post.customType || '',
+      price: String(post.price || ''),
+      description: post.description || '',
+      durationUnit: unit,
+      maxDuration: post.maxDuration || 7,
+      pickupMethod: post.pickupMethod || 'self_pickup',
+      condition: post.condition || 'normal',
+      urgency: post.urgency || 'normal',
+      postType: postType,
+      // HELP 时间段原始值
+      timeStartDate: startDate,
+      timeStartHour: startHour,
+      timeEndDate: endDate,
+      timeEndHour: endHour
+    };
+
     this.setData({
       showEditSheet: true,
       editSource: source,
       editTargetId: post.id,
-      editPostType: post.postType || (type === 'help' ? 'HELP' : 'LEND'),
+      editPostType: postType,
       editTitle: post.title || '',
       editCategory: post.category || '',
       editCustomType: post.customType || '',
-      editPrice: post.price || '',
+      editPrice: String(post.price || ''),
       editDesc: post.description || '',
       editDurationUnit: unit,
       editDurationOptions: durationOptions,
       editDurationIndex: durationIndex,
       editPickupMethod: post.pickupMethod || 'self_pickup',
       editCondition: post.condition || 'normal',
-      editUrgency: post.urgency || 'normal'
+      editUrgency: post.urgency || 'normal',
+      // HELP 时间段编辑值
+      editTimeStartDate: startDate,
+      editTimeStartHour: startHour,
+      editTimeEndDate: endDate,
+      editTimeEndHour: endHour
     });
   },
 
@@ -586,12 +849,69 @@ Page({
     this.setData({ editUrgency: e.currentTarget.dataset.value });
   },
 
+  // 时间段选择（HELP 编辑）
+  onEditTimeStartDateChange(e) {
+    this.setData({ editTimeStartDate: e.detail.value });
+  },
+
+  onEditTimeStartHourChange(e) {
+    this.setData({ editTimeStartHour: parseInt(e.detail.value) });
+  },
+
+  onEditTimeEndDateChange(e) {
+    this.setData({ editTimeEndDate: e.detail.value });
+  },
+
+  onEditTimeEndHourChange(e) {
+    this.setData({ editTimeEndHour: parseInt(e.detail.value) });
+  },
+
   onSaveEdit() {
     if (!this.data.editTitle.trim()) {
       wx.showToast({ title: '请输入标题', icon: 'none' });
       return;
     }
+
+    // 检测是否有实质性修改（重新发布允许原样上架，不做此拦截）
+    if (this.data.editSource !== STATUS.OFFLINE && !this._editHasChanged()) {
+      wx.showToast({ title: '您并没有修改内容', icon: 'none' });
+      return;
+    }
+
     this.setData({ showSaveConfirmAlert: true });
+  },
+
+  /** 比较当前编辑表单与打开弹层时的原始值，判断是否有修改 */
+  _editHasChanged() {
+    const orig = this._originalPost;
+    if (!orig) return true;
+
+    const curr = {
+      title: this.data.editTitle.trim(),
+      category: this.data.editCategory,
+      customType: this.data.editCustomType.trim(),
+      description: this.data.editDesc.trim()
+    };
+
+    if (orig.postType === POST_TYPE.LEND) {
+      curr.price = this.data.editPrice.trim();
+      curr.durationUnit = this.data.editDurationUnit;
+      curr.maxDuration = parseInt(this.data.editDurationOptions[this.data.editDurationIndex]) || 7;
+      curr.pickupMethod = this.data.editPickupMethod;
+      curr.condition = this.data.editCondition;
+    } else if (orig.postType === POST_TYPE.WANTED) {
+      curr.durationUnit = this.data.editDurationUnit;
+      curr.maxDuration = parseInt(this.data.editDurationOptions[this.data.editDurationIndex]) || 7;
+    } else if (orig.postType === POST_TYPE.HELP) {
+      curr.urgency = this.data.editUrgency;
+      curr.timeStartDate = this.data.editTimeStartDate;
+      curr.timeStartHour = this.data.editTimeStartHour;
+      curr.timeEndDate = this.data.editTimeEndDate;
+      curr.timeEndHour = this.data.editTimeEndHour;
+    }
+
+    // orig 含全部字段而 curr 仅含当前类型的字段子集，故逐键比较（整体 stringify 恒不相等）
+    return Object.keys(curr).some(key => curr[key] !== orig[key]);
   },
 
   onCancelSaveConfirm() {
@@ -602,77 +922,57 @@ Page({
     this.setData({ showSaveConfirmAlert: false });
 
     const id = this.data.editTargetId;
-    const isRepublish = this.data.editSource === 'offline';
+    const isRepublish = this.data.editSource === STATUS.OFFLINE;
     const postType = this.data.editPostType;
-    const isLend = postType === 'LEND';
-    const isHelp = postType === 'HELP';
+    const isHelp = postType === POST_TYPE.HELP;
 
     const durationStr = this.data.editDurationOptions[this.data.editDurationIndex] || '7 天';
     const maxDuration = parseInt(durationStr) || 7;
 
-    const updates = {
+    // 构建请求体（与后端 IdleItemRequest / HelpRequestDTO 对齐）
+    const body = {
       title: this.data.editTitle.trim(),
-      category: this.data.editCategory,
-      customType: this.data.editCustomType,
+      category: this.data.editCategory === '其他' ? this.data.editCustomType.trim() : this.data.editCategory,
       description: this.data.editDesc.trim(),
-      durationUnit: this.data.editDurationUnit,
-      maxDuration: maxDuration
+      maxDuration: maxDuration,
+      durationUnit: this.data.editDurationUnit
     };
 
-    if (isLend) {
-      updates.price = parseFloat(this.data.editPrice) || 0;
-      updates.pickupMethod = this.data.editPickupMethod;
-      updates.condition = this.data.editCondition;
+    if (postType === POST_TYPE.LEND) {
+      body.price = parseFloat(this.data.editPrice) || 0;
+      body.pickupMethod = this.data.editPickupMethod;
+      body.condition = this.data.editCondition;
     }
 
     if (isHelp) {
-      updates.urgency = this.data.editUrgency;
+      body.isUrgent = this.data.editUrgency === 'urgent';
+      // 拼接时间段字符串（格式 yyyy-MM-dd HH:mm）
+      if (this.data.editTimeStartDate) {
+        const sh = this.data.hourOptions[this.data.editTimeStartHour] || '09:00';
+        body.timeStart = this.data.editTimeStartDate + ' ' + sh;
+      }
+      if (this.data.editTimeEndDate) {
+        const eh = this.data.hourOptions[this.data.editTimeEndHour] || '18:00';
+        body.timeEnd = this.data.editTimeEndDate + ' ' + eh;
+      }
     }
 
-    const applyUpdates = (item) => {
-      if (item.id !== id) return item;
-      Object.assign(item, updates);
-      const isIdleItem = item.postType === 'LEND';
-      if (isIdleItem) {
-        item.durationLabel = '可借 ≤' + (updates.maxDuration || 7) + (updates.durationUnit === 'hour' ? '小时' : '天');
-        item.conditionLabel = this.conditionText(updates.condition || item.condition);
-      }
-      item.timeText = item.status === 'offline' ? this.formatRelativeTime(item.offlineTime || Date.now()) + '下架' : this.formatRelativeTime(item.createTime) + '发布';
-      return item;
-    };
+    // 调用后端 update API——后端会自动将 offline 重新上架为 online
+    const endpoint = isHelp ? '/api/help-requests/' + id : '/api/idle-items/' + id;
+    wx.showLoading({ title: isRepublish ? '重新发布中...' : '保存中...' });
+    try {
+      await api.put(endpoint, body);
+      wx.hideLoading();
 
-    if (isRepublish) {
-      const offlinePosts = [...this.data.offlinePosts];
-      const idx = offlinePosts.findIndex(p => p.id === id);
-      if (idx >= 0) {
-        let item = { ...offlinePosts[idx] };
-        Object.assign(item, updates);
-        item.status = 'online';
-        item.statusText = '在线';
-        item.statusTagClass = 'post-status-tag-blue';
-        if (isLend) {
-          item.durationLabel = '可借 ≤' + maxDuration + (updates.durationUnit === 'hour' ? '小时' : '天');
-          item.conditionLabel = this.conditionText(updates.condition || item.condition);
-        }
-        item.timeText = '刚刚重新发布';
+      // 从后端重新拉取发布列表，确保展示真实数据
+      await this.loadMyPosts();
 
-        offlinePosts.splice(idx, 1);
-        this.setData({
-          onlinePosts: [item, ...this.data.onlinePosts],
-          onlineCount: this.data.onlinePosts.length + 1,
-          offlinePosts,
-          offlineCount: offlinePosts.length
-        });
-      }
-    } else {
-      this.setData({
-        onlinePosts: this.data.onlinePosts.map(applyUpdates),
-        offlinePosts: this.data.offlinePosts.map(applyUpdates)
-      });
+      wx.showToast({ title: isRepublish ? '已重新发布' : '已保存', icon: 'success' });
+      this.onCloseEdit();
+    } catch (err) {
+      wx.hideLoading();
+      wx.showToast({ title: (err && err.message) || '操作失败', icon: 'none' });
     }
-
-    wx.showToast({ title: isRepublish ? '已重新发布' : '已保存', icon: 'none' });
-    this.onCloseEdit();
   },
 
   // ================================================================
@@ -702,10 +1002,10 @@ Page({
     const item = this.data.approvalSheetItem;
     const type = item ? item.approvalType : 'borrow';
     let body;
-    if (type === 'lend') {
-      body = '是否确认借入？';        // 需求借入：确认接受对方的借出
-    } else if (type === 'borrow') {
-      body = '是否确认借出？';
+    if (type === 'borrow') {
+      body = '是否确认借入？';        // 借入：确认接受对方主动借给我的意向
+    } else if (type === 'lend') {
+      body = '是否确认借出？';        // 借出：同意别人借走我发布的闲置
     } else {
       body = '是否确认接受帮助？';
     }
@@ -722,9 +1022,9 @@ Page({
     const item = this.data.approvalSheetItem;
     const type = item ? item.approvalType : 'borrow';
     let body;
-    if (type === 'lend') {
+    if (type === 'borrow') {
       body = '是否确认拒绝借入？';
-    } else if (type === 'borrow') {
+    } else if (type === 'lend') {
       body = '是否确认拒绝借出？';
     } else {
       body = '是否确认拒绝接受帮助？';
@@ -733,8 +1033,20 @@ Page({
       showConfirmAlert: true,
       confirmAction: 'reject',
       confirmAlertTitle: '确认拒绝',
-      confirmAlertBody: body
+      confirmAlertBody: body,
+      enableRejectReason: false,
+      rejectReason: ''
     });
+  },
+
+  // 拒绝原因开关（参考 publish-idle 时间范围开关模式）
+  onToggleRejectReason(e) {
+    this.setData({ enableRejectReason: e.detail.value });
+  },
+
+  // 拒绝原因输入
+  onRejectReasonInput(e) {
+    this.setData({ rejectReason: e.detail.value });
   },
 
   onCancelConfirm() {
@@ -759,12 +1071,13 @@ Page({
   },
 
   /**
-   * 提交审批到后端，成功后从服务端刷新「审批」和「进行中」列表。
-   * 借入(borrow) / 借出(lend) 都是同一条 BorrowRequest：PUT /api/borrow/{id}/approve
-   *   - borrow：我是出借方，审批别人借入我的物品
-   *   - lend：  我是借入方，确认别人对我需求的借出意向
-   * 求助(help)：PUT /api/help/applications/{helpApplicationId}/approve
+   * 提交审批到后端，成功后从服务端刷新审批列表（当前 tab）。
+   * 借入(borrow) / 借出(lend) 都是同一条 BorrowRequest：PUT /api/borrow-requests/{id}/approve
+   *   - borrow：我发布了需求借入（WANTED 帖），确认别人主动借给我的意向
+   *   - lend：  我发布了闲置（LEND 帖），审批别人借走我物品的申请
+   * 求助(help)：PUT /api/help-requests/applications/{helpApplicationId}/approve
    * 审批项的 id 即对应记录的主键（见后端 getApprovals 映射）。
+   * 审批通过后物品进入"进行中"——用户在切换 tab 时自动加载最新数据。
    */
   async submitApproval(approved) {
     const item = this.data.approvalSheetItem;
@@ -772,34 +1085,32 @@ Page({
     const type = item.approvalType;            // 'borrow' | 'lend' | 'help'
     const id = item.id;
     const url = type === 'help'
-      ? '/api/help/applications/' + id + '/approve'
-      : '/api/borrow/' + id + '/approve';
+      ? '/api/help-requests/applications/' + id + '/approve'
+      : '/api/borrow-requests/' + id + '/approve';
 
     wx.showLoading({ title: '处理中...', mask: true });
     try {
-      await api.put(url, { approved: approved });
+      // 构建请求体，拒绝时如果开关开启且有理由则附带 reason
+      const reqBody = { approved: approved };
+      if (!approved && this.data.enableRejectReason && this.data.rejectReason && this.data.rejectReason.trim()) {
+        reqBody.reason = this.data.rejectReason.trim();
+      }
+      await api.put(url, reqBody);
       wx.hideLoading();
       this.setData({
         showApprovalSheet: false,
         approvalSheetItem: null,
         showConfirmAlert: false
       });
-      wx.showToast({ title: approved ? '已同意，已移至进行中' : '已拒绝', icon: 'none' });
+      wx.showToast({ title: approved ? '已同意' : '已拒绝', icon: 'none' });
 
-      // 从服务端重新拉取，确保列表反映真实状态（同意后申请从审批消失、出现在进行中）
-      const reloads = [
+      // 从服务端重新拉取审批列表（当前 tab），确保列表反映真实状态
+      // 审批通过后物品进入"进行中"——切换 tab 时会自动加载最新数据，无需在此预加载
+      await Promise.all([
         this.loadApprovals('borrow'),
         this.loadApprovals('lend'),
         this.loadApprovals('help')
-      ];
-      if (approved) {
-        // borrow：我出借 → 进入我的「借出中」(lend)
-        // lend：  我借入 → 进入我的「借入中」(borrow)
-        // help：  我求助 → 进入我的「求助·进行中」(helpReq)
-        const ipMap = { borrow: 'lend', lend: 'borrow', help: 'helpReq' };
-        reloads.push(this.loadInProgress(ipMap[type] || 'lend'));
-      }
-      await Promise.all(reloads);
+      ]);
     } catch (e) {
       wx.hideLoading();
       this.setData({ showConfirmAlert: false });
@@ -812,7 +1123,7 @@ Page({
     const list = this.data[key];
     const idx = list.findIndex(item => item.id === id);
     if (idx >= 0) {
-      list[idx].status = 'rejected';
+      list[idx].status = STATUS.REJECTED;
       this.setData({ [key]: list });
     }
     wx.showToast({ title: '已拒绝', icon: 'none' });
@@ -840,7 +1151,8 @@ Page({
         progressSheetItem: { ...item },
         progressSheetType: type,
         progressSheetRating: 0,
-        progressSheetFeedback: ''
+        progressSheetFeedback: '',
+        progressSheetCondition: 'normal'
       });
     }
   },
@@ -851,7 +1163,8 @@ Page({
       progressSheetItem: null,
       progressSheetType: '',
       progressSheetRating: 0,
-      progressSheetFeedback: ''
+      progressSheetFeedback: '',
+      progressSheetCondition: ''
     });
   },
 
@@ -863,10 +1176,19 @@ Page({
     this.setData({ progressSheetFeedback: e.detail.value });
   },
 
+  onProgressConditionTap(e) {
+    this.setData({ progressSheetCondition: e.currentTarget.dataset.value });
+  },
+
   // "归还/结束"按钮 → 显示确认弹窗
   onConfirmReturn() {
     if (!this.data.progressSheetRating) {
       wx.showToast({ title: '请先评分', icon: 'none' });
+      return;
+    }
+    // 借出：使用后物品状况必填
+    if (this.data.progressSheetType === 'lend' && !this.data.progressSheetCondition) {
+      wx.showToast({ title: '请选择使用后物品状况', icon: 'none' });
       return;
     }
     this.setData({
@@ -896,22 +1218,36 @@ Page({
     try {
       // 1. 状态流转：归还 / 结束
       if (isHelp) {
-        await api.put('/api/help/applications/' + item.id + '/complete', {});
+        await api.put('/api/help-requests/applications/' + item.id + '/complete', {});
       } else {
-        await api.put('/api/borrow/' + item.id + '/return', {
+        const returnBody = {
           returnStatus: 'normal',
           isOnTime: !isOverdue
-        });
+        };
+        if (type === 'lend') {
+          returnBody.damageType = this.data.progressSheetCondition;
+        }
+        await api.put('/api/borrow-requests/' + item.id + '/return', returnBody);
       }
 
       // 2. 提交评分（互助双方均需评价对方；后端按发起人身份确定被评人）
       if (rating) {
         try {
-          await api.post('/api/rating', {
+          const ratingBody = {
             targetId: item.id,
             ratingType: isHelp ? 'help' : 'borrow',
             overallScore: rating
-          });
+          };
+          if (feedback) ratingBody.feedback = feedback;
+          await api.post('/api/ratings', ratingBody);
+          // 通知服务通知页该 relatedId 已评价
+          const app = getApp();
+          if (!app.globalData.ratedNotificationIds) {
+            app.globalData.ratedNotificationIds = [];
+          }
+          if (!app.globalData.ratedNotificationIds.includes(item.id)) {
+            app.globalData.ratedNotificationIds.push(item.id);
+          }
         } catch (re) {
           // 评价失败不阻断归还主流程（例如已评价过）
           console.warn('Submit rating failed:', re && re.message);
@@ -925,22 +1261,22 @@ Page({
         progressSheetType: '',
         progressSheetRating: 0,
         progressSheetFeedback: '',
+        progressSheetCondition: '',
         showReturnConfirmAlert: false,
         returnConfirmData: null
       });
 
-      // 3. 刷新受影响的双方视角列表（进行中 + 已完成）
+      // 3. 刷新当前 tab（进行中）——归还后物品从进行中消失
+      // 已完成 tab 的数据在用户切换 tab 时自动加载，无需在此预加载
       const reloads = isHelp
-        ? [this.loadInProgress('helpReq'), this.loadInProgress('helpPro'),
-           this.loadCompleted('helpReq'), this.loadCompleted('helpPro')]
-        : [this.loadInProgress('borrow'), this.loadInProgress('lend'),
-           this.loadCompleted('borrow'), this.loadCompleted('lend')];
+        ? [this.loadInProgress('helpReq'), this.loadInProgress('helpPro')]
+        : [this.loadInProgress('borrow'), this.loadInProgress('lend')];
       await Promise.all(reloads);
 
-      if (isOverdue && !isHelp) {
+      if (isOverdue && !isHelp && type === 'borrow') {
         this.setData({ showOverdueTipAlert: true });
       } else {
-        wx.showToast({ title: isHelp ? '已结束' : '已归还', icon: 'none' });
+        wx.showToast({ title: isHelp ? '已结束' : (type === 'lend' ? '已确认对方归还' : '已归还'), icon: 'none' });
       }
     } catch (e) {
       wx.hideLoading();
@@ -1003,11 +1339,13 @@ Page({
     const isHelp = item.type === 'helpReq' || item.type === 'helpPro';
     wx.showLoading({ title: '提交中...', mask: true });
     try {
-      await api.post('/api/rating', {
+      const ratingBody2 = {
         targetId: item.id,
         ratingType: isHelp ? 'help' : 'borrow',
         overallScore: this.data.completedRating
-      });
+      };
+      if (this.data.completedFeedback) ratingBody2.feedback = this.data.completedFeedback;
+      await api.post('/api/ratings', ratingBody2);
       wx.hideLoading();
       // 刷新该角色的已完成列表并回填当前弹框
       await this.loadCompleted(item.type);
@@ -1023,6 +1361,14 @@ Page({
         completedRating: 0,
         completedFeedback: ''
       });
+      // 通知服务通知页：该 relatedId 已评价，卡片应改为「已评价」
+      const app = getApp();
+      if (!app.globalData.ratedNotificationIds) {
+        app.globalData.ratedNotificationIds = [];
+      }
+      if (!app.globalData.ratedNotificationIds.includes(item.id)) {
+        app.globalData.ratedNotificationIds.push(item.id);
+      }
       wx.showToast({ title: '评价成功', icon: 'none' });
     } catch (e) {
       wx.hideLoading();
@@ -1045,7 +1391,8 @@ Page({
         progressSheetItem: { ...item },
         progressSheetType: type,
         progressSheetRating: 0,
-        progressSheetFeedback: ''
+        progressSheetFeedback: '',
+        progressSheetCondition: ''
       });
     }
   },
@@ -1061,7 +1408,8 @@ Page({
         progressSheetItem: { ...item },
         progressSheetType: type,
         progressSheetRating: 0,
-        progressSheetFeedback: ''
+        progressSheetFeedback: '',
+        progressSheetCondition: 'normal'
       });
     }
   },
@@ -1077,7 +1425,8 @@ Page({
         progressSheetItem: { ...item },
         progressSheetType: type,
         progressSheetRating: 0,
-        progressSheetFeedback: ''
+        progressSheetFeedback: '',
+        progressSheetCondition: ''
       });
     }
   },
@@ -1093,7 +1442,8 @@ Page({
         progressSheetItem: { ...item },
         progressSheetType: type,
         progressSheetRating: 0,
-        progressSheetFeedback: ''
+        progressSheetFeedback: '',
+        progressSheetCondition: ''
       });
     }
   },
@@ -1103,27 +1453,45 @@ Page({
   // ================================================================
   preventTouchMove() {},
 
+  // 点击弹框中的住户地址 → 跳转与对方聊天
+  onTapChatWithUser(e) {
+    const userId = e.currentTarget.dataset.userId || e.currentTarget.dataset.userId;
+    const userName = e.currentTarget.dataset.userName || '';
+    if (!userId) return;
+    const myId = auth.getUserId();
+    if (!myId || String(myId) === String(userId)) {
+      wx.showToast({ title: '不能与自己聊天', icon: 'none' });
+      return;
+    }
+    const ids = [String(myId), String(userId)].sort();
+    const sessionId = 'USER_' + ids[0] + '_' + ids[1];
+    const name = encodeURIComponent(userName || '用户');
+    wx.navigateTo({
+      url: `/pages/chat/chat?sessionId=${sessionId}&name=${name}&room=&about=&aboutId=&aboutType=&otherUserId=${userId}`
+    });
+  },
+
   // ================================================================
   // 辅助函数
   // ================================================================
   getApplyStatusText(status) {
     const map = {
-      'pending': '待处理',
-      'approved': '已同意',
-      'rejected': '已拒绝',
-      'completed': '已完成',
-      'cancelled': '已取消'
+      [STATUS.PENDING]: '待处理',
+      [STATUS.APPROVED]: '已同意',
+      [STATUS.REJECTED]: '已拒绝',
+      [STATUS.COMPLETED]: '已完成',
+      [STATUS.CANCELLED]: '已取消'
     };
     return map[status] || status || '待处理';
   },
 
   getApplyStatusClass(status) {
     const map = {
-      'pending': 'post-status-tag-orange',
-      'approved': 'post-status-tag-green',
-      'rejected': 'post-status-tag-red',
-      'completed': 'post-status-tag-green',
-      'cancelled': 'post-status-tag-fill'
+      [STATUS.PENDING]: 'post-status-tag-orange',
+      [STATUS.APPROVED]: 'post-status-tag-green',
+      [STATUS.REJECTED]: 'post-status-tag-red',
+      [STATUS.COMPLETED]: 'post-status-tag-green',
+      [STATUS.CANCELLED]: 'post-status-tag-fill'
     };
     return map[status] || 'post-status-tag-orange';
   },
@@ -1145,6 +1513,19 @@ Page({
     const M = (date.getMonth() + 1).toString().padStart(2, '0');
     const d = date.getDate().toString().padStart(2, '0');
     return Y + '-' + M + '-' + d;
+  },
+
+  // 将 ISO 日期时间字符串格式化为 "yyyy-MM-dd HH:mm" 展示格式
+  formatDateTime(dt) {
+    if (!dt) return '';
+    const d = new Date(dt);
+    if (isNaN(d.getTime())) return '';
+    const Y = d.getFullYear();
+    const M = (d.getMonth() + 1).toString().padStart(2, '0');
+    const DD = d.getDate().toString().padStart(2, '0');
+    const h = d.getHours().toString().padStart(2, '0');
+    const mi = d.getMinutes().toString().padStart(2, '0');
+    return Y + '-' + M + '-' + DD + ' ' + h + ':' + mi;
   },
 
   formatRelativeTime(timestamp) {

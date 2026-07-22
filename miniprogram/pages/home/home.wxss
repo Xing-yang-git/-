@@ -13,20 +13,18 @@
   right: 0;
   z-index: 100;
   background: rgba(255, 255, 255);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
 }
 
 .home-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 16px 6px;
-  gap: 12px;
+  padding: 40rpx 32rpx 12rpx;
+  gap: 24rpx;
 }
 
 .community-name {
-  font-size: 28px;
+  font-size: 56rpx;
   font-weight: 700;
   color: var(--text);
   letter-spacing: 0.01em;
@@ -43,47 +41,47 @@
   align-items: center;
   justify-content: space-between;
   width: 40%;
-  min-width: 120px;
+  min-width: 240rpx;
   flex-shrink: 0;
-  height: 34px;
-  padding: 0 10px 0 14px;
-  background: var(--fill-tertiary, #F2F2F7);
-  border-radius: 17px;
+  height: 68rpx;
+  padding: 0 20rpx 0 28rpx;
+  background: var(--fill-tertiary, var(--fill-tertiary));
+  border-radius: 34rpx;
 }
 
 .search-placeholder {
-  font-size: 14px;
-  color: var(--text-secondary, #8E8E93);
+  font-size: 28rpx;
+  color: var(--text-secondary, var(--text-tertiary));
   flex-shrink: 0;
 }
 
 .search-box-icon {
-  width: 18px;
-  height: 18px;
+  width: 36rpx;
+  height: 36rpx;
   flex-shrink: 0;
   opacity: 0.5;
 }
 
 .segment-wrap {
   background: var(--surface);
-  padding: 8px 16px;
+  padding: 16rpx 32rpx;
 }
 
 .segment {
   display: flex;
   background: var(--bg);
-  border-radius: 8px;
-  padding: 2px;
+  border-radius: 16rpx;
+  padding: 4rpx;
 }
 
 .segment-item {
   flex: 1;
   text-align: center;
-  padding: 6px 0;
-  font-size: 13px;
+  padding: 12rpx 0;
+  font-size: 26rpx;
   font-weight: 500;
   color: var(--text-secondary);
-  border-radius: 7px;
+  border-radius: 14rpx;
   transition: all var(--motion-fast) var(--ease);
 }
 
@@ -102,9 +100,9 @@
 
 .list-card {
   display: flex;
-  padding: 12px 16px;
+  padding: 24rpx 32rpx;
   background: var(--surface);
-  gap: 12px;
+  gap: 24rpx;
   align-items: center;
 }
 
@@ -121,9 +119,9 @@
 }
 
 .thumb {
-  width: 64px;
-  height: 64px;
-  border-radius: 8px;
+  width: 128rpx;
+  height: 128rpx;
+  border-radius: 16rpx;
   background: var(--fill-tertiary);
   display: flex;
   align-items: center;
@@ -132,8 +130,8 @@
 }
 
 .thumb-icon {
-  width: 28px;
-  height: 28px;
+  width: 56rpx;
+  height: 56rpx;
 }
 
 .info {
@@ -141,11 +139,11 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 6rpx;
 }
 
 .card-title {
-  font-size: 13px;
+  font-size: 26rpx;
   font-weight: 400;
   color: var(--text);
   line-height: 1.3;
@@ -156,19 +154,19 @@
 }
 
 .card-meta {
-  font-size: 12px;
+  font-size: 24rpx;
   color: var(--text-secondary);
 }
 
 .tags {
   display: flex;
-  gap: 6px;
-  margin-top: 2px;
+  gap: 12rpx;
+  margin-top: 4rpx;
 }
 
 /* 标签覆盖 */
 .urgent-tag {
-  margin-right: 4px;
+  margin-right: 8rpx;
 }
 
 .tag-gray {
@@ -179,13 +177,13 @@
 /* FAB */
 .fab {
   position: fixed;
-  bottom: 120px;
-  right: 16px;
-  width: 50px;
-  height: 50px;
-  border-radius: 25px;
+  bottom: 240rpx;
+  right: 32rpx;
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: 50rpx;
   background: var(--blue);
-  box-shadow: 0 6px 18px rgba(0, 113, 227, 0.35);
+  box-shadow: 0 12rpx 36rpx rgba(0, 113, 227, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -197,8 +195,8 @@
 }
 
 .fab-icon-img {
-  width: 22px;
-  height: 22px;
+  width: 44rpx;
+  height: 44rpx;
   transition: transform 150ms var(--ease);
 }
 
@@ -207,8 +205,8 @@
 }
 
 .fab-menu-icon {
-  width: 18px;
-  height: 18px;
+  width: 36rpx;
+  height: 36rpx;
   flex-shrink: 0;
 }
 
@@ -223,14 +221,14 @@
 
 /* 空状态图片图标 */
 .empty-icon-img {
-  width: 40px;
-  height: 40px;
+  width: 80rpx;
+  height: 80rpx;
   opacity: 0.6;
-  margin-bottom: 12px;
+  margin-bottom: 24rpx;
 }
 
 .empty-text {
-  font-size: 15px;
+  font-size: 30rpx;
   color: var(--text-secondary);
   text-align: center;
 }
@@ -247,22 +245,22 @@
 
 .fab-menu {
   position: fixed;
-  bottom: 180px;
-  right: 16px;
+  bottom: 360rpx;
+  right: 32rpx;
   z-index: 101;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 16rpx;
 }
 
 .fab-menu-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 16rpx;
   background: rgba(44, 44, 46, 0.9);
-  border-radius: 20px;
-  padding: 10px 16px;
-  color: #FFFFFF;
-  font-size: 13px;
+  border-radius: 40rpx;
+  padding: 20rpx 32rpx;
+  color: var(--surface);
+  font-size: 26rpx;
   white-space: nowrap;
 }

@@ -1,5 +1,7 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
+const { POST_TYPE } = require('../../utils/constants');
+const app = getApp();
 
 // 将分类关键词映射到原型风格的 feather 图标
 const IDLE_ICONS = [
@@ -53,6 +55,7 @@ Page({
 
   onLoad() {
     if (!auth.ensureAccess()) return;   // 登录/审核门禁：未通过则已跳转
+    app.ensureWebSocket(); // 确保全局 WS 已连接（登录后第一时间建立）
     // 计算导航栏偏移 + scroll-view 高度
     this.calcLayoutHeights();
     // 获取用户小区名称，优先级：后端 tenantName > 注册时存储 > 兜底值
@@ -71,11 +74,40 @@ Page({
     } catch (e) {
       // 兜底使用默认值
     }
+    this._firstShow = true;
     this.loadData();
   },
 
   onShow() {
     if (!auth.ensureAccess()) return; // 登录/审核门禁：覆盖 tab 切换与后台切回
+    app.ensureWebSocket(); // 从后台切回或 tab 切换时确保 WS 连接
+    app._updateTabBarBadge(); // 切回 tab 页时刷新消息红点
+    app.refreshManageBadge(); // 刷新「管理」tab 待审批红点
+    app.refreshNoticeBadge(); // 从服务端拉最新通知未读数，兜底 WS 推送丢失
+
+    // 首次 onShow 与 onLoad 成对触发，onLoad 已调用 loadData，跳过
+    if (this._firstShow) {
+      this._firstShow = false;
+      return;
+    }
+
+    // 判断是否需要刷新当前 tab（直接使用模块级 app，函数内重复声明会因 const 提升遮蔽外层导致 undefined）
+    const pendingRefresh = app.globalData.pendingHomeRefresh;
+    let shouldRefresh = true;
+
+    if (pendingRefresh) {
+      // 从发布页返回：仅当发布的类型匹配当前 tab 时才刷新
+      // 不匹配时无需刷新——用户切到对应 tab 时 onTabChange 会自动加载
+      const refreshTab = pendingRefresh === POST_TYPE.HELP ? 2 : (pendingRefresh === POST_TYPE.WANTED ? 1 : 0);
+      shouldRefresh = (refreshTab === this.data.currentTab);
+      delete app.globalData.pendingHomeRefresh;
+    }
+    // 非发布页返回（tab 切换等）：始终刷新
+
+    if (shouldRefresh) {
+      this.setData({ page: 0, idleList: [], helpList: [], hasMore: true });
+      this.loadData();
+    }
   },
 
   onPullDownRefresh() {
@@ -115,25 +147,30 @@ Page({
     if (this.data.loading || !this.data.hasMore) return Promise.resolve();
 
     this.setData({ loading: true });
-    wx.showLoading({ title: '加载中...' });
+    // 下拉刷新时跳过居中 loading——原生下拉头已提供视觉反馈，避免双指示器闪烁
+    if (!this.data.refreshing) {
+      wx.showLoading({ title: '加载中...' });
+    }
 
     let promise;
     if (this.data.currentTab === 2) {
       promise = this.loadHelpList();
     } else {
-      const postType = this.data.currentTab === 0 ? 'LEND' : 'WANTED';
+      const postType = this.data.currentTab === 0 ? POST_TYPE.LEND : POST_TYPE.WANTED;
       promise = this.loadIdleList(postType);
     }
 
     return promise.finally(() => {
-      wx.hideLoading();
+      if (!this.data.refreshing) {
+        wx.hideLoading();
+      }
       this.setData({ loading: false });
     });
   },
 
   loadIdleList(postType) {
-    const isLend = postType === 'LEND';
-    return api.get('/api/idle/home', { postType, page: this.data.page })
+    const isLend = postType === POST_TYPE.LEND;
+    return api.get('/api/idle-items/home', { postType, page: this.data.page })
       .then((data) => {
         const newList = data.content || data.list || data.records || [];
         const bgColors = ['#E8F0FE', '#FFF3E0', '#E8F5E9', '#FCE4EC', '#E3F2FD', '#F3E5F5'];
@@ -173,7 +210,7 @@ Page({
   },
 
   loadHelpList() {
-    return api.get('/api/help/home', { page: this.data.page })
+    return api.get('/api/help-requests/home', { page: this.data.page })
       .then((data) => {
         const newList = data.content || data.list || data.records || [];
         const bgColors = ['#FFEDED', '#FFF3E0', '#E3F2FD', '#F3E5F5', '#E8F5E9'];
@@ -234,16 +271,16 @@ Page({
 
   onPublishIdle() {
     this.setData({ fabOpen: false });
-    wx.navigateTo({ url: '/pages/publish-idle/publish-idle?type=LEND' });
+    wx.navigateTo({ url: `/pages/publish-idle/publish-idle?type=${POST_TYPE.LEND}` });
   },
 
   onPublishBorrow() {
     this.setData({ fabOpen: false });
-    wx.navigateTo({ url: '/pages/publish-idle/publish-idle?type=WANTED' });
+    wx.navigateTo({ url: `/pages/publish-idle/publish-idle?type=${POST_TYPE.WANTED}` });
   },
 
   onPublishHelp() {
     this.setData({ fabOpen: false });
-    wx.navigateTo({ url: '/pages/publish-idle/publish-idle?type=HELP' });
+    wx.navigateTo({ url: `/pages/publish-idle/publish-idle?type=${POST_TYPE.HELP}` });
   }
 });

@@ -1,5 +1,6 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
+const { POST_TYPE } = require('../../utils/constants');
 
 Page({
   data: {
@@ -55,7 +56,7 @@ Page({
   },
 
   // ================================================================
-  // 个人资料数据 — 来自 /api/user/profile（真实数据库数据）
+  // 个人资料数据 — 来自 /api/users/profile（真实数据库数据）
   // ================================================================
   async loadProfile() {
     const token = wx.getStorageSync('token');
@@ -64,7 +65,7 @@ Page({
       return;
     }
     try {
-      const data = await api.get('/api/user/profile');
+      const data = await api.get('/api/users/profile');
       this.setData({
         loading: false,
         userId: data.id || '',
@@ -88,14 +89,14 @@ Page({
   },
 
   // ================================================================
-  // 记录 — 来自 /api/user/completed（真实数据库数据）
+  // 记录 — 来自 /api/users/completed（真实数据库数据）
   // ================================================================
   async loadRecords() {
     // 互借记录: borrow + lend
     try {
       const [borrowList, lendList] = await Promise.all([
-        api.get('/api/user/completed', { role: 'borrow' }),
-        api.get('/api/user/completed', { role: 'lend' })
+        api.get('/api/users/completed', { role: 'borrow' }),
+        api.get('/api/users/completed', { role: 'lend' })
       ]);
       const allIdle = [
         ...(Array.isArray(borrowList) ? borrowList : []),
@@ -110,7 +111,7 @@ Page({
       const idleRecords = allIdle.map(item => ({
         id: item.id,
         title: item.title || '',
-        type: item.subType || 'LEND',
+        type: item.subType || POST_TYPE.LEND,
         typeText: item.subType === 'borrow' ? '借入' : '借出',
         roleText: item.subType === 'borrow' ? '借出者' : '借入者',
         peerName: item.personName || '',
@@ -125,8 +126,8 @@ Page({
     // 互助记录: helpReq + helpPro
     try {
       const [helpReqList, helpProList] = await Promise.all([
-        api.get('/api/user/completed', { role: 'helpReq' }),
-        api.get('/api/user/completed', { role: 'helpPro' })
+        api.get('/api/users/completed', { role: 'helpReq' }),
+        api.get('/api/users/completed', { role: 'helpPro' })
       ]);
       const allHelp = [
         ...(Array.isArray(helpReqList) ? helpReqList : []),

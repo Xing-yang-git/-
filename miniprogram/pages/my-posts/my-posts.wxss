@@ -19,17 +19,14 @@
 .loading-spinner {
   width: 64rpx;
   height: 64rpx;
-  border: 6rpx solid #E5E5EA;
-  border-top-color: #0071E3;
+  border: 6rpx solid var(--separator-opaque);
+  border-top-color: var(--blue);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
 .loading-text {
   font-size: 28rpx;
-  color: #8E8E93;
+  color: var(--text-tertiary);
 }
 
 .global-error {
@@ -46,7 +43,7 @@
 }
 .error-text {
   font-size: 28rpx;
-  color: #8E8E93;
+  color: var(--text-tertiary);
   text-align: center;
   line-height: 1.6;
 }
@@ -54,8 +51,8 @@
   margin-top: 16rpx;
   padding: 16rpx 48rpx;
   border-radius: 20rpx;
-  background: #0071E3;
-  color: #FFFFFF;
+  background: var(--blue);
+  color: var(--surface);
   font-size: 28rpx;
 }
 
@@ -123,7 +120,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  min-height: 0;  /* critical for flex children to properly constrain */
+  min-height: 0; /* critical for flex children to properly constrain */
 }
 
 /* ============================================================
@@ -173,8 +170,10 @@
    ============================================================ */
 .page-content {
   flex: 1;
-  min-height: 0;  /* critical for flex children to properly constrain */
-  background: var(--surface);  /* 白底铺满整个列表区，数据少时下方空白同为白色，list-end 提示区随之同色 */
+  min-height: 0; /* critical for flex children to properly constrain */
+  background: var(
+    --surface
+  ); /* 白底铺满整个列表区，数据少时下方空白同为白色，list-end 提示区随之同色 */
 }
 
 /* ============================================================
@@ -225,7 +224,8 @@
 .post-info {
   flex: 1;
   min-width: 0;
-  padding-right: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .post-title {
@@ -240,18 +240,22 @@
   line-height: 1.3;
 }
 
-.post-tags {
+.post-meta-row {
   display: flex;
-  gap: 12rpx;
-  margin-top: 6rpx;
+  align-items: center; /* tag 与 time 垂直居中线重合 */
+  margin-top: auto; /* 推至底部，与右侧操作按钮对齐 */
+  padding-bottom: 4rpx; /* 微调与按钮 bottom:20rpx 的视觉对齐 */
+}
+
+.post-type-tag {
+  display: inline-flex;
+  width: fit-content;
+  margin-right: 12rpx;
 }
 
 .post-time {
   font-size: var(--text-xs);
   color: var(--text-secondary);
-  margin-top: 4rpx;
-  padding-right: 100rpx;
-  line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -304,7 +308,7 @@
   right: var(--margin);
   font-size: 22rpx;
   padding: 4rpx 16rpx;
-  border-radius: 20rpx;
+  border-radius: 10rpx;
   background: var(--fill-tertiary);
   color: var(--text-secondary);
   border: none;
@@ -477,7 +481,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;   /* 👤 emoji 尺寸，与求助详情页头像统一 */
+  font-size: 32rpx; /* 👤 emoji 尺寸，与求助详情页头像统一 */
 }
 
 .progress-info {
@@ -545,7 +549,7 @@
   right: var(--margin);
   font-size: 22rpx;
   padding: 8rpx 24rpx;
-  border-radius: 20rpx;
+  border-radius: 10rpx;
   font-weight: 500;
   border: none;
   line-height: 1.6;
@@ -556,12 +560,12 @@
 }
 
 .progress-act-btn.return-btn {
-  background: rgba(0, 113, 227, 0.1);
+  background: var(--fill-tertiary);
   color: var(--blue);
 }
 
 .progress-act-btn.end-btn {
-  background: rgba(255, 149, 0, 0.1);
+  background: var(--fill-tertiary);
   color: var(--orange);
 }
 
@@ -598,7 +602,7 @@
   font-size: 22rpx;
   font-weight: 500;
   background: rgba(255, 149, 0, 0.12);
-  color: #FF9500;
+  color: var(--orange);
 }
 
 /* 待评价小红点（主 tab / 子 tab 上的提示） */
@@ -607,9 +611,27 @@
   width: 12rpx;
   height: 12rpx;
   border-radius: 50%;
-  background: #FF9500;
+  background: var(--orange);
   margin-left: 8rpx;
   vertical-align: super;
+}
+
+/* 审批 tab 右上角待审批数角标（红底白字，与 rate-dot 同为上标式布局） */
+.approval-badge {
+  display: inline-block;
+  min-width: 28rpx;
+  height: 28rpx;
+  line-height: 28rpx;
+  padding: 0 8rpx;
+  border-radius: 14rpx;
+  background: var(--red);
+  color: var(--surface);
+  font-size: 20rpx;
+  font-weight: 600;
+  text-align: center;
+  margin-left: 6rpx;
+  vertical-align: super;
+  box-sizing: border-box;
 }
 
 /* ============================================================
@@ -666,11 +688,6 @@
   flex-direction: column;
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   box-shadow: var(--shadow-md);
-}
-
-@keyframes slideDown {
-  from { transform: translateY(-100%); }
-  to { transform: translateY(0); }
 }
 
 .drawer-header {
@@ -800,7 +817,7 @@
 /* --- 可滚动主体（scroll-view：flex: 1 占满剩余空间，scroll-y 滚动） --- */
 .edit-sheet-body {
   flex: 1;
-  min-height: 0;
+  min-height: 0rpx;
   padding: 0 var(--margin);
 }
 
@@ -809,6 +826,11 @@
   flex-shrink: 0;
   padding: 8rpx var(--margin) 16rpx;
   background: var(--surface);
+}
+
+.edit-sheet-footer-row {
+  display: flex;
+  gap: 16rpx;
 }
 
 /* --- 编辑弹层表单字段（与 publish-idle 对齐） --- */
@@ -832,18 +854,21 @@
   border: none;
   border-radius: var(--radius-sm);
   font-size: var(--text-base);
+  color: var(--text);
   background: var(--fill-tertiary);
   box-sizing: border-box;
 }
 
 .edit-textarea {
   width: 100%;
-  min-height: 200rpx;
+  min-height: 160rpx;
+  height: 160rpx;
   padding: 20rpx 24rpx;
   border: none;
   border-radius: var(--radius-sm);
   font-size: var(--text-base);
   background: var(--fill-tertiary);
+  color: var(--text);
   box-sizing: border-box;
 }
 
@@ -876,7 +901,7 @@
 
 .edit-sheet .pill.selected {
   background: var(--blue);
-  color: #FFFFFF;
+  color: var(--surface);
 }
 
 .edit-sheet .pill-icon {
@@ -919,7 +944,7 @@
   font-size: var(--text-base);
   font-weight: 500;
   background: var(--blue);
-  color: #FFFFFF;
+  color: var(--surface);
   border: none;
   letter-spacing: -0.01em;
 }
@@ -1097,6 +1122,22 @@
   line-height: 1.4;
 }
 
+/* 可借出时长（审批弹层物品下方） */
+.approval-duration-row {
+  display: flex;
+  align-items: center;
+  margin-top: 12rpx;
+}
+.approval-duration-label {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.approval-duration-value {
+  font-size: var(--text-xs);
+  color: var(--text);
+  font-weight: 500;
+}
+
 .approval-note-text {
   font-size: var(--text-sm);
   color: var(--text-secondary);
@@ -1123,6 +1164,10 @@
 .approval-resident-addr {
   font-size: var(--text-sm);
   color: var(--text);
+}
+
+.approval-resident-addr-link {
+  color: var(--blue);
 }
 
 .approval-rating-inline {
@@ -1268,7 +1313,7 @@
   font-size: var(--text-base);
   font-weight: 500;
   background: var(--blue);
-  color: #FFFFFF;
+  color: var(--surface);
   border: none;
   letter-spacing: -0.01em;
 }
@@ -1383,6 +1428,7 @@
 .progress-feedback-input {
   width: 100%;
   min-height: 160rpx;
+  height: 160rpx;
   padding: 20rpx 24rpx;
   border: none;
   border-radius: var(--radius);
@@ -1408,7 +1454,7 @@
   font-size: var(--text-base);
   font-weight: 500;
   background: var(--blue);
-  color: #FFFFFF;
+  color: var(--surface);
   border: none;
   letter-spacing: -0.01em;
 }
@@ -1552,3 +1598,90 @@
   line-height: 1.6;
 }
 
+/* ============================================================
+   时间选择器行（HELP 编辑专用，参考 publish-idle 样式）
+   ============================================================ */
+.time-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 16rpx;
+}
+
+.time-row:last-child {
+  margin-bottom: 0;
+}
+
+.time-label {
+  width: 120rpx;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.time-picker {
+  flex: 1;
+  height: 72rpx;
+  padding: 0 20rpx;
+  border-radius: var(--radius-sm);
+  background: var(--fill-tertiary);
+  display: flex;
+  align-items: center;
+}
+
+.time-value {
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+/* ============================================================
+   拒绝理由开关区域
+   ============================================================ */
+.alert-reject-section {
+  /* margin-top: 4px; */
+}
+
+.label-with-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+  padding: 0 24rpx 0 32rpx;
+}
+
+.reject-switch-label {
+  font-size: 26rpx;
+  color: var(--text-secondary);
+  padding-right: 16rpx;
+}
+
+/* 微信小程序 switch 组件无法直接设置宽高，用 transform 缩小 */
+.label-with-switch switch {
+  transform: scale(0.72);
+  transform-origin: right center;
+  flex-shrink: 0;
+}
+
+.alert-reason-input {
+  width: calc(100% - 32rpx);
+  margin: 16rpx;
+  min-height: 120rpx;
+  padding: 20rpx 24rpx;
+  border: none;
+  border-radius: 16rpx;
+  font-size: 26rpx;
+  background: var(--fill-tertiary);
+  color: var(--text);
+  box-sizing: border-box;
+}
+
+/* 使用后物品状况温馨提示（进行中→借出→确认归还） */
+.condition-warn-tip {
+  margin-top: 20rpx;
+  padding: 20rpx 24rpx;
+  background: rgba(255, 149, 0, 0.06);
+  border-radius: var(--radius-sm);
+  font-size: 24rpx;
+  color: var(--orange);
+  line-height: 1.6;
+}

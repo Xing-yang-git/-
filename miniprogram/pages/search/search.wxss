@@ -9,10 +9,10 @@
 .search-header {
   display: flex;
   align-items: center;
-  padding: 4px var(--margin);
+  padding: 8rpx var(--margin);
   background: var(--surface);
-  gap: 8px;
-  height: 44px;
+  gap: 16rpx;
+  height: 88rpx;
 }
 
 /* 确保搜索容器填充可用空间（原型使用内联 flex:1） */
@@ -20,17 +20,46 @@
   flex: 1;
 }
 
-.search-input {
-  flex: 1;
-  font-size: var(--text-base);
+/* 搜索输入容器 — 对齐原型 .search-input-wrap：圆角背景 + 内部 flex 水平排列 */
+.search-input-wrap {
+  display: flex;
+  align-items: center;
+  background: var(--fill-tertiary);
+  border-radius: 20rpx;
+  padding: 0 16rpx;
+  height: 72rpx;
 }
 
-.search-clear {
+/* 搜索图标 — 对齐原型 .search-input-wrap .search-icon */
+.search-icon {
   width: 36rpx;
   height: 36rpx;
-  padding: 24rpx 20rpx 24rpx 24rpx;
-  margin: -24rpx -20rpx -24rpx 0;
+  margin-right: 12rpx;
   flex-shrink: 0;
+  opacity: 0.4;
+}
+
+.search-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: var(--text-base);
+  height: 100%;
+}
+
+/* 清除按钮容器 — 加大点击热区，事件绑定在 view 上确保可靠触发 */
+.search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16rpx;
+  flex-shrink: 0;
+}
+
+/* 清除图标 — 深灰色 X */
+.search-clear-icon {
+  width: 44rpx;
+  height: 44rpx;
 }
 
 .search-body {
@@ -47,7 +76,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 16rpx;
 }
 
 .section-title {
@@ -70,19 +99,19 @@
 .filter-tabs {
   display: flex;
   background: var(--bg);
-  border-radius: 8px;
-  padding: 2px;
-  margin: 8px var(--margin);
+  border-radius: 16rpx;
+  padding: 4rpx;
+  margin: 16rpx var(--margin);
 }
 
 .filter-tab {
   flex: 1;
   text-align: center;
-  padding: 6px 0;
+  padding: 12rpx 0;
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--text-secondary);
-  border-radius: 7px;
+  border-radius: 14rpx;
   transition: all var(--motion-fast) var(--ease);
 }
 
@@ -94,8 +123,8 @@
 
 /* 结果数量 */
 .result-count {
-  padding: 8px var(--margin);
-  font-size: 13px;
+  padding: 16rpx var(--margin);
+  font-size: 26rpx;
   color: var(--text-secondary);
 }
 
@@ -107,9 +136,9 @@
 /* 结果卡片 — 对齐原型 .card-h-ios 组件 */
 .list-card {
   display: flex;
-  padding: 12px var(--margin);
+  padding: 24rpx var(--margin);
   background: var(--surface);
-  gap: 12px;
+  gap: 24rpx;
   align-items: center;
 }
 
@@ -141,19 +170,24 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 4px;
+  gap: 8rpx;
 }
 
-/* 标题 — 对齐原型 .card-h-title：17px，weight 500 */
+/* 标题 — 匹配原型搜索结果样式：不加粗，14px */
 .card-title {
-  font-size: var(--text-base);
-  font-weight: 500;
+  font-size: 28rpx;
+  font-weight: 400;
   color: var(--text);
   line-height: 1.3;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
+}
+
+/* 关键字高亮色 */
+.card-title .highlight {
+  color: var(--blue);
 }
 
 /* 元信息 — 对齐原型 .card-h-meta：13px */
@@ -172,7 +206,7 @@
 }
 
 .empty-history .empty-text {
-  font-size: 15px;
+  font-size: 30rpx;
   color: var(--text-secondary);
 }
 

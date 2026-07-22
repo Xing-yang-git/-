@@ -5,57 +5,100 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: var(--bg, #f2f2f7);
+  background: var(--bg, var(--fill-tertiary));
+}
+
+/* ===== 自定义导航栏 ===== */
+.chat-nav {
+  background: rgba(255, 255, 255, 0.94);
+  flex-shrink: 0;
+  z-index: 100;
+}
+
+.chat-nav-inner {
+  display: flex;
+  align-items: center;
+  height: 88rpx; /* 44px → 88rpx */
+  padding: 0 32rpx; /* 16px → 32rpx */
+  position: relative;
+}
+
+/* 返回按钮 — 绝对定位左侧，与原型 .nav-back 一致 */
+.chat-nav-back {
+  position: absolute;
+  left: 26rpx; /* 13px → 26rpx */
+  display: flex;
+  align-items: center;
+  padding: 16rpx 16rpx 16rpx 0;
+  min-height: 88rpx; /* 44px → 88rpx */
+  z-index: 1;
+}
+
+.chat-nav-back-icon {
+  font-size: 56rpx; /* 28px → 56rpx */
+  line-height: 1;
+  font-weight: 400;
+  color: var(--text-secondary, var(--text-tertiary));
+}
+
+/* 标题 — 紧跟返回按钮后方，左对齐 */
+.chat-nav-title {
+  font-size: 34rpx; /* 17px → 34rpx */
+  font-weight: 600;
+  color: var(--text, var(--text));
+  letter-spacing: -0.01em;
+  margin-left: 56rpx; /* 返回按钮宽度 + 间距，使标题紧靠返回按钮右侧 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 70%;
 }
 
 .chat-area {
   flex: 1;
-  padding: 32rpx;           /* 16px → 32rpx */
+  padding: 32rpx; /* 16px → 32rpx */
   overflow-y: auto;
 }
 
 /* 时间分割线 — 原型：无胶囊底色，居中纯文字 */
 .chat-time-divider {
   text-align: center;
-  font-size: 24rpx;         /* 12px → 24rpx */
-  color: #86868b;
-  padding: 16rpx 0;         /* 8px → 16rpx */
+  font-size: 24rpx; /* 12px → 24rpx */
+  color: var(--text-tertiary);
+  padding: 16rpx 0; /* 8px → 16rpx */
 }
 
 /* ----- 气泡基础 ----- */
 .chat-bubble {
   max-width: 75%;
-  padding: 20rpx 28rpx;     /* 10px 14px → 20rpx 28rpx */
-  border-radius: 36rpx;     /* 18px → 36rpx */
-  font-size: 34rpx;         /* 17px → 34rpx */
+  padding: 20rpx 28rpx; /* 10px 14px → 20rpx 28rpx */
+  border-radius: 18rpx;
+  font-size: 34rpx; /* 17px → 34rpx */
   line-height: 1.4;
   word-break: break-all;
-  margin-bottom: 24rpx;     /* 12px → 24rpx */
 }
 
-/* 左气泡（对方） — 灰底无边框 */
+/* 左气泡（对方） — 灰底 */
 .chat-bubble-left {
   background: rgba(120, 120, 128, 0.12);
-  color: var(--text, #1d1d1f);
-  border-bottom-left-radius: 8rpx;   /* 4px → 8rpx */
+  color: var(--text, var(--text));
 }
 
 /* 右气泡（我方） — 蓝底白字 */
 .chat-bubble-right {
   margin-left: auto;
-  background: var(--blue, #0071e3);
-  color: #FFFFFF;
-  border-bottom-right-radius: 8rpx;  /* 4px → 8rpx */
+  background: var(--blue, var(--blue));
+  color: var(--surface);
 }
 
 /* 系统消息 — 居中灰胶囊 + 图标 */
 .chat-bubble-system {
   text-align: center;
-  font-size: 24rpx;                    /* 12px → 24rpx */
-  color: #6e6e73;
+  font-size: 24rpx; /* 12px → 24rpx */
+  color: var(--text-secondary);
   background: rgba(120, 120, 128, 0.08);
-  padding: 12rpx 24rpx;               /* 6px 12px → 12rpx 24rpx */
-  border-radius: 24rpx;               /* 12px → 24rpx */
+  padding: 12rpx 24rpx; /* 6px 12px → 12rpx 24rpx */
+  border-radius: 24rpx; /* 12px → 24rpx */
   margin-bottom: 24rpx;
   display: inline-block;
   align-self: center;
@@ -63,58 +106,350 @@
 }
 
 .system-icon {
-  font-size: 32rpx;                   /* 16px → 32rpx */
+  font-size: 32rpx; /* 16px → 32rpx */
   margin-right: 8rpx;
 }
 
-/* ----- 输入栏（全宽，纸飞机发送图标内置右侧） ----- */
+/* ----- 输入栏（fixed 定位，bottom 跟随键盘即时上移） ----- */
 .chat-input-bar {
-  padding: 16rpx 32rpx;               /* 8px 16px → 16rpx 32rpx */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 16rpx 32rpx;
   padding-bottom: calc(16rpx + env(safe-area-inset-bottom));
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-top: 0.5px solid #d2d2d7;
-  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.94);
+  border-top: 0.5px solid var(--separator);
+  z-index: 10;
+  /* 快速过渡动画：键盘弹起/收起时输入栏平滑跟随 */
+  transition: bottom 0.15s ease-out;
 }
 
-/* 输入框外套 — 占满宽度，发送图标悬浮在内部右侧 */
-.chat-input-wrapper {
-  position: relative;
+/* 输入行 — mic + 输入区 + plus + send */
+.chat-input-row {
+  display: flex;
+  align-items: center;
   width: 100%;
+}
+
+/* 输入框外套 — 文字模式下 textarea + send 的容器 */
+.chat-input-wrapper {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  background: rgba(120, 120, 128, 0.12);
+  border-radius: 26rpx;
+  padding: 0 8rpx 0 24rpx;
+  min-height: 72rpx;
+  margin: 0 8rpx;
 }
 
 .chat-input {
-  width: 100%;
-  height: 72rpx;                      /* 36px → 72rpx */
-  padding: 0 80rpx 0 24rpx;           /* 右侧留空给发送图标 */
-  background: rgba(120, 120, 128, 0.12);
-  border-radius: 36rpx;               /* 18px → 36rpx */
+  flex: 1;
+  height: 100%;                    /* 与 wrapper 等高，填满输入区 */
+  border: none;
+  background: transparent !important;
   font-size: 34rpx;                   /* 17px → 34rpx */
-  color: var(--text, #1d1d1f);
+  color: var(--text, var(--text));
+  line-height: 1.2;
+  padding-top: 12rpx;                  /* (72 - 34×1.4) / 2 ≈ 12rpx，垂直居中文字 */
+  padding-bottom: 12rpx;
   box-sizing: border-box;
 }
 
-/* 发送图标 — 悬浮在输入框内部右侧，无背景纸飞机 */
+/* 发送图标 — flex 子项，padding 扩大点击热区（参照搜索页 .search-clear） */
 .chat-send-icon {
-  position: absolute;
-  right: 6rpx;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 64rpx;
-  height: 64rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
+  padding: 16rpx;
+  flex-shrink: 0;
 }
 
 .chat-send-icon:active {
-  transform: translateY(-50%) scale(0.85);
+  transform: scale(0.85);
   opacity: 0.6;
 }
 
 .send-icon-plane {
-  width: 48rpx;
-  height: 48rpx;
+  width: 40rpx;
+  height: 40rpx;
+}
+
+/* ----- 加载提示 ----- */
+.chat-loading-tip {
+  text-align: center;
+  font-size: 24rpx;
+  color: var(--text-tertiary);
+  padding: 16rpx 0;
+}
+
+/* ----- 消息行（我方） — 包含状态文字 + 气泡 ----- */
+.chat-msg-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  margin-bottom: 24rpx;
+}
+
+/* 左气泡行 — 独立类名避免与 .chat-msg-row 的 justify-content:flex-end 冲突 */
+.chat-msg-row-left {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  margin-bottom: 24rpx;
+}
+
+/* ----- 发送状态文字 ----- */
+.chat-status-text {
+  font-size: 22rpx;
+  color: var(--text-tertiary);
+  margin-right: 8rpx;
+  flex-shrink: 0;
+}
+
+/* ----- 重发按钮 ----- */
+.chat-retry-btn {
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 50%;
+  background: var(--red, var(--red));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 8rpx;
+  flex-shrink: 0;
+}
+
+.retry-icon {
+  color: var(--surface);
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+/* ===== 输入栏按钮（mic / plus / keyboard） ===== */
+.chat-mic-btn, .chat-plus-btn, .chat-keyboard-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16rpx;
+  flex-shrink: 0;
+}
+.chat-mic-btn image, .chat-plus-btn image, .chat-keyboard-toggle image {
+  width: 44rpx;
+  height: 44rpx;
+}
+.chat-mic-btn:active, .chat-plus-btn:active, .chat-keyboard-toggle:active {
+  opacity: 0.6;
+}
+
+/* 按住说话按钮 */
+.chat-hold-to-talk {
+  flex: 1;
+  height: 72rpx;
+  border-radius: 26rpx;
+  background: rgba(120, 120, 128, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30rpx;
+  color: var(--text, var(--text));
+  margin: 0 8rpx;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.chat-hold-to-talk:active {
+  background: rgba(120, 120, 128, 0.24);
+}
+
+/* ===== 录音浮层 — 居中白底圆 + 多层果冻流体波纹 ===== */
+.record-overlay {
+  position: fixed;
+  left: 0; top: 0; right: 0; bottom: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.record-mask {
+  position: absolute;
+  left: 0; top: 0; right: 0; bottom: 0;
+  background: rgba(242, 242, 247, 0.92);
+}
+
+/* blob 容器 — 绝对居中，与中心圆同心 */
+.record-blobs {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 320rpx;
+  height: 320rpx;
+  margin-left: -160rpx;
+  margin-top: -160rpx;
+}
+
+/* 单个果冻 blob — 填充圆，偏位 + 独立缩放 → 合成不对称有机轮廓 */
+.r-blob {
+  position: absolute;
+  width: 220rpx;
+  height: 220rpx;
+  border-radius: 50%;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+              opacity 0.3s ease-out;
+  will-change: transform, opacity;
+  /* 柔和外发光光晕 */
+  filter: blur(8rpx);
+  -webkit-filter: blur(8rpx);
+}
+
+/* 中心白底圆 */
+.record-circle {
+  position: relative;
+  z-index: 2;
+  width: 240rpx;
+  height: 240rpx;
+  border-radius: 50%;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4rpx 32rpx rgba(0, 0, 0, 0.06),
+              0 0 80rpx rgba(52, 199, 89, 0.08);
+  transition: box-shadow 0.3s, transform 0.25s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.record-circle.record-cancelling {
+  box-shadow: 0 4rpx 32rpx rgba(0, 0, 0, 0.06),
+              0 0 80rpx rgba(255, 59, 48, 0.15);
+}
+
+/* 麦克风图标 */
+.record-mic-icon {
+  width: 80rpx;
+  height: 80rpx;
+  opacity: 0.7;
+}
+
+/* 底部文字区 */
+.record-label {
+  position: relative;
+  z-index: 2;
+  margin-top: 56rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.record-time {
+  font-size: 32rpx;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  margin-bottom: 8rpx;
+}
+.record-hint {
+  font-size: 24rpx;
+  color: var(--text-quaternary-solid);
+}
+
+/* ===== 语音气泡 ===== */
+.chat-bubble-voice {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  min-width: 150rpx;
+  max-width: 60%;
+  cursor: pointer;
+}
+
+.voice-unread-dot {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  background: var(--red);
+  flex-shrink: 0;
+  margin-left: 10rpx;                  /* 5px 间距，红点在气泡右侧外部 */
+  align-self: center;                   /* 垂直居中于气泡侧边 */
+}
+
+.voice-play-icon {
+  width: 36rpx;
+  height: 36rpx;
+  flex-shrink: 0;
+}
+
+.voice-waveform {
+  display: flex;
+  align-items: flex-end;
+  gap: 3rpx;
+  height: 28rpx;
+  flex: 1;
+  min-width: 36rpx;
+}
+.voice-waveform .v-wave-bar {
+  width: 4rpx;
+  border-radius: 2rpx;
+  flex-shrink: 0;
+}
+.chat-bubble-left .voice-waveform .v-wave-bar { background: var(--text); }
+.chat-bubble-right .voice-waveform .v-wave-bar { background: var(--surface); }
+.voice-waveform .v-wave-bar:nth-child(1) { height: 14rpx; }
+.voice-waveform .v-wave-bar:nth-child(2) { height: 24rpx; }
+.voice-waveform .v-wave-bar:nth-child(3) { height: 16rpx; }
+
+.voice-bar-anim {
+  animation: voicePlayBar 0.5s ease-in-out infinite alternate;
+}
+.voice-duration {
+  font-size: 26rpx;
+  flex-shrink: 0;
+}
+
+/* ===== 图片气泡 ===== */
+.chat-bubble-image {
+  padding: 6rpx;
+  overflow: hidden;
+  max-width: 65%;
+  background: transparent !important;
+}
+
+.msg-image-thumb {
+  max-width: 360rpx;
+  max-height: 360rpx;
+  min-width: 80rpx;
+  min-height: 80rpx;
+  border-radius: 14rpx;
+  display: block;
+}
+
+/* ===== 悬浮操作菜单 ===== */
+.msg-menu-overlay {
+  position: fixed;
+  left: 0; top: 0; right: 0; bottom: 0;
+  z-index: 200;
+  background: transparent;
+}
+.msg-menu-popup {
+  position: absolute;
+  background: var(--surface);
+  border-radius: 16rpx;
+  box-shadow: 0 4rpx 24rpx rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+}
+.msg-menu-item {
+  padding: 18rpx 28rpx;
+  font-size: 26rpx;
+  color: var(--text, var(--text));
+  text-align: center;
+  white-space: nowrap;
+  position: relative;
+}
+.msg-menu-item:active {
+  background: rgba(120, 120, 128, 0.12);
+}
+.msg-menu-item + .msg-menu-item {
+  border-left: 0.5px solid rgba(120, 120, 128, 0.15);
 }

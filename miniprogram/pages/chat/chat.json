@@ -1,4 +1,5 @@
 {
+  "navigationStyle": "custom",
   "navigationBarTitleText": "聊天",
   "navigationBarBackgroundColor": "#F2F2F7",
   "navigationBarTextStyle": "black"

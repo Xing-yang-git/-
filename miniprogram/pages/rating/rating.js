@@ -42,7 +42,7 @@ Page({
     }
     wx.showLoading({ title: '提交中' });
     try {
-      await api.post('/api/rating', {
+      await api.post('/api/ratings', {
         targetId: this.data.borrowId,
         ratingType: this.data.ratingType,
         overallScore: this.data.overallScore

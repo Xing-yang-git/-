@@ -4,8 +4,8 @@
   transition: color var(--motion-fast) var(--ease), transform var(--motion-fast) var(--ease);
 }
 
-.star-md { font-size: 32px; }
-.star-lg { font-size: 40px; }
+.star-md { font-size: 64rpx; }
+.star-lg { font-size: 80rpx; }
 .star:active { transform: scale(1.2); }
 .star.active { color: var(--orange); }
 .star.readonly { pointer-events: none; }

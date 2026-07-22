@@ -1,5 +1,6 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
+const { POST_TYPE } = require('../../utils/constants');
 
 Page({
   data: {
@@ -29,7 +30,7 @@ Page({
 
   loadItem(id) {
     wx.showLoading({ title: '加载中...' });
-    api.get(`/api/help/${id}`)
+    api.get(`/api/help-requests/${id}`)
       .then((data) => {
         wx.hideLoading();
         const item = this.formatItem(data);
@@ -68,7 +69,11 @@ Page({
       images: imageList,
       timeAgo: this.formatTime(item.createdAt),
       // 评分格式对齐 idle-detail：始终一位小数（如 5.0）
-      ratingText: item.rating != null ? item.rating.toFixed(1) : null
+      ratingText: item.rating != null ? item.rating.toFixed(1) : null,
+      // 预计时间范围显示文本
+      timeRangeText: item.timeStart && item.timeEnd
+        ? this.formatDateTime(item.timeStart) + ' ~ ' + this.formatDateTime(item.timeEnd)
+        : ''
     };
   },
 
@@ -86,6 +91,18 @@ Page({
     if (hours < 24) return hours + '小时前';
     if (days < 7) return days + '天前';
     return '7天前';
+  },
+
+  // 将 ISO 日期时间字符串格式化为 "M/d HH:mm" 展示格式
+  formatDateTime(dt) {
+    if (!dt) return '';
+    const d = new Date(dt);
+    if (isNaN(d.getTime())) return '';
+    const M = d.getMonth() + 1;
+    const DD = d.getDate();
+    const h = d.getHours().toString().padStart(2, '0');
+    const mi = d.getMinutes().toString().padStart(2, '0');
+    return M + '/' + DD + ' ' + h + ':' + mi;
   },
 
   formatReward(type) {
@@ -112,19 +129,33 @@ Page({
       return;
     }
 
-    // 直接跳转聊天页（聊天记录仅存本地，无需服务端创建会话）
+    // 直接跳转聊天页（会话 ID 按用户对生成，同一对用户始终共享同一会话）
     const otherUserId = item.userId;
     const ids = [userId, otherUserId].sort();
-    const localSessionId = 'HELP_' + item.id + '_' + ids[0] + '_' + ids[1];
+    const localSessionId = 'USER_' + ids[0] + '_' + ids[1];
     const name = encodeURIComponent(item.userRoom || item.userName || '用户');
     const about = encodeURIComponent(item.title || '');
     const room = encodeURIComponent(item.userRoom || '');
     wx.navigateTo({
-      url: `/pages/chat/chat?sessionId=${localSessionId}&name=${name}&about=${about}&room=${room}&aboutId=${item.id}&aboutType=HELP&otherUserId=${otherUserId}`
+      url: `/pages/chat/chat?sessionId=${localSessionId}&name=${name}&about=${about}&room=${room}&aboutId=${item.id}&aboutType=${POST_TYPE.HELP}&otherUserId=${otherUserId}`
     });
   },
 
   onHelpTap() {
+    const { item } = this.data;
+    const userId = auth.getUserId() || (wx.getStorageSync('userInfo') || {}).id || '';
+
+    // 自己发布的求助不可操作
+    if (userId && item.userId && String(userId) === String(item.userId)) {
+      wx.showModal({
+        title: '提示',
+        content: '这是您自己发布的求助，无法进行交互',
+        showCancel: false,
+        confirmText: '知道了'
+      });
+      return;
+    }
+
     this.setData({ showSheet: true, helpNote: '' });
   },
 
@@ -143,7 +174,7 @@ Page({
     this.setData({ submittingHelp: true });
     wx.showLoading({ title: '提交中...' });
 
-    api.post(`/api/help/${item.id}/apply`, { note: helpNote })
+    api.post(`/api/help-requests/${item.id}/apply`, { note: helpNote })
       .then(() => {
         wx.hideLoading();
         // 申请成功：关闭弹层、禁用「我来帮忙」按钮，不自动跳转聊天（需联系可点“联系他”）

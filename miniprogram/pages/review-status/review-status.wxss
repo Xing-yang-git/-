@@ -161,7 +161,7 @@ page {
 
 .btn-full {
   width: 100%;
-  margin-top: 50px;
+  margin-top: 100rpx;
 }
 
 .btn-secondary {

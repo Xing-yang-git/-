@@ -1,5 +1,6 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
+const { POST_TYPE } = require('../../utils/constants');
 
 Page({
   data: {
@@ -10,7 +11,8 @@ Page({
     currentFilter: 'all',
     idleResults: [],
     helpResults: [],
-    filteredResults: []
+    filteredResults: [],
+    searchKeyword: ''
   },
 
   onLoad() {
@@ -31,20 +33,39 @@ Page({
     if (!keyword.trim()) return;
     let history = this.data.history.filter(h => h !== keyword);
     history.unshift(keyword);
-    if (history.length > 20) history = history.slice(0, 20);
+    if (history.length > 5) history = history.slice(0, 5);
     wx.setStorageSync('searchHistory', history);
     this.setData({ history });
   },
 
   onKeywordInput(e) {
-    const keyword = e.detail.value;
+    const raw = e.detail.value;
+    // 去除首尾空格，合并连续空格
+    const keyword = raw.trim().replace(/\s+/g, ' ');
     this.setData({ keyword });
-    if (!keyword.trim()) {
+
+    // 清空计时器，避免无效搜索请求堆积
+    if (this._searchTimer) { clearTimeout(this._searchTimer); this._searchTimer = null; }
+
+    // 输入为空时清除搜索结果
+    if (!keyword) {
       this.setData({ searching: false, filteredResults: [] });
+      return;
     }
+
+    // 纯无意义字符（仅有标点/特殊符号，不含中文英文数字）不触发搜索
+    if (!/[a-zA-Z0-9一-龥]/.test(keyword)) {
+      return;
+    }
+
+    // 300ms 防抖后实时搜索
+    this._searchTimer = setTimeout(() => {
+      this.onSearch();
+    }, 300);
   },
 
   onClearKeyword() {
+    if (this._searchTimer) { clearTimeout(this._searchTimer); this._searchTimer = null; }
     this.setData({ keyword: '', searching: false, filteredResults: [] });
   },
 
@@ -53,7 +74,7 @@ Page({
     if (!keyword) return;
 
     this.saveHistory(keyword);
-    this.setData({ searching: true });
+    this.setData({ searching: true, searchKeyword: keyword });
 
     wx.showLoading({ title: '搜索中...' });
 
@@ -61,9 +82,9 @@ Page({
     const bgColorsHelp = ['#FFEDED', '#FFF3E0', '#E3F2FD', '#F3E5F5'];
 
     Promise.all([
-      api.get('/api/idle/search', { keyword, postType: 'LEND', page: 0, size: 20 }).catch(() => ({ content: [] })),
-      api.get('/api/idle/search', { keyword, postType: 'WANTED', page: 0, size: 20 }).catch(() => ({ content: [] })),
-      api.get('/api/help/search', { keyword, page: 0, size: 20 }).catch(() => ({ content: [] }))
+      api.get('/api/idle-items/search', { keyword, postType: POST_TYPE.LEND, page: 0, size: 20 }).catch(() => ({ content: [] })),
+      api.get('/api/idle-items/search', { keyword, postType: POST_TYPE.WANTED, page: 0, size: 20 }).catch(() => ({ content: [] })),
+      api.get('/api/help-requests/search', { keyword, page: 0, size: 20 }).catch(() => ({ content: [] }))
     ]).then(([lendData, wantedData, helpData]) => {
       wx.hideLoading();
 
@@ -71,14 +92,16 @@ Page({
         ...item,
         type: 'idle',
         bgColor: bgColorsIdle[i % bgColorsIdle.length],
-        subtitle: `闲置借出 · ${item.userRoom || ''}`
+        subtitle: `闲置借出 · ${item.userRoom || ''}`,
+        titleSegments: this.highlightKeyword(item.title, keyword)
       }));
 
       const wantedList = (wantedData.content || wantedData.list || wantedData.records || []).map((item, i) => ({
         ...item,
         type: 'idle',
         bgColor: bgColorsIdle[(i + lendList.length) % bgColorsIdle.length],
-        subtitle: `需求借入 · ${item.userRoom || ''}`
+        subtitle: `需求借入 · ${item.userRoom || ''}`,
+        titleSegments: this.highlightKeyword(item.title, keyword)
       }));
 
       const idleList = [...lendList, ...wantedList];
@@ -87,7 +110,8 @@ Page({
         ...item,
         type: 'help',
         bgColor: bgColorsHelp[i % bgColorsHelp.length],
-        subtitle: `求助 · ${item.userRoom || ''}${item.isUrgent ? ' · 紧急' : ''}`
+        subtitle: `求助 · ${item.userRoom || ''}${item.isUrgent ? ' · 紧急' : ''}`,
+        titleSegments: this.highlightKeyword(item.title, keyword)
       }));
 
       this.setData({
@@ -126,6 +150,23 @@ Page({
     this.setData({ filteredResults: filtered });
   },
 
+  /**
+   * 将标题中的关键字拆分为高亮/非高亮片段数组
+   * @param {string} title 原始标题
+   * @param {string} keyword 搜索关键字
+   * @returns {Array<{text: string, highlight: boolean}>}
+   */
+  highlightKeyword(title, keyword) {
+    if (!title || !keyword) return [{ text: title || '', highlight: false }];
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${escaped})`, 'gi');
+    const parts = title.split(regex);
+    return parts.filter(Boolean).map(part => ({
+      text: part,
+      highlight: part.toLowerCase() === keyword.toLowerCase()
+    }));
+  },
+
   onResultTap(e) {
     const item = e.currentTarget.dataset.item;
     if (item.type === 'help') {
@@ -143,5 +184,13 @@ Page({
 
   onCancel() {
     wx.navigateBack();
+  },
+
+  /** 页面卸载时清除防抖定时器，防止无效请求 */
+  onUnload() {
+    if (this._searchTimer) {
+      clearTimeout(this._searchTimer);
+      this._searchTimer = null;
+    }
   }
 });

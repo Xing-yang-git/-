@@ -1,4 +1,5 @@
 const api = require('../../utils/api');
+const { STATUS } = require('../../utils/constants');
 
 Page({
   data: {
@@ -20,7 +21,7 @@ Page({
     showPasswordConfirm: false,
     realName: '',
     docImages: [],
-    docLabel: '上传房产证',
+    docLabel: '上传认证资料',
     docHint: '请上传清晰完整的房产证照片（支持拍照或相册选取）'
   },
 
@@ -87,7 +88,7 @@ Page({
 
   onSetType(e) {
     const type = e.currentTarget.dataset.type;
-    const docLabel = type === 'owner' ? '上传房产证' : '上传租赁合同';
+    const docLabel = type === 'owner' ? '上传认证资料' : '上传租赁合同';
     const docHint = type === 'owner'
       ? '请上传清晰完整的房产证照片（支持拍照或相册选取）'
       : '请上传清晰完整的租赁合同照片，需包含租期起止日期';
@@ -265,7 +266,7 @@ Page({
           }
           wx.showToast({ title: '提交成功，请等待物业审核', icon: 'success' });
           setTimeout(() => {
-            wx.redirectTo({ url: '/pages/review-status/review-status?state=pending' });
+            wx.redirectTo({ url: '/pages/review-status/review-status?state=' + STATUS.PENDING });
           }, 1200);
         })
         .catch((err) => {

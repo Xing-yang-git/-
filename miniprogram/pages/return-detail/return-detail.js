@@ -30,7 +30,7 @@ Page({
 
   async loadBorrowInfo(id) {
     try {
-      const data = await api.get('/api/borrow/' + id);
+      const data = await api.get('/api/borrow-requests/' + id);
       this.setData({
         itemImage: data.itemImage || '',
         itemTitle: data.idleTitle || '',
@@ -97,7 +97,7 @@ Page({
         const imageUrls = await Promise.all(uploadTasks);
         returnPhotos = JSON.stringify(imageUrls);
       }
-      await api.put('/api/borrow/' + this.data.borrowId + '/return', {
+      await api.put('/api/borrow-requests/' + this.data.borrowId + '/return', {
         isOnTime: this.data.isOnTime,
         returnStatus: this.data.returnStatus,
         damageType: this.data.damageType,

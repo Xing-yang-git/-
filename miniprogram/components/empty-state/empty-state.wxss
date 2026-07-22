@@ -7,4 +7,4 @@
   color: var(--text-secondary);
 }
 
-.empty-action { margin-top: 20px; }
+.empty-action { margin-top: 40rpx; }

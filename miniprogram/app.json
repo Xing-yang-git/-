@@ -10,6 +10,7 @@
     "pages/publish-idle/publish-idle",
     "pages/chat/chat",
     "pages/messages/messages",
+    "pages/service-notice/service-notice",
     "pages/return-detail/return-detail",
     "pages/rating/rating",
     "pages/my-posts/my-posts",

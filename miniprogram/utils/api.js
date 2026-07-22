@@ -7,6 +7,8 @@
  * 或在预览二维码生成时勾选「不校验合法域名」选项。
  */
 
+const { STATUS } = require('./constants');
+
 // —— 防抖：避免并发 401 触发多次 wx.reLaunch ——
 let _reauthPending = false;
 let _reauthTimer = null;
@@ -95,7 +97,7 @@ const request = (method, url, data) => {
           // 未审核账号被服务端拒绝：body 为 { code: 403, message: '账号未通过审核', data: '<authStatus>' }
           const resBody = res.data || {};
           if (resBody.message === '账号未通过审核') {
-            forceReviewStatus(typeof resBody.data === 'string' ? resBody.data : 'pending');
+            forceReviewStatus(typeof resBody.data === 'string' ? resBody.data : STATUS.PENDING);
             reject(new Error('账号未通过审核'));
           } else {
             reject(new Error(resBody.message || '无权限访问'));
@@ -144,6 +146,11 @@ const upload = (url, filePath) => {
         if (res.statusCode === 200) {
           try {
             const data = JSON.parse(res.data);
+            // HTTP 200 但业务码非 200（Result.code）也视为失败，透出后端文案
+            if (data.code && data.code !== 200) {
+              reject(new Error(data.message || '上传失败'));
+              return;
+            }
             resolve(data.data !== undefined ? data.data.url : data.url);
           } catch (e) {
             reject(new Error('上传响应解析失败'));
@@ -156,13 +163,16 @@ const upload = (url, filePath) => {
           let body = {};
           try { body = JSON.parse(res.data) || {}; } catch (e) { /* 解析失败则按普通 403 处理 */ }
           if (body.message === '账号未通过审核') {
-            forceReviewStatus(typeof body.data === 'string' ? body.data : 'pending');
+            forceReviewStatus(typeof body.data === 'string' ? body.data : STATUS.PENDING);
             reject(new Error('账号未通过审核'));
           } else {
             reject(new Error(body.message || '无权限访问'));
           }
         } else {
-          reject(new Error('上传失败'));
+          // 4xx/5xx：后端业务报错（如图片类型不支持）以 Result JSON 返回，取出 message 给用户看
+          let body = {};
+          try { body = JSON.parse(res.data) || {}; } catch (e) { /* 非 JSON 响应按通用失败处理 */ }
+          reject(new Error(body.message || '上传失败'));
         }
       },
       fail: (err) => {

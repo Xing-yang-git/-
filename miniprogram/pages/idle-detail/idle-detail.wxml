@@ -1,20 +1,19 @@
 <view class="detail-page">
   <!-- 状态横幅（已同意的消息移至聊天，此处不再显示） -->
-  <view class="status-banner {{item.status === 'reserved' || item.userBorrowStatus === 'pending' ? 'status-banner-reserved' : ''}}" wx:if="{{item.status === 'borrowed' || item.status === 'reserved' || item.userBorrowStatus === 'pending'}}">
+  <view class="status-banner {{item.status === 'reserved' || item.userBorrowStatus === 'pending' ? 'status-banner-reserved' : ''}}" wx:if="{{item.status === 'borrowing' || item.status === 'borrowed' || item.status === 'reserved' || item.userBorrowStatus === 'pending'}}">
     <!-- 当前用户的申请状态（优先级最高） -->
-    <text wx:if="{{item.userBorrowStatus === 'pending' && !item.isWanted}}">🕐 您的借入申请已发送，等待对方确认</text>
-    <text wx:if="{{item.userBorrowStatus === 'pending' && item.isWanted}}">🕐 您的借出意向已发送，等待对方确认</text>
+    <text wx:if="{{item.userBorrowStatus === 'pending' && !item.isWanted}}">您的借入申请已发送，等待对方确认</text>
+    <text wx:elif="{{item.userBorrowStatus === 'pending' && item.isWanted}}">您的借出意向已发送，等待对方确认</text>
     <!-- 通用物品状态横幅（兜底） -->
-    <text wx:elif="{{item.status === 'borrowed' && !item.isWanted}}">🔒 该物品已被借出</text>
-    <text wx:elif="{{item.status === 'reserved' && !item.isWanted}}">🕐 已有邻居申请借入，等待确认中</text>
-    <text wx:elif="{{item.status === 'borrowed' && item.isWanted}}">🔒 该需求已有人接单</text>
-    <text wx:elif="{{item.status === 'reserved' && item.isWanted}}">🕐 已有邻居愿意借出，等待确认中</text>
+    <text wx:elif="{{(item.status === 'borrowing' || item.status === 'borrowed') && !item.isWanted}}">该物品已被借出</text>
+    <text wx:elif="{{item.status === 'reserved' && !item.isWanted}}">已有邻居申请借入，等待确认中</text>
+    <text wx:elif="{{(item.status === 'borrowing' || item.status === 'borrowed') && item.isWanted}}">该需求已有人申请帮忙</text>
+    <text wx:elif="{{item.status === 'reserved' && item.isWanted}}">已有邻居愿意借出，等待确认中</text>
   </view>
 
-  <!-- 图片轮播 -->
-  <view class="img-carousel">
-    <swiper wx:if="{{images.length > 0}}"
-            indicator-dots="{{images.length > 1}}"
+  <!-- 图片轮播 — 仅在有图片时展示 -->
+  <view class="img-carousel" wx:if="{{images.length > 0}}">
+    <swiper indicator-dots="{{images.length > 1}}"
             indicator-color="rgba(255,255,255,0.4)"
             indicator-active-color="#FFFFFF"
             circular="{{false}}">
@@ -22,11 +21,6 @@
         <image class="carousel-image" src="{{item}}" mode="aspectFill" />
       </swiper-item>
     </swiper>
-    <!-- 无图片时的兜底展示 -->
-    <view class="carousel-slide" wx:if="{{images.length === 0}}">
-      <text class="carousel-icon">📦</text>
-      <text class="carousel-caption">暂无图片</text>
-    </view>
   </view>
 
   <scroll-view class="page-content" scroll-y="{{!showSheet && !showHistorySheet}}" enhanced show-scrollbar="{{false}}">
@@ -48,13 +42,13 @@
         <text>🤝 请确认您愿意借出该物品\n出借前请与需求者沟通好交接方式和归还时间。</text>
       </view>
 
-      <view class="info-row">
+      <view class="info-row" wx:if="{{!item.isWanted}}">
         <text class="info-label">参考价</text>
         <text class="info-value">{{item.priceText}}（损坏赔偿基准）</text>
       </view>
       <view class="info-row">
         <text class="info-label">发布时间</text>
-        <text class="info-value">{{item.timeAgo || ''}}</text>
+        <text class="info-value info-time-value">{{item.timeAgo || ''}}</text>
       </view>
     </view>
 
@@ -80,8 +74,8 @@
       <text>联系他</text>
     </button>
     <button class="action-btn action-btn-primary" bindtap="onBorrowTap"
-      disabled="{{item.status === 'borrowed' || item.status === 'reserved' || item.userBorrowStatus === 'pending' || item.userBorrowStatus === 'approved' || item.userBorrowStatus === 'returned'}}">
-      <text>{{item.status === 'borrowed' ? (item.isWanted ? '已有人借出' : '已被借出') : item.userBorrowStatus === 'approved' ? '已通过' : item.userBorrowStatus === 'pending' ? '已申请' : item.userBorrowStatus === 'returned' ? '已归还' : item.status === 'reserved' ? '已申请' : (item.isWanted ? '我要借出' : '我要借入')}}</text>
+      disabled="{{item.status === 'borrowing' || item.status === 'borrowed' || item.status === 'reserved' || item.userBorrowStatus === 'pending' || item.userBorrowStatus === 'approved' || item.userBorrowStatus === 'returned'}}">
+      <text>{{item.status === 'borrowing' || item.status === 'borrowed' ? (item.isWanted ? '已有人借出' : '已被借出') : item.userBorrowStatus === 'approved' ? '已通过' : item.userBorrowStatus === 'pending' ? '已申请' : item.userBorrowStatus === 'returned' ? '已归还' : item.status === 'reserved' ? '已申请' : (item.isWanted ? '我要借出' : '我要借入')}}</text>
     </button>
   </view>
 

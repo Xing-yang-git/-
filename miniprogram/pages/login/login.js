@@ -1,4 +1,5 @@
 const api = require('../../utils/api');
+const { STATUS } = require('../../utils/constants');
 
 Page({
   data: {
@@ -33,7 +34,7 @@ Page({
         // 老会话无 authStatus：拉一次真实状态；401 时 forceRelogin 已清 token 并停留登录页
         api.get('/api/auth/status')
           .then((d) => {
-            this.routeByStatus(d.authStatus || 'approved');
+            this.routeByStatus(d.authStatus || STATUS.APPROVED);
             this.loadTenants();
           })
           .catch(() => { this.loadTenants(); });
@@ -143,9 +144,9 @@ Page({
    * 跳回去会造成死循环。未审核用户的拦截由业务页 ensureAccess() 负责。
    */
   routeByStatus(status) {
-    if (status === 'registering') {
+    if (status === STATUS.REGISTERING) {
       wx.redirectTo({ url: '/pages/register/register' });
-    } else if (status === 'approved') {
+    } else if (status === STATUS.APPROVED) {
       wx.switchTab({ url: '/pages/home/home' });
     }
     // pending / rejected / banned → 留在登录页，用户可以换号登录
@@ -163,8 +164,13 @@ Page({
       const userStatus = data.user ? data.user.authStatus : (data.authStatus || data.status);
       if (data.needRegister) {
         wx.redirectTo({ url: '/pages/register/register' });
+      } else if (userStatus === STATUS.PENDING || userStatus === STATUS.REJECTED || userStatus === STATUS.BANNED) {
+        // 登录成功后，未通过审核的用户跳转到审核状态页查看账号状态
+        // 与 routeByStatus 的区别：routeByStatus 对此类状态不做跳转（防止用户从审核页
+        // 返回换号登录时死循环），但此处是刚完成登录，用户理应看到自己的审核状态
+        wx.redirectTo({ url: '/pages/review-status/review-status?state=' + userStatus });
       } else {
-        this.routeByStatus(userStatus || 'approved');   // 修复：rejected 此前落入 else 直接进首页
+        this.routeByStatus(userStatus || STATUS.APPROVED);
       }
     } else {
       wx.showToast({ title: '登录失败，请重试', icon: 'none' });

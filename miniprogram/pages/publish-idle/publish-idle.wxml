@@ -111,7 +111,7 @@
 
     <!-- 物品状况 -->
     <view class="section">
-      <view class="input-label">物品状况（可选）</view>
+      <view class="input-label req">物品状况</view>
       <view class="segment" style="margin:0;">
         <view class="segment-item {{condition === 'like-new' ? 'active' : ''}}" bindtap="onConditionTap" data-value="like-new">几乎全新</view>
         <view class="segment-item {{condition === 'normal' ? 'active' : ''}}" bindtap="onConditionTap" data-value="normal">正常使用痕迹</view>

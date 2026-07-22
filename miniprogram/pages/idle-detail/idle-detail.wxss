@@ -7,87 +7,87 @@
 
 /* 状态横幅 — 默认（已借出）：橙色 */
 .status-banner {
-  padding: 10px 16px;
+  padding: 20rpx 32rpx;
   text-align: center;
-  font-size: 14px;
+  font-size: 28rpx;
   color: var(--orange);
   background: rgba(255, 149, 0, 0.08);
 }
 
-/* 状态横幅 — 已预订：红色 */
+/* 状态横幅 — 已预订/申请等待中：中性灰（等待态非警示信息，不用红色刺激） */
 .status-banner.status-banner-reserved {
-  color: var(--red);
-  background: rgba(255, 59, 48, 0.06);
+  color: var(--text-secondary);
+  background: var(--fill-tertiary);
 }
 
-/* 图片轮播 — 覆盖全局 .img-carousel（280px，#1C1C1E） */
+/* 图片轮播 — 覆盖全局 .img-carousel（280px，var(--dark-surface)） */
 swiper {
   width: 100%;
-  height: 280px;
+  height: 560rpx;
 }
 
 .carousel-image {
   width: 100%;
-  height: 280px;
+  height: 560rpx;
 }
 
 .carousel-slide {
   width: 100%;
-  height: 280px;
+  height: 560rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: #1C1C1E;
+  background: var(--dark-surface);
 }
 
 .carousel-icon {
-  font-size: 72px;
+  font-size: 144rpx;
   color: rgba(255, 255, 255, 0.6);
 }
 
 .carousel-caption {
-  font-size: 13px;
+  font-size: 26rpx;
   color: rgba(255, 255, 255, 0.7);
-  margin-top: 8px;
+  margin-top: 16rpx;
 }
 
 .page-content {
   flex: 1;
   background: var(--bg);
-  padding-bottom: 100px;
+  padding-bottom: 200rpx;
 }
 
 .section-ios {
-  padding: 16px;
+  padding: 32rpx;
   background: var(--surface);
-  margin-bottom: 8px;
+  margin-bottom: 16rpx;
 }
 
 /* 分组内的提示条 — 对齐原型内联 margin 覆盖 */
 .section-ios .callout {
-  margin: 12px 0 0;
+  margin: 24rpx 0 0;
 }
 
 .detail-title {
-  font-size: 22px;
+  font-size: 44rpx;
   font-weight: 700;
   color: var(--text);
   line-height: 1.3;
-  margin-bottom: 8px;
+  margin-bottom: 16rpx;
   letter-spacing: 0.01em;
 }
 
 .detail-desc {
-  font-size: 17px;
+  font-size: 34rpx;
   color: var(--text-secondary);
   line-height: 1.55;
 }
 
 .detail-tags {
   display: flex;
-  gap: 8px;
-  margin-top: 12px;
+  gap: 16rpx;
+  margin-top: 24rpx;
   flex-wrap: wrap;
 }
 
@@ -95,7 +95,7 @@ swiper {
 .pub-header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 24rpx;
 }
 
 .pub-header .avatar {
@@ -107,19 +107,19 @@ swiper {
 }
 
 .pub-name {
-  font-size: 17px;
+  font-size: 34rpx;
   font-weight: 500;
   color: var(--text);
 }
 
 .pub-meta {
-  font-size: 13px;
+  font-size: 26rpx;
   color: var(--text-secondary);
-  margin-top: 2px;
+  margin-top: 4rpx;
 }
 
 .link-text {
-  font-size: 13px;
+  font-size: 26rpx;
   color: var(--blue);
 }
 
@@ -132,24 +132,24 @@ swiper {
   z-index: 100;
   background: var(--surface);
   display: flex;
-  gap: 12px;
-  padding: 12px 16px;
+  gap: 24rpx;
+  padding: 24rpx 32rpx;
   padding-bottom: calc(var(--safe-bottom));
 }
 
 /* 操作栏按钮 — 对齐原型 .btn 样式 */
 .action-btn {
   flex: 1;
-  height: 44px;
-  border-radius: 8px;
-  font-size: 17px;
+  height: 88rpx;
+  border-radius: 16rpx;
+  font-size: 34rpx;
   font-weight: 500;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
-  line-height: 44px;
-  padding: 0 20px;
+  line-height: 88rpx;
+  padding: 0 40rpx;
   letter-spacing: -0.01em;
 }
 
@@ -159,13 +159,13 @@ swiper {
 
 .action-btn-primary {
   background: var(--blue);
-  color: #FFFFFF;
+  color: var(--surface);
 }
 
+/* 禁用态保持原色不降透明（用户要求）——状态反馈由按钮文字（如「已申请」）承担 */
 .action-btn-primary[disabled] {
   background: var(--blue);
-  color: #FFFFFF;
-  opacity: 0.55;
+  color: var(--surface);
 }
 
 .action-btn-secondary {
@@ -387,14 +387,14 @@ swiper {
   display: block;
   font-size: var(--text-sm);
   color: var(--text-secondary);
-  margin-bottom: 6px;
+  margin-bottom: 12rpx;
   letter-spacing: -0.01em;
 }
 
 .input {
   width: 100%;
-  height: 44px;
-  padding: 0 12px;
+  height: 88rpx;
+  padding: 0 24rpx;
   border: none;
   border-radius: var(--radius-sm);
   font-size: var(--text-base);
@@ -403,8 +403,8 @@ swiper {
 
 .textarea {
   width: 100%;
-  min-height: 100px;
-  padding: 10px 12px;
+  min-height: 200rpx;
+  padding: 20rpx 24rpx;
   border: none;
   border-radius: var(--radius-sm);
   font-size: var(--text-base);
@@ -426,15 +426,15 @@ swiper {
 .borrow-sheet-body {
   flex: 1;             /* = flex: 1 1 0%，从 0 开始抢占剩余空间 */
   min-height: 0;       /* 允许收缩到内容以下，触发 scroll-view 原生滚动 */
-  padding: 0 20px;
+  padding: 0 40rpx;
   box-sizing: border-box;
 }
 
 .borrow-sheet-footer {
   flex-shrink: 0;
   display: flex;
-  gap: 12px;
-  padding: 12px 16px;
+  gap: 24rpx;
+  padding: 24rpx 32rpx;
   padding-bottom: calc( var(--safe-bottom)); /* 对齐主页面 .action-bar */
   background: var(--surface);
 }

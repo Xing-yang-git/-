@@ -1,0 +1,34 @@
+<!-- 服务通知详情页 — 只读卡片列表，无输入框，最新通知在最上面 -->
+<view class="container">
+  <!-- 加载遮罩 -->
+  <view class="global-loading" wx:if="{{loading}}">
+    <view class="loading-spinner"></view>
+    <text class="loading-text">加载中...</text>
+  </view>
+
+  <scroll-view class="notice-list" scroll-y enhanced show-scrollbar="{{false}}">
+    <view class="notice-inner">
+      <block wx:for="{{notifications}}" wx:key="id">
+        <view class="notice-datetime">{{item.dateTimeText}}</view>
+        <view class="notice-card {{(item.isTappable || item.isRateable) && !item.isRated && !item.isExpired ? 'notice-card-tappable' : ''}}"
+              bindtap="onCardTap" data-item="{{item}}">
+          <view class="notice-card-title">{{item.title}}</view>
+          <view class="notice-card-content">{{item.content}}</view>
+          <view class="notice-card-footer">
+            <text class="notice-card-arrow" wx:if="{{item.isTappable}}">去审批 ›</text>
+            <text class="notice-card-expired" wx:if="{{item.isExpired}}">已失效</text>
+            <text class="notice-card-rate" wx:if="{{item.isRateable && !item.isRated}}">去评价 ›</text>
+            <text class="notice-card-rated" wx:if="{{item.isRateable && item.isRated}}">已评价</text>
+          </view>
+        </view>
+      </block>
+      <view class="list-end" wx:if="{{notifications.length > 0}}">— 全部通知 —</view>
+    </view>
+  </scroll-view>
+
+  <view class="empty-state" wx:if="{{notifications.length === 0 && !loading}}">
+    <text class="empty-icon">🔔</text>
+    <text class="empty-text">暂无服务通知</text>
+    <text class="empty-hint">系统通知和互动消息会显示在这里</text>
+  </view>
+</view>

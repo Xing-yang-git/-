@@ -24,7 +24,7 @@
   <view class="seg-wrap">
     <view class="main-tabs">
       <view class="main-tab {{mainTab === 'publish' ? 'active' : ''}}" bindtap="onMainTabTap" data-tab="publish">发布</view>
-      <view class="main-tab {{mainTab === 'approval' ? 'active' : ''}}" bindtap="onMainTabTap" data-tab="approval">审批</view>
+      <view class="main-tab {{mainTab === 'approval' ? 'active' : ''}}" bindtap="onMainTabTap" data-tab="approval">审批<text class="approval-badge" wx:if="{{approvalCount > 0}}">{{approvalCount > 99 ? '99+' : approvalCount}}</text></view>
       <view class="main-tab {{mainTab === 'inProgress' ? 'active' : ''}}" bindtap="onMainTabTap" data-tab="inProgress">进行中</view>
       <view class="main-tab {{mainTab === 'completed' ? 'active' : ''}}" bindtap="onMainTabTap" data-tab="completed">已完成<text class="rate-dot" wx:if="{{hasPendingRating}}"></text></view>
     </view>
@@ -53,13 +53,11 @@
             </view>
             <view class="post-info">
               <text class="post-title">{{item.title}}</text>
-              <view class="post-tags" wx:if="{{item.postType === 'LEND'}}">
-                <text class="tag tag-blue">{{item.durationLabel}}</text>
-                <text class="tag tag-fill">{{item.conditionLabel}}</text>
+              <view class="post-meta-row">
+                <text class="tag tag-fill post-type-tag">{{item.typeLabel}}</text>
+                <text class="post-time">· {{item.timeText}}</text>
               </view>
-              <text class="post-time">{{item.timeText}}</text>
             </view>
-            <view class="post-status {{item.statusTagClass}}">{{item.statusText}}</view>
             <view class="post-act-btn danger" catchtap="onConfirmOffline" data-id="{{item.id}}" data-post-type="{{item.postType}}">下架</view>
           </view>
         </block>
@@ -78,13 +76,11 @@
             </view>
             <view class="post-info">
               <text class="post-title">{{item.title}}</text>
-              <view class="post-tags" wx:if="{{item.postType === 'LEND'}}">
-                <text class="tag tag-blue">{{item.durationLabel}}</text>
-                <text class="tag tag-fill">{{item.conditionLabel}}</text>
+              <view class="post-meta-row">
+                <text class="tag tag-fill post-type-tag">{{item.typeLabel}}</text>
+                <text class="post-time">· {{item.timeText}}</text>
               </view>
-              <text class="post-time">{{item.timeText}}</text>
             </view>
-            <view class="post-status post-status-tag-fill">{{item.statusText}}</view>
             <view class="post-act-btn primary" catchtap="onOpenEdit" data-post="{{item}}" data-type="{{item.postType === 'HELP' ? 'help' : 'idle'}}" data-source="offline">重新发布</view>
           </view>
         </block>
@@ -100,44 +96,50 @@
   <view wx:if="{{mainTab === 'approval'}}" class="panel-wrap">
     <view class="seg-sub-wrap">
       <view class="segment">
-        <view class="segment-item {{approvalSubTab === 'borrow' ? 'active' : ''}}" bindtap="onApprovalSubTap" data-sub="borrow">借入</view>
-        <view class="segment-item {{approvalSubTab === 'lend' ? 'active' : ''}}" bindtap="onApprovalSubTap" data-sub="lend">借出</view>
-        <view class="segment-item {{approvalSubTab === 'help' ? 'active' : ''}}" bindtap="onApprovalSubTap" data-sub="help">求助</view>
+        <view class="segment-item {{approvalSubTab === 'borrow' ? 'active' : ''}}" bindtap="onApprovalSubTap" data-sub="borrow">
+          借入 <text class="seg-count">{{borrowApprovals.length}}</text>
+        </view>
+        <view class="segment-item {{approvalSubTab === 'lend' ? 'active' : ''}}" bindtap="onApprovalSubTap" data-sub="lend">
+          借出 <text class="seg-count">{{lendApprovals.length}}</text>
+        </view>
+        <view class="segment-item {{approvalSubTab === 'help' ? 'active' : ''}}" bindtap="onApprovalSubTap" data-sub="help">
+          求助 <text class="seg-count">{{helpApprovals.length}}</text>
+        </view>
       </view>
     </view>
 
     <scroll-view class="page-content" scroll-y enhanced show-scrollbar="{{false}}" refresher-enabled refresher-triggered="{{refreshing}}" bindrefresherrefresh="onPullRefresh">
-      <!-- 借入审批 -->
+      <!-- 借入审批 — 我发布的需求借入（WANTED），别人主动借给我，由我确认借入 -->
       <view wx:if="{{approvalSubTab === 'borrow'}}">
         <block wx:for="{{borrowApprovals}}" wx:key="id">
           <view class="progress-item" bindtap="onApprovalDetail" data-id="{{item.id}}" data-type="borrow">
             <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
-              <view class="progress-name">借入住户：{{item.applicantName}}</view>
+              <view class="progress-name">愿意借出的住户：{{item.applicantName}}</view>
             </view>
             <view class="progress-act-btn return-btn" catchtap="onApprovalDetail" data-id="{{item.id}}" data-type="borrow">审批</view>
           </view>
         </block>
         <view class="empty-state" wx:if="{{borrowApprovals.length === 0}}">
-          <text class="empty-text">暂无待审批的借入申请</text>
+          <text class="empty-text">暂无待确认的借入</text>
         </view>
       </view>
 
-      <!-- 借出审批 — 别人愿意借出给我的需求（需求借入的借出意向），由我确认借入 -->
+      <!-- 借出审批 — 我发布的闲置（LEND），别人申请借走，由我审批借出 -->
       <view wx:if="{{approvalSubTab === 'lend'}}">
         <block wx:for="{{lendApprovals}}" wx:key="id">
           <view class="progress-item" bindtap="onApprovalDetail" data-id="{{item.id}}" data-type="lend">
             <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
-              <view class="progress-name">借出住户：{{item.applicantName}}</view>
+              <view class="progress-name">希望借用的住户：{{item.applicantName}}</view>
             </view>
-            <view class="progress-act-btn return-btn" catchtap="onApprovalDetail" data-id="{{item.id}}" data-type="lend">确认</view>
+            <view class="progress-act-btn return-btn" catchtap="onApprovalDetail" data-id="{{item.id}}" data-type="lend">审批</view>
           </view>
         </block>
         <view class="empty-state" wx:if="{{lendApprovals.length === 0}}">
-          <text class="empty-text">暂无待确认的借出</text>
+          <text class="empty-text">暂无待审批的借出申请</text>
         </view>
       </view>
 
@@ -148,7 +150,7 @@
             <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
-              <view class="progress-name">求助住户：{{item.applicantName}}</view>
+              <view class="progress-name">主动帮忙的住户：{{item.applicantName}}</view>
             </view>
             <view class="progress-act-btn return-btn" catchtap="onApprovalDetail" data-id="{{item.id}}" data-type="help">审批</view>
           </view>
@@ -164,10 +166,10 @@
   <view wx:if="{{mainTab === 'inProgress'}}" class="panel-wrap">
     <view class="seg-sub-wrap">
       <view class="segment">
-        <view class="segment-item {{inProgressSubTab === 'borrow' ? 'active' : ''}}" bindtap="onInProgressSubTap" data-sub="borrow">借入</view>
-        <view class="segment-item {{inProgressSubTab === 'lend' ? 'active' : ''}}" bindtap="onInProgressSubTap" data-sub="lend">借出</view>
-        <view class="segment-item {{inProgressSubTab === 'helpReq' ? 'active' : ''}}" bindtap="onInProgressSubTap" data-sub="helpReq">求助</view>
-        <view class="segment-item {{inProgressSubTab === 'helpPro' ? 'active' : ''}}" bindtap="onInProgressSubTap" data-sub="helpPro">帮助</view>
+        <view class="segment-item {{inProgressSubTab === 'borrow' ? 'active' : ''}}" bindtap="onInProgressSubTap" data-sub="borrow">借入 <text class="seg-count">{{inProgressBorrows.length}}</text></view>
+        <view class="segment-item {{inProgressSubTab === 'lend' ? 'active' : ''}}" bindtap="onInProgressSubTap" data-sub="lend">借出 <text class="seg-count">{{inProgressLends.length}}</text></view>
+        <view class="segment-item {{inProgressSubTab === 'helpReq' ? 'active' : ''}}" bindtap="onInProgressSubTap" data-sub="helpReq">求助 <text class="seg-count">{{inProgressHelpReqs.length}}</text></view>
+        <view class="segment-item {{inProgressSubTab === 'helpPro' ? 'active' : ''}}" bindtap="onInProgressSubTap" data-sub="helpPro">帮助 <text class="seg-count">{{inProgressHelpPros.length}}</text></view>
       </view>
     </view>
 
@@ -250,10 +252,10 @@
   <view wx:if="{{mainTab === 'completed'}}" class="panel-wrap">
     <view class="seg-sub-wrap">
       <view class="segment">
-        <view class="segment-item {{completedSubTab === 'borrow' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="borrow">借入<text class="rate-dot" wx:if="{{pendingRating.borrow}}"></text></view>
-        <view class="segment-item {{completedSubTab === 'lend' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="lend">借出<text class="rate-dot" wx:if="{{pendingRating.lend}}"></text></view>
-        <view class="segment-item {{completedSubTab === 'helpReq' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="helpReq">求助<text class="rate-dot" wx:if="{{pendingRating.helpReq}}"></text></view>
-        <view class="segment-item {{completedSubTab === 'helpPro' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="helpPro">帮助<text class="rate-dot" wx:if="{{pendingRating.helpPro}}"></text></view>
+        <view class="segment-item {{completedSubTab === 'borrow' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="borrow">借入 <text class="seg-count">{{completedBorrows.length}}</text><text class="rate-dot" wx:if="{{pendingRating.borrow}}"></text></view>
+        <view class="segment-item {{completedSubTab === 'lend' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="lend">借出 <text class="seg-count">{{completedLends.length}}</text><text class="rate-dot" wx:if="{{pendingRating.lend}}"></text></view>
+        <view class="segment-item {{completedSubTab === 'helpReq' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="helpReq">求助 <text class="seg-count">{{completedHelpReqs.length}}</text><text class="rate-dot" wx:if="{{pendingRating.helpReq}}"></text></view>
+        <view class="segment-item {{completedSubTab === 'helpPro' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="helpPro">帮助 <text class="seg-count">{{completedHelpPros.length}}</text><text class="rate-dot" wx:if="{{pendingRating.helpPro}}"></text></view>
       </view>
     </view>
 
@@ -468,8 +470,8 @@
         </view>
       </view>
 
-      <view class="input-group" style="margin-bottom:0;">
-        <text class="edit-input-label">物品状况（可选）</text>
+      <view class="input-group" style="margin-bottom:20rpx;">
+        <text class="edit-input-label">物品状况</text>
         <view class="segment" style="margin:0;">
           <view class="segment-item {{editCondition === 'like-new' ? 'active' : ''}}" bindtap="onEditConditionTap" data-value="like-new">几乎全新</view>
           <view class="segment-item {{editCondition === 'normal' ? 'active' : ''}}" bindtap="onEditConditionTap" data-value="normal">正常使用痕迹</view>
@@ -596,6 +598,29 @@
         <textarea class="edit-textarea" value="{{editDesc}}" bindinput="onEditInput" data-field="editDesc" placeholder="描述具体情况、需要什么帮助、大概需要多长时间等" />
       </view>
 
+      <!-- 预计时间范围 -->
+      <view class="input-group">
+        <text class="edit-input-label">预计时间范围</text>
+        <view class="time-row">
+          <text class="time-label">从</text>
+          <picker class="time-picker" mode="date" value="{{editTimeStartDate}}" bindchange="onEditTimeStartDateChange">
+            <view class="time-value">{{editTimeStartDate || '请选择日期'}}</view>
+          </picker>
+          <picker class="time-picker" mode="selector" range="{{hourOptions}}" value="{{editTimeStartHour}}" bindchange="onEditTimeStartHourChange">
+            <view class="time-value">{{hourOptions[editTimeStartHour]}}</view>
+          </picker>
+        </view>
+        <view class="time-row">
+          <text class="time-label">至</text>
+          <picker class="time-picker" mode="date" value="{{editTimeEndDate}}" bindchange="onEditTimeEndDateChange">
+            <view class="time-value">{{editTimeEndDate || '请选择日期'}}</view>
+          </picker>
+          <picker class="time-picker" mode="selector" range="{{hourOptions}}" value="{{editTimeEndHour}}" bindchange="onEditTimeEndHourChange">
+            <view class="time-value">{{hourOptions[editTimeEndHour]}}</view>
+          </picker>
+        </view>
+      </view>
+
       <view class="input-group" style="margin-bottom:0;">
         <text class="edit-input-label">紧急程度</text>
         <view class="segment" style="margin:0;">
@@ -606,10 +631,12 @@
 
     </block>
 
+    <view style="height:20rpx;"></view>
   </scroll-view>
-
   <view class="edit-sheet-footer">
+    <view class="edit-sheet-footer-row">
     <view class="edit-save-btn" bindtap="onSaveEdit">{{editSource === 'offline' ? '重新发布' : '保存'}}</view>
+    </view>
   </view>
 </view>
 
@@ -622,24 +649,41 @@
   </view>
 
   <scroll-view class="approval-sheet-body" scroll-y enhanced show-scrollbar="{{false}}">
-    <!-- 物品标题 -->
+    <!-- 标题行：闲置物品用"物品"，求助用"求助标题" -->
     <view class="approval-section">
-      <text class="approval-section-label">物品</text>
+      <text class="approval-section-label">{{approvalSheetItem.approvalType === 'help' ? '求助标题' : '物品'}}</text>
       <text class="approval-item-title">{{approvalSheetItem.itemTitle}}</text>
+      <!-- 借入/借出类型：显示对方期望的可借出时长 -->
+      <view class="approval-duration-row" wx:if="{{approvalSheetItem.maxDuration && (approvalSheetItem.approvalType === 'borrow' || approvalSheetItem.approvalType === 'lend')}}">
+        <text class="approval-duration-label">可借出时长：</text>
+        <text class="approval-duration-value">{{approvalSheetItem.maxDuration}}{{(approvalSheetItem.durationUnit === 'hour' ? '小时' : '天')}}</text>
+      </view>
+      <!-- 求助类型：显示时间段 -->
+      <view class="approval-duration-row" wx:if="{{approvalSheetItem.approvalType === 'help'}}">
+        <text class="approval-duration-label">时间段：</text>
+        <text class="approval-duration-value">{{approvalSheetItem.timeStart && approvalSheetItem.timeEnd ? (approvalSheetItem.timeStart + ' ~ ' + approvalSheetItem.timeEnd) : '--'}}</text>
+      </view>
     </view>
 
-    <!-- 申请人备注（借入说明/借出说明/求助说明） -->
-    <view class="approval-section" wx:if="{{approvalSheetItem.note}}">
-      <text class="approval-section-label">{{approvalSheetItem.approvalType === 'help' ? '求助说明' : (approvalSheetItem.postType === 'WANTED' ? '借出说明' : '借入说明')}}</text>
+    <!-- 求助类型：备注（帮住者填写的说明） -->
+    <view class="approval-section" wx:if="{{approvalSheetItem.approvalType === 'help'}}">
+      <text class="approval-section-label">备注</text>
+      <text class="approval-note-text">{{approvalSheetItem.note || '无'}}</text>
+    </view>
+
+    <!-- 借入/借出类型：申请人备注 -->
+    <view class="approval-section" wx:elif="{{approvalSheetItem.note}}">
+      <text class="approval-section-label">{{approvalSheetItem.postType === 'WANTED' ? '借出说明' : '借入说明'}}</text>
       <text class="approval-note-text">{{approvalSheetItem.note}}</text>
     </view>
 
     <!-- 申请人信息 -->
     <view class="approval-section">
-      <text class="approval-section-label">申请住户</text>
+      <text class="approval-section-label">{{approvalSheetItem.approvalType === 'borrow' ? '愿意借出的住户' : (approvalSheetItem.approvalType === 'lend' ? '希望借用的住户' : '主动帮忙的住户')}}</text>
       <view class="approval-resident-card">
         <view class="approval-resident-row">
-          <text class="approval-resident-addr">{{approvalSheetItem.applicantAddress}}（{{approvalSheetItem.applicantType}}）</text>
+          <text class="approval-resident-addr approval-resident-addr-link" wx:if="{{approvalSheetItem.applicantUserId}}" catchtap="onTapChatWithUser" data-user-id="{{approvalSheetItem.applicantUserId}}" data-user-name="{{approvalSheetItem.applicantName}}">{{approvalSheetItem.applicantAddress}}（{{approvalSheetItem.applicantType}}）</text>
+          <text class="approval-resident-addr" wx:else>{{approvalSheetItem.applicantAddress}}（{{approvalSheetItem.applicantType}}）</text>
           <view class="approval-rating-inline">
             <text class="approval-rating-label">综合评分</text>
             <view class="approval-rating-score-row">
@@ -684,13 +728,14 @@
         <text class="approval-tip-icon">💡</text>
         <text class="approval-tip-title">温馨提示</text>
       </view>
-      <text class="approval-tip-text">您可以根据对方的过往记录来判断是否{{approvalSheetItem.approvalType === 'help' ? '帮助' : (approvalSheetItem.approvalType === 'lend' ? '借用' : '借给')}}申请的住户，良好的互助记录通常意味着更可靠的合作体验。</text>
+      <text class="approval-tip-text">您可以根据对方的过往记录来判断是否{{approvalSheetItem.approvalType === 'help' ? '接受帮助' : (approvalSheetItem.approvalType === 'borrow' ? '确认借用' : '同意借给')}}{{approvalSheetItem.approvalType === 'borrow' ? '愿意借出的住户' : (approvalSheetItem.approvalType === 'lend' ? '希望借用的住户' : '主动帮忙的住户')}}，良好的互助记录通常意味着更可靠的合作体验。</text>
     </view>
+    <view style="height:20rpx;"></view>
   </scroll-view>
 
   <view class="approval-sheet-footer">
     <view class="approval-footer-row">
-      <view class="approval-confirm-btn" bindtap="onConfirmApproval">{{approvalSheetItem.approvalType === 'lend' ? '确认借入' : '同意'}}</view>
+      <view class="approval-confirm-btn" bindtap="onConfirmApproval">{{approvalSheetItem.approvalType === 'borrow' ? '确认借入' : '同意'}}</view>
       <view class="approval-reject-btn" bindtap="onRejectClick">拒绝</view>
     </view>
   </view>
@@ -722,7 +767,8 @@
       <text class="approval-section-label">{{progressSheetItem.roleLabel}}</text>
       <view class="approval-resident-card">
         <view class="approval-resident-row">
-          <text class="approval-resident-addr">{{progressSheetItem.personAddress}}（{{progressSheetItem.personType}}）</text>
+          <text class="approval-resident-addr approval-resident-addr-link" wx:if="{{progressSheetItem.personUserId}}" catchtap="onTapChatWithUser" data-user-id="{{progressSheetItem.personUserId}}" data-user-name="{{progressSheetItem.personName}}">{{progressSheetItem.personAddress}}（{{progressSheetItem.personType}}）</text>
+          <text class="approval-resident-addr" wx:else>{{progressSheetItem.personAddress}}（{{progressSheetItem.personType}}）</text>
           <view class="approval-rating-inline">
             <text class="approval-rating-label">综合评分</text>
             <view class="approval-rating-score-row">
@@ -738,8 +784,26 @@
     <view class="approval-section" wx:if="{{progressSheetType === 'borrow' || progressSheetType === 'lend'}}">
       <text class="approval-section-label">归还时间</text>
       <view class="progress-return-time {{progressSheetItem.isOverdue ? 'overdue' : ''}}">
-        <text wx:if="{{progressSheetItem.isOverdue}}">已超出归还时间 {{progressSheetItem.remainingDays < 0 ? -progressSheetItem.remainingDays : 0}} 天</text>
+        <text wx:if="{{progressSheetItem.isOverdue && progressSheetItem.remainingDays < 0 && -progressSheetItem.remainingDays >= 1}}">已超出归还时间 {{-progressSheetItem.remainingDays}} 天</text>
+        <text wx:elif="{{progressSheetItem.isOverdue && progressSheetItem.remainingHours < 0 && -progressSheetItem.remainingHours > 0}}">已超出归还时间 {{-progressSheetItem.remainingHours}} 小时</text>
+        <text wx:elif="{{progressSheetItem.isOverdue}}">已逾期</text>
+        <text wx:elif="{{progressSheetItem.remainingHours > 0 && progressSheetItem.remainingHours < 24}}">剩余 {{progressSheetItem.remainingHours}} 小时归还</text>
+        <text wx:elif="{{progressSheetItem.remainingDays === 0}}">今日应归还</text>
         <text wx:else>剩余 {{progressSheetItem.remainingDays}} 天归还</text>
+      </view>
+    </view>
+
+    <!-- 使用后物品状况（借出专用，必填） -->
+    <view class="approval-section" wx:if="{{progressSheetType === 'lend'}}">
+      <text class="approval-section-label">使用后物品状况 <text style="color:var(--red);">*</text></text>
+      <view class="segment" style="margin:0;">
+        <view class="segment-item {{progressSheetCondition === 'normal' ? 'active' : ''}}" bindtap="onProgressConditionTap" data-value="normal">正常损耗</view>
+        <view class="segment-item {{progressSheetCondition === 'severe' ? 'active' : ''}}" bindtap="onProgressConditionTap" data-value="severe">严重损坏</view>
+        <view class="segment-item {{progressSheetCondition === 'broken' ? 'active' : ''}}" bindtap="onProgressConditionTap" data-value="broken">完全损坏</view>
+      </view>
+      <!-- 严重损坏 / 完全损坏温馨提示 -->
+      <view class="condition-warn-tip" wx:if="{{progressSheetCondition === 'severe' || progressSheetCondition === 'broken'}}">
+        <text>💡 温馨提示：根据损坏程度，您有权向借用物品的住户申请修理费或赔偿费。相关事项请私下与住户协商，平台仅做记录。</text>
       </view>
     </view>
 
@@ -760,6 +824,7 @@
       <text class="approval-section-label">互助感想（选填）</text>
       <textarea class="progress-feedback-input" value="{{progressSheetFeedback}}" bindinput="onProgressFeedbackInput" placeholder="分享一下此次互助的感受…" maxlength="200" />
     </view>
+    <view style="height:20rpx;"></view>
   </scroll-view>
 
   <view class="progress-sheet-footer">
@@ -793,7 +858,8 @@
       <text class="approval-section-label">{{completedSheetItem.roleLabel}}</text>
       <view class="approval-resident-card">
         <view class="approval-resident-row">
-          <text class="approval-resident-addr">{{completedSheetItem.personAddress}}（{{completedSheetItem.personType}}）</text>
+          <text class="approval-resident-addr approval-resident-addr-link" wx:if="{{completedSheetItem.personUserId}}" catchtap="onTapChatWithUser" data-user-id="{{completedSheetItem.personUserId}}" data-user-name="{{completedSheetItem.personName}}">{{completedSheetItem.personAddress}}（{{completedSheetItem.personType}}）</text>
+          <text class="approval-resident-addr" wx:else>{{completedSheetItem.personAddress}}（{{completedSheetItem.personType}}）</text>
         </view>
       </view>
     </view>
@@ -849,6 +915,7 @@
         </view>
       </view>
     </view>
+    <view style="height:20rpx;"></view>
   </scroll-view>
 </view>
 
@@ -857,6 +924,16 @@
   <view class="alert" catchtap="">
     <view class="alert-title">{{confirmAlertTitle}}</view>
     <view class="alert-body">{{confirmAlertBody}}</view>
+    <!-- 拒绝理由（开关控制，仅在拒绝时显示） -->
+    <view wx:if="{{confirmAction === 'reject'}}" class="alert-reject-section">
+      <view class="label-with-switch" catchtap="preventTouchMove">
+        <text class="reject-switch-label">填写拒绝理由</text>
+        <switch checked="{{enableRejectReason}}" bindchange="onToggleRejectReason" color="#0071e3" />
+      </view>
+      <block wx:if="{{enableRejectReason}}">
+        <textarea class="alert-reason-input" value="{{rejectReason}}" bindinput="onRejectReasonInput" placeholder="选填：说明拒绝原因" maxlength="200" auto-height catchtap="preventTouchMove" />
+      </block>
+    </view>
     <view class="alert-actions">
       <view class="alert-btn" bindtap="onCancelConfirm">取消</view>
       <view class="alert-btn alert-btn-bold" bindtap="onDoConfirm">确认</view>

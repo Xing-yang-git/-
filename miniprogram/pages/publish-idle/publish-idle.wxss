@@ -113,7 +113,7 @@
 
 .pill.selected {
   background: var(--blue);
-  color: #FFFFFF;
+  color: var(--surface);
 }
 
 .pill-icon {
@@ -187,7 +187,7 @@
   height: 44rpx;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.65);
-  color: #FFFFFF;
+  color: var(--surface);
   font-size: 26rpx;
   display: flex;
   align-items: center;
@@ -265,6 +265,11 @@
   align-items: center;
   gap: 16rpx;
   margin-bottom: 16rpx;
+}
+
+/* 按钮原生样式重置（与其他页面保持一致） */
+.btn::after {
+  border: none;
 }
 
 .time-row:last-child {

@@ -1,5 +1,6 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
+const { STATUS, POST_TYPE } = require('../../utils/constants');
 
 Page({
   data: {
@@ -49,7 +50,7 @@ Page({
 
   loadItem(id) {
     wx.showLoading({ title: '加载中...' });
-    api.get(`/api/idle/${id}`)
+    api.get(`/api/idle-items/${id}`)
       .then((data) => {
         wx.hideLoading();
         const item = this.formatItem(data);
@@ -87,7 +88,7 @@ Page({
     // 评分始终显示一位小数（如 5.0，而非 5）
     const ratingText = item.rating != null ? item.rating.toFixed(1) : null;
 
-    const isWanted = item.postType === 'WANTED';
+    const isWanted = item.postType === POST_TYPE.WANTED;
 
     return {
       ...item,
@@ -120,11 +121,12 @@ Page({
       address: address || userRoom || '—',
       userType: userType || '居民',
       rating: rating,
-      borrowCount: 0,
+      // 五项统计由后端统一口径下发（已完成且被对方评价才计数），不再前端硬编码
+      borrowCount: data.borrowCount != null ? data.borrowCount : 0,
       borrowReturnRate: returnRate,
       lendCount: lendCount,
-      helpReqCount: 0,
-      helpProCount: 0
+      helpReqCount: data.helpCount != null ? data.helpCount : 0,
+      helpProCount: data.helpedCount != null ? data.helpedCount : 0
     };
   },
 
@@ -198,11 +200,10 @@ Page({
       return;
     }
 
-    // 直接跳转聊天页（聊天记录仅存本地，无需服务端创建会话）
+    // 直接跳转聊天页（会话 ID 按用户对生成，同一对用户始终共享同一会话）
     const otherUserId = item.userId;
-    // 生成本地会话ID：IDLE_<postId>_<smallerUserId>_<largerUserId>
     const ids = [userId, otherUserId].sort();
-    const localSessionId = 'IDLE_' + item.id + '_' + ids[0] + '_' + ids[1];
+    const localSessionId = 'USER_' + ids[0] + '_' + ids[1];
     const name = encodeURIComponent(item.userRoom || item.userName || '用户');
     const about = encodeURIComponent(item.title || '');
     const room = encodeURIComponent(item.userRoom || '');
@@ -214,25 +215,27 @@ Page({
   onBorrowTap() {
     const { item, userId } = this.data;
 
-    // 已申请 / 已通过 / 已归还 / 已借出 — 不可重复操作
-    if (item.status === 'borrowed' || item.status === 'reserved' ||
-        item.userBorrowStatus === 'pending' || item.userBorrowStatus === 'approved' ||
-        item.userBorrowStatus === 'returned') return;
+    // 已被借出 / 已被预定 / 已申请 / 已通过 / 已归还 — 不可重复操作
+    if (item.status === STATUS.BORROWING || item.status === STATUS.RESERVED ||
+        item.userBorrowStatus === STATUS.PENDING || item.userBorrowStatus === STATUS.APPROVED ||
+        item.userBorrowStatus === STATUS.RETURNED) return;
 
     // 自己发布的物品/需求不可操作
-    if (userId && item.userId === userId) {
+    if (userId && item.userId && String(userId) === String(item.userId)) {
       wx.showModal({
         title: '提示',
-        content: item.isWanted ? '无法借出自己的需求' : '无法借入自己的物品',
+        content: item.isWanted ? '这是您自己发布的需求，无法进行交互' : '这是您自己发布的闲置物品，无法进行交互',
         showCancel: false,
         confirmText: '知道了'
       });
       return;
     }
 
-    // 初始化表单：根据时长生成选项
-    const maxDuration = item.maxDuration || 7;
-    const unit = item.durationUnit || 'day';
+    // 初始化表单：需求借入的借出意向使用默认时长范围（1~7天 / 1~24小时），
+    // 不做特殊限制；闲置借出的借入申请沿用物品本身的时长设置
+    const isWanted = item.isWanted;
+    const maxDuration = isWanted ? (item.durationUnit === 'hour' ? 24 : 7) : (item.maxDuration || 7);
+    const unit = isWanted ? 'day' : (item.durationUnit || 'day');
     const durationOptions = this.buildDurationOptions(unit, maxDuration);
     // 默认选中最大时长
     const durationIndex = durationOptions.length - 1;
@@ -265,19 +268,24 @@ Page({
     this.setData({ showSheet: false });
   },
 
-  // 切换时长单位（参照发布页 onUnitTap）
+  // 切换时长单位（需求借入的借出意向使用默认范围，不做特殊限制）
   onBorrowUnitTap(e) {
     const unit = e.currentTarget.dataset.value;
-    const itemUnit = this.data.item.durationUnit || 'day';
-    const itemMax = this.data.item.maxDuration || 7;
-    // 切换单位时转换最大值：天→小时 乘以 24，小时→天 除以 24
+    const isWanted = this.data.item.isWanted;
     let max;
-    if (unit === itemUnit) {
-      max = itemMax;
-    } else if (unit === 'hour') {
-      max = Math.min(itemMax * 24, 24);
+    if (isWanted) {
+      // 需求借入：借出意向使用默认范围 1~7天 / 1~24小时
+      max = unit === 'day' ? 7 : 24;
     } else {
-      max = Math.max(1, Math.floor(itemMax / 24));
+      const itemUnit = this.data.item.durationUnit || 'day';
+      const itemMax = this.data.item.maxDuration || 7;
+      if (unit === itemUnit) {
+        max = itemMax;
+      } else if (unit === 'hour') {
+        max = Math.min(itemMax * 24, 24);
+      } else {
+        max = Math.max(1, Math.floor(itemMax / 24));
+      }
     }
     const cap = unit === 'day' ? Math.min(max, 30) : Math.min(max, 24);
     const options = [];
@@ -318,7 +326,7 @@ Page({
 
     wx.showLoading({ title: '提交中...' });
 
-    api.post('/api/borrow', {
+    api.post('/api/borrow-requests', {
       idleId: item.id,
       durationType: borrowForm.durationUnit,
       durationDays: durationDays,
@@ -330,7 +338,7 @@ Page({
         this.setData({ showSheet: false });
         wx.showToast({ title: item.isWanted ? '借出意向已发送' : '借入申请已发送', icon: 'success' });
         // 本地更新物品状态（通过后端 userBorrowStatus 在重新进入时保持）
-        this.setData({ 'item.status': 'reserved', 'item.userBorrowStatus': 'pending' });
+        this.setData({ 'item.status': STATUS.RESERVED, 'item.userBorrowStatus': STATUS.PENDING });
       })
       .catch((err) => {
         wx.hideLoading();

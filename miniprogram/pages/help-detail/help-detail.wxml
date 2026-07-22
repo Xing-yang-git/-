@@ -35,7 +35,13 @@
 
       <!-- 非紧急时的普通提示 -->
       <view class="callout" wx:if="{{!item.isUrgent}}">
-        <text>🤝 确认帮助后将进入聊天页面\n具体时间、地点在聊天中协商。</text>
+        <text>🤝 具体时间、地点在聊天中协商。</text>
+      </view>
+
+      <!-- 预计时间范围（仅当发布时填写了时间段才展示） -->
+      <view class="info-row" wx:if="{{item.timeRangeText}}" style="margin-top:6rpx;">
+        <text class="info-label">预计时间</text>
+        <text class="info-value help-time-value">{{item.timeRangeText}}</text>
       </view>
 
       <!-- 信息行 -->
@@ -72,7 +78,7 @@
     </button>
     <button class="action-btn action-btn-primary" bindtap="onHelpTap"
             disabled="{{hasApplied || item.status === 'assigned' || item.status === 'completed'}}">
-      <text>{{hasApplied ? '已申请，待审核' : (item.status === 'assigned' ? '已有人接单' : item.status === 'completed' ? '已完成' : '我来帮忙')}}</text>
+      <text>{{hasApplied ? '已申请' : (item.status === 'assigned' ? '已有人接单' : item.status === 'completed' ? '已完成' : '我来帮忙')}}</text>
     </button>
   </view>
 
@@ -151,6 +157,11 @@
             <text class="borrow-summary-label">紧急程度</text>
             <text class="borrow-summary-value" style="color:#FF3B30;">紧急</text>
           </view>
+          <!-- 预计时间范围（仅当发布时填写了时间段才展示） -->
+          <view class="borrow-summary-row" wx:if="{{item.timeRangeText}}">
+            <text class="borrow-summary-label">预计时间</text>
+            <text class="borrow-summary-value">{{item.timeRangeText}}</text>
+          </view>
         </view>
 
         <!-- 备注（选填） -->
@@ -164,7 +175,7 @@
 
         <!-- 确认提示 -->
         <view class="callout" style="margin-top:24rpx;font-size:12px;">
-          <text>🤝 确认后将进入聊天页面，具体时间、地点在聊天中协商。</text>
+          <text>🤝 具体时间、地点在聊天中协商。</text>
         </view>
       </scroll-view>
       <view class="borrow-sheet-footer">

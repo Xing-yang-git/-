@@ -1,9 +1,10 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
+const { POST_TYPE } = require('../../utils/constants');
 
 Page({
   data: {
-    postType: 'LEND',   // 'LEND' | 'WANTED' | 'HELP'
+    postType: POST_TYPE.LEND,   // 'LEND' | 'WANTED' | 'HELP'
     title: '',
     category: '',
     customType: '',
@@ -12,8 +13,8 @@ Page({
     images: [],
     // Duration (shared by LEND & WANTED)
     durationUnit: 'day',
-    durationOptions: ['1 天', '3 天', '5 天', '7 天'],
-    durationIndex: 3,
+    durationOptions: ['1 天', '2 天', '3 天', '4 天', '5 天', '6 天', '7 天'],
+    durationIndex: 6,
     // LEND fields
     pickupMethod: 'self_pickup',
     condition: 'normal',
@@ -32,10 +33,10 @@ Page({
     // 从页面参数接收 postType
     if (options && options.type) {
       const type = options.type;
-      if (type === 'WANTED' || type === 'BORROW') {
-        this.setData({ postType: 'WANTED' });
-      } else if (type === 'HELP') {
-        this.setData({ postType: 'HELP' });
+      if (type === POST_TYPE.WANTED || type === 'BORROW') {
+        this.setData({ postType: POST_TYPE.WANTED });
+      } else if (type === POST_TYPE.HELP) {
+        this.setData({ postType: POST_TYPE.HELP });
       }
     }
 
@@ -177,7 +178,7 @@ Page({
     const postType = this.data.postType;
 
     // --- HELP: 技能求助 ---
-    if (postType === 'HELP') {
+    if (postType === POST_TYPE.HELP) {
       if (!this.data.title || !this.data.title.trim()) {
         wx.showToast({ title: '请填写求助标题', icon: 'none' });
         return;
@@ -211,7 +212,7 @@ Page({
           const uploadTasks = this.data.images.map(filePath => api.upload('/api/common/upload', filePath));
           imageUrls = await Promise.all(uploadTasks);
         }
-        await api.post('/api/help', {
+        await api.post('/api/help-requests', {
           title: this.data.title.trim(),
           category: this.data.category === '其他' ? this.data.customType.trim() : this.data.category,
           description: this.data.description.trim(),
@@ -222,6 +223,9 @@ Page({
         });
         wx.hideLoading();
         wx.showToast({ title: '发布成功' });
+        // 告知首页本次发布的类型，使其 onShow 能按需刷新匹配的 tab
+        const app = getApp();
+        app.globalData.pendingHomeRefresh = postType;
         setTimeout(() => wx.navigateBack(), 1000);
       } catch (e) {
         wx.hideLoading();
@@ -231,7 +235,7 @@ Page({
     }
 
     // --- WANTED: 需求借入 ---
-    if (postType === 'WANTED') {
+    if (postType === POST_TYPE.WANTED) {
       if (!this.data.title || !this.data.title.trim()) {
         wx.showToast({ title: '请填写物品名称', icon: 'none' });
         return;
@@ -257,8 +261,8 @@ Page({
           const uploadTasks = this.data.images.map(filePath => api.upload('/api/common/upload', filePath));
           imageUrls = await Promise.all(uploadTasks);
         }
-        await api.post('/api/idle', {
-          postType: 'WANTED',
+        await api.post('/api/idle-items', {
+          postType: POST_TYPE.WANTED,
           title: this.data.title.trim(),
           category: this.data.category === '其他' ? this.data.customType.trim() : this.data.category,
           description: this.data.description.trim(),
@@ -268,6 +272,9 @@ Page({
         });
         wx.hideLoading();
         wx.showToast({ title: '发布成功' });
+        // 告知首页本次发布的类型，使其 onShow 能按需刷新匹配的 tab
+        const app = getApp();
+        app.globalData.pendingHomeRefresh = postType;
         setTimeout(() => wx.navigateBack(), 1000);
       } catch (e) {
         wx.hideLoading();
@@ -297,13 +304,17 @@ Page({
       wx.showToast({ title: '请至少上传 1 张图片', icon: 'none' });
       return;
     }
+    if (!this.data.condition) {
+      wx.showToast({ title: '请选择物品状况', icon: 'none' });
+      return;
+    }
 
     wx.showLoading({ title: '发布中' });
     try {
       // 先上传图片（闲置借出必填）
       const uploadTasks = this.data.images.map(filePath => api.upload('/api/common/upload', filePath));
       const imageUrls = await Promise.all(uploadTasks);
-      await api.post('/api/idle', {
+      await api.post('/api/idle-items', {
         postType: this.data.postType,
         title: this.data.title.trim(),
         category: this.data.category === '其他' ? this.data.customType.trim() : this.data.category,
@@ -317,6 +328,9 @@ Page({
       });
       wx.hideLoading();
       wx.showToast({ title: '发布成功' });
+      // 告知首页本次发布的类型，使其 onShow 能按需刷新匹配的 tab
+      const app = getApp();
+      app.globalData.pendingHomeRefresh = postType;
       setTimeout(() => wx.navigateBack(), 1000);
     } catch (e) {
       wx.hideLoading();

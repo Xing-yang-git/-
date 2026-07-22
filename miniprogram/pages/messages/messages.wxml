@@ -2,10 +2,11 @@
   <!-- 会话列表 -->
   <view class="session-list" wx:if="{{sessions.length > 0}}">
     <view
-      class="session-item"
+      class="session-item {{item._isPinned ? 'pinned' : ''}}"
       wx:for="{{sessions}}"
       wx:key="id"
       bindtap="onSessionTap"
+      bindlongpress="onSessionLongPress"
       data-id="{{item.id}}"
       data-name="{{item.otherName}}"
       data-room="{{item.roomInfo}}"
@@ -13,11 +14,12 @@
       data-about-id="{{item.aboutId}}"
       data-about-type="{{item.aboutType}}"
       data-otheruserid="{{item.otherUserId}}"
+      data-is-service="{{item._isServiceNotice}}"
     >
       <view class="avatar">👤</view>
       <view class="msg-info">
         <view class="msg-name {{item.isRead ? '' : 'unread'}}">{{item.otherName}}</view>
-        <view class="msg-preview">{{item.lastMessage}}</view>
+        <view class="msg-preview {{item.lastMsgType === 'voice' && !item.isRead ? 'voice-preview-unread' : ''}}">{{item.lastMessage}}</view>
       </view>
       <view class="msg-meta">
         <view class="msg-time">{{item.timeText}}</view>
