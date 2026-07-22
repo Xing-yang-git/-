@@ -67,58 +67,75 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, reactive } from 'vue';
 import { useRouter } from 'vue-router';
-import { ElMessage } from 'element-plus';
+import { ElMessage, type FormInstance } from 'element-plus';
 import { HomeFilled, User, Lock } from '@element-plus/icons-vue';
+
 import { useAuthStore } from '../stores/auth';
-import { post } from '../utils/api';
+import { login, type AdminUser } from '../api/auth';
+import type { AxiosError } from 'axios';
+
+/** 登录表单数据结构 */
+interface LoginForm {
+  username: string;
+  password: string;
+}
 
 const router = useRouter();
 const authStore = useAuthStore();
 
-const formRef = ref(null);
-const passwordRef = ref(null);
+/** el-form 组件引用，用于触发表单校验 */
+const formRef = ref<FormInstance>();
+/** 密码输入框 DOM 引用，用于账号输入后自动聚焦 */
+const passwordRef = ref<HTMLInputElement | null>(null);
+/** 登录请求进行中 */
 const loading = ref(false);
+/** 登录失败时的错误提示文本 */
 const errorMsg = ref('');
+/** 密码是否明文显示 */
 const showPwd = ref(false);
 
-const form = reactive({
+/** 登录表单双向绑定数据 */
+const form = reactive<LoginForm>({
   username: '',
-  password: ''
+  password: '',
 });
 
+/** el-form 校验规则 */
 const rules = {
-  username: [{ required: true, message: '请输入管理员账号', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
+  username: [{ required: true, message: '请输入管理员账号', trigger: 'blur' as const }],
+  password: [{ required: true, message: '请输入密码', trigger: 'blur' as const }],
 };
 
-function focusPassword() {
-  passwordRef.value?.focus();
+/** 将焦点移至密码输入框 */
+function focusPassword(): void {
+  (passwordRef.value as HTMLInputElement | null)?.focus();
 }
 
-async function handleLogin() {
+/**
+ * 提交登录表单。
+ * 校验通过后调用后端登录接口，成功后保存 token 并跳转首页。
+ */
+async function handleLogin(): Promise<void> {
   errorMsg.value = '';
 
-  const valid = await formRef.value.validate().catch(() => false);
+  const valid = await formRef.value?.validate().catch(() => false);
   if (!valid) return;
 
   loading.value = true;
 
   try {
-    // 后端登录
-    const res = await post('/api/auth/login', {
-      username: form.username,
-      password: form.password
-    });
-    const { token, user } = res.data.data;
+    const res = await login(form.username, form.password);
+    const { token, user }: { token: string; user: AdminUser } = res.data.data;
     authStore.login(token, user);
     await authStore.initCommunity();
     ElMessage.success('登录成功，正在跳转...');
     setTimeout(() => router.push('/home'), 300);
   } catch (err) {
-    errorMsg.value = err.response?.data?.message || '账号或密码错误';
+    const axiosErr = err as AxiosError<{ message?: string }>;
+    errorMsg.value = axiosErr.response?.data?.message || '账号或密码错误';
     form.password = '';
   } finally {
     loading.value = false;
@@ -135,7 +152,7 @@ async function handleLogin() {
 .login-card {
   border-radius: 14px;
   padding: 48px 40px 40px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .login-brand {

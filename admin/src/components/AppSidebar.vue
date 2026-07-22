@@ -82,6 +82,8 @@ import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 
 const route = useRoute();
+
+/** 当前激活的路由路径，用于高亮侧边栏菜单项 */
 const activeRoute = computed(() => route.path);
 </script>
 

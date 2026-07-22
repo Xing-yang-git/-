@@ -89,6 +89,7 @@
                   size="small"
                   link
                   type="danger"
+                  :loading="deleting"
                   @click="confirmDeleteAdmin(row)"
                 >删除</el-button>
               </template>
@@ -138,55 +139,90 @@
   </el-container>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus';
 import { ArrowDown } from '@element-plus/icons-vue';
+
 import { useAuthStore } from '../stores/auth';
-import { put, get, post, del } from '../utils/api';
+import { updateProfile, updatePassword, getAdmins, createAdmin, deleteAdmin, getLogs, type OperationLogDTO } from '../api/admin';
 import AppSidebar from '../components/AppSidebar.vue';
+import type { AxiosError } from 'axios';
+import type { AdminUser } from '../api/auth';
+
+// --- 本地类型 ---
+
+/** 个人信息表单 */
+interface ProfileForm {
+  name: string;
+}
+
+/** 修改密码表单 */
+interface PwdForm {
+  oldPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+/** 添加管理员表单 */
+interface AddAdminForm {
+  name: string;
+  phone: string;
+  password: string;
+}
+
+/** 管理员列表行数据 */
+interface AdminRow {
+  id: number;
+  name: string;
+  phone?: string;
+  userType: string;
+}
 
 const router = useRouter();
 const authStore = useAuthStore();
 
+/** 是否为超级管理员（超级管理员可管理子账号） */
 const isSuperAdmin = computed(() => authStore.user?.userType === 'super_admin');
+/** 当前用户类型的中文标签 */
 const userTypeLabel = computed(() => {
-  const map = { super_admin: '超级管理员', admin: '普通管理员' };
-  return map[authStore.user?.userType] || authStore.user?.userType || '管理员';
+  const map: Record<string, string> = { super_admin: '超级管理员', admin: '普通管理员' };
+  return map[authStore.user?.userType || ''] || authStore.user?.userType || '管理员';
 });
 
 // ==================== 个人信息 ====================
-const profile = reactive({
-  name: authStore.user?.name || ''
-});
+/** 个人信息表单数据 */
+const profile = reactive<ProfileForm>({ name: authStore.user?.name || '' });
+/** 保存个人信息 loading */
 const profileLoading = ref(false);
 
-async function saveProfile() {
+/** 保存个人信息到后端 */
+async function saveProfile(): Promise<void> {
   profileLoading.value = true;
   try {
-    const res = await put('/api/admin/profile', { name: profile.name });
-    const updated = res.data.data;
-    // 用新名称更新 auth store
-    authStore.login(authStore.token, { ...authStore.user, name: updated.name });
+    const res = await updateProfile({ name: profile.name });
+    const updated = res.data.data as { name: string };
+    authStore.login(authStore.token, { ...authStore.user, name: updated.name } as AdminUser);
     ElMessage.success('个人信息已保存');
   } catch (err) {
-    ElMessage.error(err.response?.data?.message || '保存失败');
+    const axiosErr = err as AxiosError<{ message?: string }>;
+    ElMessage.error(axiosErr.response?.data?.message || '保存失败');
   } finally {
     profileLoading.value = false;
   }
 }
 
 // ==================== 修改密码 ====================
-const pwdFormRef = ref(null);
-const pwdForm = reactive({
-  oldPassword: '',
-  newPassword: '',
-  confirmPassword: ''
-});
+/** el-form 组件引用 */
+const pwdFormRef = ref<FormInstance>();
+/** 密码表单数据 */
+const pwdForm = reactive<PwdForm>({ oldPassword: '', newPassword: '', confirmPassword: '' });
+/** 修改密码 loading */
 const pwdLoading = ref(false);
 
-const validateConfirmPassword = (_rule, value, callback) => {
+/** 自定义校验：确认密码是否与新密码一致 */
+const validateConfirmPassword = (_rule: any, value: string, callback: (e?: Error) => void) => {
   if (value !== pwdForm.newPassword) {
     callback(new Error('两次输入的新密码不一致'));
   } else {
@@ -194,6 +230,7 @@ const validateConfirmPassword = (_rule, value, callback) => {
   }
 };
 
+/** el-form 密码校验规则 */
 const pwdRules = {
   oldPassword: [{ required: true, message: '请输入当前密码', trigger: 'blur' }],
   newPassword: [
@@ -206,72 +243,76 @@ const pwdRules = {
   ]
 };
 
-async function changePassword() {
-  const valid = await pwdFormRef.value.validate().catch(() => false);
+/** 提交修改密码 */
+async function changePassword(): Promise<void> {
+  const valid = await pwdFormRef.value?.validate().catch(() => false);
   if (!valid) return;
 
   pwdLoading.value = true;
   try {
-    await put('/api/admin/password', {
-      oldPassword: pwdForm.oldPassword,
-      newPassword: pwdForm.newPassword
-    });
+    await updatePassword({ oldPassword: pwdForm.oldPassword, newPassword: pwdForm.newPassword });
     ElMessage.success('密码修改成功');
     pwdForm.oldPassword = '';
     pwdForm.newPassword = '';
     pwdForm.confirmPassword = '';
   } catch (err) {
-    ElMessage.error(err.response?.data?.message || '密码修改失败');
+    const axiosErr = err as AxiosError<{ message?: string }>;
+    ElMessage.error(axiosErr.response?.data?.message || '密码修改失败');
   } finally {
     pwdLoading.value = false;
   }
 }
 
 // ==================== 管理员列表 ====================
-const adminList = ref([]);
+/** 管理员列表 */
+const adminList = ref<AdminRow[]>([]);
+/** 管理员列表加载状态 */
 const adminListLoading = ref(false);
+/** 删除管理员进行中 */
+const deleting = ref(false);
 
-async function fetchAdmins() {
+/** 从后端获取管理员列表 */
+async function fetchAdmins(): Promise<void> {
   adminListLoading.value = true;
   try {
-    const res = await get('/api/admin/admins');
-    adminList.value = res.data.data;
-  } catch (err) {
+    const res = await getAdmins();
+    adminList.value = res.data.data as AdminRow[];
+  } catch {
     ElMessage.error('获取管理员列表失败');
   } finally {
     adminListLoading.value = false;
   }
 }
 
-function roleBadge(userType) {
+/** 角色标签 CSS 映射 */
+function roleBadge(userType: string): string {
   return userType === 'super_admin' ? 'badge-info' : 'badge-success';
 }
 
-async function confirmDeleteAdmin(row) {
+/** 确认并删除指定管理员 */
+async function confirmDeleteAdmin(row: AdminRow): Promise<void> {
   try {
     await ElMessageBox.confirm(`确认删除子账号「${row.name}」？`, '提示', {
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-      type: 'warning'
+      confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning',
     });
-    await del(`/api/admin/admins/${row.id}`);
+    deleting.value = true;
+    await deleteAdmin(row.id);
     ElMessage.success('已删除');
     fetchAdmins();
   } catch (err) {
     if (err !== 'cancel') {
-      ElMessage.error(err.response?.data?.message || '删除失败');
+      const axiosErr = err as AxiosError<{ message?: string }>;
+      ElMessage.error(axiosErr.response?.data?.message || '删除失败');
     }
+  } finally {
+    deleting.value = false;
   }
 }
 
 // ==================== 添加管理员弹窗 ====================
 const addAdminVisible = ref(false);
-const addAdminFormRef = ref(null);
-const addAdminForm = reactive({
-  name: '',
-  phone: '',
-  password: ''
-});
+const addAdminFormRef = ref<FormInstance>();
+const addAdminForm = reactive<AddAdminForm>({ name: '', phone: '', password: '' });
 const addAdminLoading = ref(false);
 
 const addAdminRules = {
@@ -286,52 +327,49 @@ const addAdminRules = {
   ]
 };
 
-function openAddAdmin() {
+function openAddAdmin(): void {
   addAdminForm.name = '';
   addAdminForm.phone = '';
   addAdminForm.password = '';
   addAdminVisible.value = true;
 }
 
-async function submitAddAdmin() {
-  const valid = await addAdminFormRef.value.validate().catch(() => false);
+async function submitAddAdmin(): Promise<void> {
+  const valid = await addAdminFormRef.value?.validate().catch(() => false);
   if (!valid) return;
 
   addAdminLoading.value = true;
   try {
-    await post('/api/admin/admins', {
-      name: addAdminForm.name,
-      phone: addAdminForm.phone,
-      password: addAdminForm.password
-    });
+    await createAdmin({ name: addAdminForm.name, phone: addAdminForm.phone, password: addAdminForm.password });
     addAdminVisible.value = false;
     ElMessage.success(`子账号「${addAdminForm.name}」已添加`);
     fetchAdmins();
   } catch (err) {
-    ElMessage.error(err.response?.data?.message || '添加失败');
+    const axiosErr = err as AxiosError<{ message?: string }>;
+    ElMessage.error(axiosErr.response?.data?.message || '添加失败');
   } finally {
     addAdminLoading.value = false;
   }
 }
 
 // ==================== 操作日志 ====================
-const operationLogs = ref([]);
+const operationLogs = ref<OperationLogDTO[]>([]);
 const logsLoading = ref(false);
 
-async function fetchLogs() {
+async function fetchLogs(): Promise<void> {
   logsLoading.value = true;
   try {
-    const res = await get('/api/admin/logs', { page: 0, size: 20 });
+    const res = await getLogs({ page: 0, size: 20 });
     operationLogs.value = res.data.data.content || [];
-  } catch (err) {
+  } catch {
     // silent
   } finally {
     logsLoading.value = false;
   }
 }
 
-function actionLabel(action) {
-  const map = {
+function actionLabel(action: string): string {
+  const map: Record<string, string> = {
     approve_user: '审核通过',
     reject_user: '驳回审核',
     remove_content: '下架内容',
@@ -343,7 +381,7 @@ function actionLabel(action) {
   return map[action] || action;
 }
 
-function actionBadge(action) {
+function actionBadge(action: string): string {
   if (action === 'approve_user') return 'badge-success';
   if (action === 'reject_user') return 'badge-warning';
   if (action === 'remove_content') return 'badge-danger';
@@ -353,12 +391,12 @@ function actionBadge(action) {
 }
 
 // ==================== 辅助函数 ====================
-function formatTime(t) {
+/** 格式化时间字符串为 "MM-DD HH:mm" 格式 */
+function formatTime(t?: string): string {
   if (!t) return '';
   if (typeof t === 'string') {
-    // "2026-07-15T10:30:00" → "07-15 10:30"
     const d = new Date(t);
-    if (isNaN(d.getTime())) return t.substring(0, 16);
+    if (Number.isNaN(d.getTime())) return t.substring(0, 16);
     return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   }
   return '';
@@ -374,11 +412,13 @@ onMounted(() => {
 });
 
 // ==================== 退出登录 ====================
-function handleCommand(cmd) {
+/** 顶部下拉菜单命令处理 */
+function handleCommand(cmd: string): void {
   if (cmd === 'logout') handleLogout();
 }
 
-async function handleLogout() {
+/** 退出登录确认 */
+async function handleLogout(): Promise<void> {
   try {
     await ElMessageBox.confirm('确认退出登录？', '提示', {
       confirmButtonText: '退出',

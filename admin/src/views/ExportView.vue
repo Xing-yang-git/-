@@ -62,7 +62,7 @@
               </div>
             </div>
             <div class="mt-16" style="display:flex;gap:8px;">
-              <el-button type="primary" @click="doExport">
+              <el-button type="primary" :loading="exporting" @click="doExport">
                 <el-icon><Download /></el-icon> 立即导出
               </el-button>
               <el-button @click="setupAutoExport">
@@ -104,42 +104,56 @@
   </el-container>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, reactive } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { ArrowDown, Download, Calendar } from '@element-plus/icons-vue';
+
 import { useAuthStore } from '../stores/auth';
+import { exportData } from '../api/admin';
 import AppSidebar from '../components/AppSidebar.vue';
 
 const router = useRouter();
 const authStore = useAuthStore();
 
-const dateRange = ref(['2026-06-01', '2026-06-30']);
-const exportFormat = ref('csv');
+/** 导出数据的时间范围 */
+const dateRange = ref<string[]>(['2026-06-01', '2026-06-30']);
+/** 导出文件格式 */
+const exportFormat = ref<'csv' | 'xlsx'>('csv');
 
+/** 导出内容选项（按模块勾选） */
 const exportOptions = reactive({
   residents: true,
   idleRecords: true,
   helpRecords: true,
   mutualRecords: true,
   offlineRecords: false,
-  ratings: false
+  ratings: false,
 });
 
+/** 自动备份策略配置 */
 const autoBackup = reactive({
   weekly: true,
-  daily: true
+  daily: true,
 });
 
+/** 是否正在执行导出 */
+const exporting = ref<boolean>(false);
+
+/** 历史导出日志（展示用） */
 const exportLogs = reactive([
   { time: '2026-06-29 02:00', type: '每日增量', status: '成功', count: '156条' },
   { time: '2026-06-23 02:00', type: '每周全量', status: '成功', count: '1,250条' },
-  { time: '2026-06-22 02:00', type: '每日增量', status: '成功', count: '142条' }
+  { time: '2026-06-22 02:00', type: '每日增量', status: '成功', count: '142条' },
 ]);
 
-function doExport() {
-  const selected = Object.entries(exportOptions)
+/**
+ * 执行数据导出。
+ * 收集当前勾选的导出选项，调用后端导出接口并触发浏览器下载。
+ */
+function doExport(): void {
+  const selected = (Object.entries(exportOptions) as [string, boolean][])
     .filter(([, v]) => v)
     .map(([k]) => k);
   if (!selected.length) {
@@ -147,26 +161,16 @@ function doExport() {
     return;
   }
 
-  // 通过后端 API 构建 CSV 下载
-  const params = new URLSearchParams();
-  params.set('format', exportFormat.value);
-  if (dateRange.value && dateRange.value.length === 2) {
-    params.set('start', dateRange.value[0]);
-    params.set('end', dateRange.value[1]);
-  }
-  params.set('options', selected.join(','));
+  exporting.value = true;
 
-  // 触发下载
-  const url = `/api/admin/export?${params.toString()}`;
-  const token = localStorage.getItem('admin_token');
-  const a = document.createElement('a');
-  a.href = url;
-  // 备用方案：使用 fetch 获取 blob 进行 CSV 下载
-  fetch(url, {
-    headers: { Authorization: `Bearer ${token}` }
+  exportData({
+    format: exportFormat.value,
+    start: dateRange.value?.[0],
+    end: dateRange.value?.[1],
+    options: selected,
   })
-    .then(res => res.blob())
-    .then(blob => {
+    .then((res: Response) => res.blob())
+    .then((blob: Blob) => {
       const downloadUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
@@ -179,18 +183,21 @@ function doExport() {
     .catch(() => {
       // 后端不可用 — 显示提示消息
       ElMessage.success('导出任务已开始，完成后将自动下载');
+    })
+    .finally(() => {
+      exporting.value = false;
     });
 }
 
-function setupAutoExport() {
+function setupAutoExport(): void {
   ElMessage.success('自动导出已设置');
 }
 
-function handleCommand(cmd) {
+function handleCommand(cmd: string): void {
   if (cmd === 'logout') handleLogout();
 }
 
-async function handleLogout() {
+async function handleLogout(): Promise<void> {
   try {
     await ElMessageBox.confirm('确认退出登录？', '提示', {
       confirmButtonText: '退出',

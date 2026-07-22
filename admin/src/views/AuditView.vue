@@ -329,7 +329,7 @@
                   ? "租房合同"
                   : auditTarget.type === "owner"
                     ? "房产证"
-                    : "证件照"
+                    : "认证资料"
               }}</span>
               <span class="dv">
                 <span
@@ -408,10 +408,10 @@
               />
               <span style="flex: 1"></span>
               <el-button @click="auditVisible = false">取消</el-button>
-              <el-button type="primary" :disabled="hasRejectContent" @click="submitAudit(true)"
+              <el-button type="primary" :disabled="hasRejectContent" :loading="submitting" @click="submitAudit(true)"
                 >同意</el-button
               >
-              <el-button type="danger" @click="submitAudit(false)"
+              <el-button type="danger" :loading="submitting" @click="submitAudit(false)"
                 >驳回</el-button
               >
             </div>
@@ -473,7 +473,7 @@
                   ? "租房合同"
                   : detailRow.type === "owner"
                     ? "房产证"
-                    : "证件照"
+                    : "认证资料"
               }}</span>
               <span class="dv">
                 <span
@@ -528,106 +528,152 @@
   </el-container>
 </template>
 
-<script setup>
-import { ref, reactive, computed, onMounted } from "vue";
-import { useRouter } from "vue-router";
-import { ElMessage, ElMessageBox } from "element-plus";
-import { ArrowDown, ArrowLeft, ArrowRight } from "@element-plus/icons-vue";
-import { useAuthStore } from "../stores/auth";
-import { useCommunityStore } from "../stores/community";
-import { get, put } from "../utils/api";
-import AppSidebar from "../components/AppSidebar.vue";
+<script setup lang="ts">
+import { ref, reactive, computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { ArrowDown, ArrowLeft, ArrowRight } from '@element-plus/icons-vue';
+
+import { useAuthStore } from '../stores/auth';
+import { useCommunityStore } from '../stores/community';
+import { getAudits, getAuditCounts, auditUser, type AuditUserDTO, type AuditCounts } from '../api/admin';
+import { STATUS } from '../utils/constants';
+import AppSidebar from '../components/AppSidebar.vue';
+import type { AxiosError } from 'axios';
+
+// --- 本地类型 ---
+
+/** 超时判定结果 */
+interface OvertimeStatus {
+  status: string;
+  statusClass: string;
+}
+
+/** 审核列表行数据结构 */
+interface AuditRow {
+  id: number;
+  name: string;
+  room: string;
+  type: string;
+  time: string;
+  phone: string;
+  status: string;
+  statusClass: string;
+  docImages: string[];
+  rejectReason: string;
+  auditor: string;
+}
+
+/** 各标签页的计数 */
+interface TabCounts {
+  pending: number;
+  approved: number;
+  rejected: number;
+}
 
 const router = useRouter();
 const authStore = useAuthStore();
 const communityStore = useCommunityStore();
 
-// --- 用户类型标签映射 ---
-// 用户类型: 数据库存储中文值（业主/租客/admin/super_admin）
-const TYPE_MAP = {
-  业主: "业主",
-  租客: "租客",
-  admin: "管理员",
-  super_admin: "超级管理员",
+// --- 纯工具函数 ---
+
+/** 后端 userType → 中文显示名映射 */
+const TYPE_MAP: Record<string, string> = {
+  业主: '业主',
+  租客: '租客',
+  admin: '管理员',
+  super_admin: '超级管理员',
 };
 
-function mapType(userType) {
-  return TYPE_MAP[userType] || userType || "—";
+/** 将后端用户类型转为中文显示 */
+function mapType(userType: string): string {
+  return TYPE_MAP[userType] || userType || '—';
 }
 
-function formatTime(dateStr) {
-  if (!dateStr) return "";
-  // 将 ISO 格式/数组转换为可读字符串
+/** 格式化 ISO 日期为可读格式 */
+function formatTime(dateStr: string): string {
+  if (!dateStr) return '';
   const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return dateStr;
-  const pad = (n) => String(n).padStart(2, "0");
+  if (Number.isNaN(d.getTime())) return dateStr;
+  const pad = (n: number): string => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-// 超时状态：待审核提交超过 24 小时未处理视为「超时」（红），否则「正常」（绿）。
-// 对齐原型的 status / statusClass 字段（原型为写死的 mock 数据，此处按提交时间实时计算）。
-function computeOvertime(dateStr) {
-  const normal = { status: "正常", statusClass: "tag-green" };
+/**
+ * 计算审核是否超时（超过 24 小时未处理）。
+ * @param dateStr - 创建时间的 ISO 字符串
+ * @returns 超时状态对象
+ */
+function computeOvertime(dateStr: string): OvertimeStatus {
+  const normal: OvertimeStatus = { status: '正常', statusClass: 'tag-green' };
   if (!dateStr) return normal;
   const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return normal;
+  if (Number.isNaN(d.getTime())) return normal;
   const hours = (Date.now() - d.getTime()) / 3600000;
-  return hours > 24 ? { status: "超时", statusClass: "tag-red" } : normal;
+  return hours > 24 ? { status: '超时', statusClass: 'tag-red' } : normal;
 }
 
 // --- 标签页 ---
-const activeTab = ref("pending");
-const tabCounts = reactive({ pending: 0, approved: 0, rejected: 0 });
+/** 当前激活的标签页 key */
+const activeTab = ref<string>('pending');
+/** 各标签页的计数（来自后端统计接口） */
+const tabCounts = reactive<TabCounts>({ pending: 0, approved: 0, rejected: 0 });
 
 const tabs = computed(() => [
-  { key: "pending", label: "待审核", count: tabCounts.pending },
-  { key: "rejected", label: "已驳回", count: tabCounts.rejected },
-  { key: "all", label: "全部住户", count: tabCounts.approved },
+  { key: 'pending', label: '待审核', count: tabCounts.pending },
+  { key: 'rejected', label: '已驳回', count: tabCounts.rejected },
+  { key: 'all', label: '全部住户', count: tabCounts.approved },
 ]);
 
 // --- 数据 ---
-const pendingData = ref([]);
-const passedData = ref([]);
-const rejectedData = ref([]);
+/** 待审核列表 */
+const pendingData = ref<AuditRow[]>([]);
+/** 已通过列表 */
+const passedData = ref<AuditRow[]>([]);
+/** 已驳回列表 */
+const rejectedData = ref<AuditRow[]>([]);
+/** 列表加载状态 */
 const loading = ref(false);
-const error = ref("");
+/** 审核操作提交中 */
+const submitting = ref(false);
+/** 加载错误信息 */
+const error = ref('');
 
 /** 加载当前标签页的数据列表 */
-async function loadData() {
+async function loadData(): Promise<void> {
   loading.value = true;
-  error.value = "";
+  error.value = '';
   try {
-    let status = null;
-    if (activeTab.value === "pending") status = "pending";
-    else if (activeTab.value === "all") status = "approved";
-    else if (activeTab.value === "rejected") status = "rejected";
-    // 'all' 时不传 status
+    let status: string | undefined;
+    if (activeTab.value === 'pending') status = STATUS.PENDING;
+    else if (activeTab.value === 'all') status = STATUS.APPROVED;
+    else if (activeTab.value === 'rejected') status = STATUS.REJECTED;
 
-    const res = await get("/api/admin/audits", { status, page: 0, size: 200 });
-    // 后端返回 { code:200, data: PageDTO }
+    const res = await getAudits({ status, page: 0, size: 200 });
     const page = res.data?.data;
-    const list = (page?.content || []).map((u) => {
+    const list: AuditRow[] = (page?.content || []).map((u: AuditUserDTO) => {
       const overtime = computeOvertime(u.createdAt);
       return {
         id: u.id,
-        name: u.name || "",
-        room: u.userRoom || "",
+        name: u.name || '',
+        room: u.userRoom || '',
         type: mapType(u.userType),
         time: formatTime(u.createdAt),
-        phone: u.phone || "",
+        phone: u.phone || '',
         status: overtime.status,
         statusClass: overtime.statusClass,
         docImages: u.docImages || [],
-        rejectReason: u.rejectReason || "",
-        auditor: u.auditor || u.auditorName || "",
+        rejectReason: u.rejectReason || '',
+        auditor: (u as any).auditor || u.auditorName || '',
       };
     });
 
-    if (activeTab.value === "pending") pendingData.value = list;
-    else if (activeTab.value === "all") passedData.value = list;
-    else if (activeTab.value === "rejected") rejectedData.value = list;
+    if (activeTab.value === 'pending') pendingData.value = list;
+    else if (activeTab.value === 'all') passedData.value = list;
+    else if (activeTab.value === 'rejected') rejectedData.value = list;
   } catch (e) {
-    error.value = e.response?.data?.message || e.message || "加载失败";
+    const err = e as AxiosError<{ message?: string }> | Error;
+    error.value = 'response' in err ? err.response?.data?.message || '加载失败' : err.message || '加载失败';
     ElMessage.error(error.value);
   } finally {
     loading.value = false;
@@ -635,14 +681,14 @@ async function loadData() {
 }
 
 /** 加载各标签页计数 */
-async function loadCounts() {
+async function loadCounts(): Promise<void> {
   try {
-    const res = await get("/api/admin/audits/counts");
-    const c = res.data?.data;
-    if (c) {
-      tabCounts.pending = c.pending || 0;
-      tabCounts.approved = c.approved || 0;
-      tabCounts.rejected = c.rejected || 0;
+    const res = await getAuditCounts();
+    const counts: AuditCounts | undefined = res.data?.data;
+    if (counts) {
+      tabCounts.pending = counts.pending || 0;
+      tabCounts.approved = counts.approved || 0;
+      tabCounts.rejected = counts.rejected || 0;
     }
   } catch {
     /* 计数加载失败不影响主要功能 */
@@ -655,19 +701,25 @@ onMounted(() => {
   loadCounts();
 });
 
-// 切换标签页 → 重新加载数据
-function switchTab(key) {
+// 切换标签页 → 重新加载数据与计数
+function switchTab(key: string): void {
   activeTab.value = key;
   selectedRows.value = [];
   loadData();
+  loadCounts();
 }
 
 // --- 筛选 ---
-const filterType = ref("");
-const filterBuilding = ref("");
-const filterUnit = ref("");
-const search = ref("");
-const selectedRows = ref([]);
+/** 筛选条件：住户类型 */
+const filterType = ref('');
+/** 筛选条件：楼栋 */
+const filterBuilding = ref('');
+/** 筛选条件：单元 */
+const filterUnit = ref('');
+/** 搜索关键词 */
+const search = ref('');
+/** 勾选的行 */
+const selectedRows = ref<AuditRow[]>([]);
 
 // 根据所选楼栋计算单元筛选选项
 const filterUnitOptions = computed(() => {
@@ -676,18 +728,15 @@ const filterUnitOptions = computed(() => {
   return buildingId ? communityStore.getUnits(buildingId) : [];
 });
 
-// 单元筛选匹配：直接字符串匹配（单元使用阿拉伯数字，如 "1单元"/"2单元"）
-function matchUnit(room, unit) {
+function matchUnit(room: string, unit: string): boolean {
   if (!room || !unit) return false;
   return room.includes(unit);
 }
 
-function matchFilter(item) {
+function matchFilter(item: AuditRow): boolean {
   if (filterType.value && item.type !== filterType.value) return false;
-  if (filterBuilding.value && !item.room.startsWith(filterBuilding.value))
-      return false;
-  if (filterUnit.value && !matchUnit(item.room, filterUnit.value))
-      return false;
+  if (filterBuilding.value && !item.room.startsWith(filterBuilding.value)) return false;
+  if (filterUnit.value && !matchUnit(item.room, filterUnit.value)) return false;
   if (search.value) {
     const s = search.value.trim();
     if (!item.name.includes(s) && !item.room.includes(s)) return false;
@@ -699,21 +748,20 @@ const filteredPending = computed(() => pendingData.value.filter(matchFilter));
 const filteredPassed = computed(() => passedData.value.filter(matchFilter));
 const filteredRejected = computed(() => rejectedData.value.filter(matchFilter));
 
-function handleSelectionChange(rows) {
+function handleSelectionChange(rows: AuditRow[]): void {
   selectedRows.value = rows;
 }
 
 // --- 住户详情（已通过 / 已驳回 tab 的「详细」）---
 const detailVisible = ref(false);
-const detailList = ref([]);
+const detailList = ref<AuditRow[]>([]);
 const detailPos = ref(0);
-const detailTab = ref("passed"); // 打开时的 tab：passed | rejected
-const detailRow = computed(() => detailList.value[detailPos.value] || null);
+const detailTab = ref<string>('passed');
+const detailRow = computed<AuditRow | null>(() => detailList.value[detailPos.value] || null);
 
-// 以勾选的住户打开详情弹窗（快照全部勾选项，支持左右箭头切换）
-function openResidentDetail() {
+function openResidentDetail(): void {
   if (!selectedRows.value.length) {
-    ElMessage.warning("请先勾选住户");
+    ElMessage.warning('请先勾选住户');
     return;
   }
   detailList.value = [...selectedRows.value];
@@ -722,19 +770,16 @@ function openResidentDetail() {
   detailVisible.value = true;
 }
 
-// 在勾选的多条住户间切换（delta = -1 上一条 / +1 下一条），越界忽略。
-function detailGo(delta) {
+function detailGo(delta: number): void {
   const next = detailPos.value + delta;
   if (next < 0 || next >= detailList.value.length) return;
   detailPos.value = next;
 }
 
 // --- Approval ---
-// 审批：以勾选的申请人打开审核弹窗，底部箭头可在选中项间上/下翻，
-// 弹窗内「同意 / 驳回」直接对当前记录做出审核结论。
-async function openApproval() {
+async function openApproval(): Promise<void> {
   if (!selectedRows.value.length) {
-    ElMessage.warning("请先勾选申请人");
+    ElMessage.warning('请先勾选申请人');
     return;
   }
   batchList.value = [...selectedRows.value];
@@ -744,8 +789,7 @@ async function openApproval() {
   auditVisible.value = true;
 }
 
-// 在选中项之间跳转（delta = -1 上一条 / +1 下一条），越界忽略。
-function batchGo(delta) {
+function batchGo(delta: number): void {
   const next = batchPos.value + delta;
   if (next < 0 || next >= batchList.value.length) return;
   batchPos.value = next;
@@ -754,90 +798,85 @@ function batchGo(delta) {
 
 // --- 审核弹窗 ---
 const auditVisible = ref(false);
-const auditTarget = ref(null);
-const rejectReasons = ref([]);
-const rejectCustomReason = ref("");
-const rejectError = ref("");
+const auditTarget = ref<AuditRow | null>(null);
+const rejectReasons = ref<string[]>([]);
+const rejectCustomReason = ref('');
+const rejectError = ref('');
 
-// 若勾选了驳回原因或填写了自定义原因，则禁用"同意"按钮
 const hasRejectContent = computed(() => {
   return rejectReasons.value.length > 0 || rejectCustomReason.value.trim().length > 0;
 });
 
-// 批量审核导航状态
 const batchMode = ref(false);
-const batchList = ref([]);
+const batchList = ref<AuditRow[]>([]);
 const batchPos = ref(0);
+const auditActed = ref(false);
 
-// 载入一条待审核数据到表单并重置校验
-function setAuditTarget(row) {
+function setAuditTarget(row: AuditRow): void {
   auditTarget.value = row;
   rejectReasons.value = [];
-  rejectCustomReason.value = "";
-  rejectError.value = "";
+  rejectCustomReason.value = '';
+  rejectError.value = '';
 }
 
-async function submitAudit(approved) {
-  // 驳回时：驳回原因必填 —— 至少勾选一项，或自定义原因去除空白/换行后非空
+async function submitAudit(approved: boolean): Promise<void> {
   if (!approved) {
     const hasCustom = rejectCustomReason.value.trim().length > 0;
     if (!rejectReasons.value.length && !hasCustom) {
-      rejectError.value = "请至少选择一项或填写有效的驳回原因";
+      rejectError.value = '请至少选择一项或填写有效的驳回原因';
       return;
     }
   }
-  rejectError.value = "";
+  rejectError.value = '';
 
   const reasons = [...rejectReasons.value];
   const customText = rejectCustomReason.value.trim();
   if (customText) reasons.push(customText);
-  const reason = approved ? null : reasons.join("；") || "未说明";
+  const reason: string | null = approved ? null : reasons.join('；') || '未说明';
 
+  submitting.value = true;
   try {
-    await put(`/api/admin/audits/${auditTarget.value.id}`, {
-      approved,
-      reason,
-    });
-    ElMessage.success(approved ? "审核通过" : "已驳回");
-    // 批量模式下：还有下一条则前进继续审核，否则关闭（关闭时统一刷新）
+    await auditUser(auditTarget.value!.id, { approved, reason: reason ?? undefined });
+    ElMessage.success(approved ? '审核通过' : '已驳回');
+    auditActed.value = true;
     if (batchMode.value && batchPos.value < batchList.value.length - 1) {
       batchGo(1);
     } else {
       auditVisible.value = false;
-      if (!batchMode.value) {
-        loadData();
-        loadCounts();
-      }
     }
   } catch (e) {
-    ElMessage.error(e.response?.data?.message || "操作失败");
+    const err = e as AxiosError<{ message?: string }>;
+    ElMessage.error(err.response?.data?.message || '操作失败');
+  } finally {
+    submitting.value = false;
   }
 }
 
-// 弹窗关闭后：批量模式统一刷新数据与计数并复位状态
-function onAuditClosed() {
-  if (batchMode.value) {
-    batchMode.value = false;
-    batchList.value = [];
-    batchPos.value = 0;
+function onAuditClosed(): void {
+  batchMode.value = false;
+  batchList.value = [];
+  batchPos.value = 0;
+  if (auditActed.value) {
+    auditActed.value = false;
+    selectedRows.value = [];
     loadData();
     loadCounts();
   }
 }
 
-function handleCommand(cmd) {
-  if (cmd === "logout") handleLogout();
+function handleCommand(cmd: string): void {
+  if (cmd === 'logout') handleLogout();
 }
 
-async function handleLogout() {
+async function handleLogout(): Promise<void> {
   try {
-    await ElMessageBox.confirm("确认退出登录？", "提示", {
-      confirmButtonText: "退出",
-      cancelButtonText: "取消",
-      type: "warning",
+    await ElMessageBox.confirm('确认退出登录？', '提示', {
+      confirmButtonText: '退出',
+      cancelButtonText: '取消',
+      type: 'warning',
     });
     authStore.logout();
-    router.push("/login");
+    router.push('/login');
   } catch {
     /* 已取消 */
   }

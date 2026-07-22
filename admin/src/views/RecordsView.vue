@@ -365,11 +365,12 @@
   </el-container>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowDown, ArrowLeft, ArrowRight } from "@element-plus/icons-vue";
+
 import { useAuthStore } from "../stores/auth";
 import { useCommunityStore } from "../stores/community";
 import AppSidebar from "../components/AppSidebar.vue";
@@ -382,12 +383,18 @@ onMounted(() => {
   communityStore.fetchCommunityData();
 });
 
+/** 搜索关键词（按发布者/接手者/内容匹配） */
 const search = ref("");
-const filterDateRange = ref(null);
+/** 时间范围筛选 */
+const filterDateRange = ref<string[] | null>(null);
+/** 类型筛选：'idle' | 'help' */
 const filterType = ref("");
+/** 楼栋筛选 */
 const filterBuilding = ref("");
+/** 单元筛选 */
 const filterUnit = ref("");
 
+/** 互助记录列表（静态 demo 数据） */
 const records = reactive([
   {
     publisher: "3栋2单元1502号(业主)",
@@ -488,6 +495,7 @@ const records = reactive([
   },
 ]);
 
+/** 按筛选条件过滤后的记录列表 */
 const filteredRecords = computed(() => {
   return records.filter((item) => {
     if (filterType.value && item.type !== filterType.value) return false;
@@ -496,8 +504,9 @@ const filteredRecords = computed(() => {
     if (filterUnit.value && !matchUnit(item.room, filterUnit.value))
       return false;
     // 时间区间筛选：按记录开始日期（精确到日）落在所选起止范围内
-    if (filterDateRange.value && filterDateRange.value.length === 2) {
-      const [start, end] = filterDateRange.value;
+    const range = filterDateRange.value;
+    if (range && range.length === 2) {
+      const [start, end] = range;
       const d = (item.timeStart || "").slice(0, 10);
       if (d < start || d > end) return false;
     }
@@ -514,40 +523,46 @@ const filteredRecords = computed(() => {
   });
 });
 
-// 分页
+// --- 分页 ---
 const currentPage = ref(1);
 const pageSize = ref(10);
+/** 当前页的记录切片 */
 const paginatedRecords = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value;
   return filteredRecords.value.slice(start, start + pageSize.value);
 });
 
-// 选择
-const selectedRows = ref([]);
-// 根据所选楼栋计算单元筛选选项
-const filterUnitOptions = computed(() => {
+// --- 选择 & 筛选 ---
+/** 勾选的行 */
+const selectedRows = ref<Record<string, unknown>[]>([]);
+/** 根据所选楼栋计算单元筛选选项 */
+const filterUnitOptions = computed<{ id: number; name: string }[]>(() => {
   if (!filterBuilding.value) return [];
   const buildingId = communityStore.getBuildingId(filterBuilding.value);
   return buildingId ? communityStore.getUnits(buildingId) : [];
 });
 
-// 单元筛选匹配：直接字符串匹配（单元使用阿拉伯数字，如 "1单元"/"2单元"）
-function matchUnit(room, unit) {
+/**
+ * 单元筛选匹配：直接字符串包含判断。
+ * 单元使用阿拉伯数字，如 "1单元"/"2单元"。
+ */
+function matchUnit(room: string, unit: string): boolean {
   if (!room || !unit) return false;
   return room.includes(unit);
 }
 
-function handleSelectionChange(rows) {
+function handleSelectionChange(rows: any[]): void {
   selectedRows.value = rows;
 }
 
-// 详情（勾选后点「详细」打开，支持左右箭头切换）
+// --- 详情弹窗（勾选后点「详细」打开，支持左右箭头切换） ---
 const detailVisible = ref(false);
-const detailList = ref([]);
+const detailList = ref<any[]>([]);
 const detailPos = ref(0);
 const detailItem = computed(() => detailList.value[detailPos.value] || null);
 
-function openDetailFromSelection() {
+/** 从勾选的记录中打开详情弹窗 */
+function openDetailFromSelection(): void {
   if (!selectedRows.value.length) {
     ElMessage.warning("请先勾选记录");
     return;
@@ -557,7 +572,11 @@ function openDetailFromSelection() {
   detailVisible.value = true;
 }
 
-function detailGo(delta) {
+/**
+ * 详情弹窗左右翻页。
+ * @param delta - 翻页偏移（-1 上一页，1 下一页）
+ */
+function detailGo(delta: number): void {
   const next = detailPos.value + delta;
   if (next < 0 || next >= detailList.value.length) return;
   detailPos.value = next;
@@ -584,11 +603,13 @@ const recordTimelineNodes = computed(() => {
   ];
 });
 
-function handleCommand(cmd) {
+/** 顶部下拉菜单命令处理 */
+function handleCommand(cmd: string): void {
   if (cmd === "logout") handleLogout();
 }
 
-async function handleLogout() {
+/** 退出登录确认 */
+async function handleLogout(): Promise<void> {
   try {
     await ElMessageBox.confirm("确认退出登录？", "提示", {
       confirmButtonText: "退出",

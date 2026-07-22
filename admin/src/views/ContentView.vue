@@ -198,12 +198,12 @@
           >
             <el-pagination
               :current-page="currentPage + 1"
-              :page-size="pageSize"
+              :page-size="PAGE_SIZE"
               :total="totalCount"
               :pager-count="5"
               layout="prev, pager, next"
               small
-              @current-change="(p) => goPage(p - 1)"
+              @current-change="(p: number) => goPage(p - 1)"
             />
           </div>
         </div>
@@ -380,7 +380,7 @@
             style="display: flex; flex-direction: column; gap: 4px"
           >
             <el-checkbox
-              v-for="reason in offlineReasonOptions"
+              v-for="reason in OFFLINE_REASON_OPTIONS"
               :key="reason"
               :value="reason"
               :label="reason"
@@ -640,7 +640,7 @@
               @blur="loadAllResidents"
             />
           </div>
-          <div style="max-height: 280px; overflow-y: auto">
+          <div style="max-height: 280px; overflow-y: auto" v-loading="loadingResidents">
             <template v-if="residentList.length">
               <div v-for="r in residentList" :key="r.id">
                 <div
@@ -681,52 +681,94 @@
   </el-container>
 </template>
 
-<script setup>
-import { ref, reactive, computed, onMounted } from "vue";
-import { useRouter } from "vue-router";
-import { ElMessage, ElMessageBox } from "element-plus";
+<script setup lang="ts">
+import { ref, reactive, computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { ArrowDown, ArrowLeft, ArrowRight, Search } from '@element-plus/icons-vue';
+
+import { useAuthStore } from '../stores/auth';
+import { useCommunityStore } from '../stores/community';
 import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  Search,
-} from "@element-plus/icons-vue";
-import { useAuthStore } from "../stores/auth";
-import { useCommunityStore } from "../stores/community";
-import { get, post, put } from "../utils/api";
-import AppSidebar from "../components/AppSidebar.vue";
+  getContentList, getContentDetail, offlineContent,
+  proxyPublishIdle, proxyPublishHelp, searchResidents,
+  type ContentItemDTO, type ContentListParams
+} from '../api/admin';
+import { POST_TYPE } from '../utils/constants';
+import AppSidebar from '../components/AppSidebar.vue';
+import type { AxiosError, AxiosResponse } from 'axios';
+
+// --- 本地类型 ---
+
+/** 代发表单数据结构（物品互借 / 技能互助共用） */
+interface PublishForm {
+  title: string;
+  desc: string;
+  price: string;
+  days: number;
+  urgency: string;
+  startTime: string;
+  endTime: string;
+}
+
+/** 内容列表行数据结构 */
+interface ContentRow {
+  id: number;
+  type: 'idle' | 'help';
+  title: string;
+  status: string;
+  publisherName: string;
+  createdAt: string;
+  images?: string[];
+  [key: string]: any;
+}
 
 const router = useRouter();
 const authStore = useAuthStore();
 const communityStore = useCommunityStore();
 
+/** 内容标签页配置 */
 const contentTabs = [
-  { key: "show", label: "在线中" },
-  { key: "progress", label: "进行中" },
-  { key: "done", label: "已完成" },
-  { key: "offline", label: "违规下架" },
+  { key: 'show', label: '在线中' },
+  { key: 'progress', label: '进行中' },
+  { key: 'done', label: '已完成' },
+  { key: 'offline', label: '违规下架' },
 ];
 
-const statusParamMap = {
-  show: "showing",
-  progress: "progressing",
-  done: "completed",
-  offline: "violation",
+/** 标签页 key → 后端 API status 参数映射 */
+const STATUS_PARAM_MAP: Record<string, string> = {
+  show: 'showing',
+  progress: 'progressing',
+  done: 'completed',
+  offline: 'violation',
 };
 
-const activeTab = ref("show");
-const filterType = ref("");
-const filterBuilding = ref("");
-const filterUnit = ref("");
-const search = ref("");
+/** 当前激活的标签页 */
+const activeTab = ref<string>('show');
+/** 筛选条件：物品/技能类型 */
+const filterType = ref('');
+/** 筛选条件：楼栋 */
+const filterBuilding = ref('');
+/** 筛选条件：单元 */
+const filterUnit = ref('');
+/** 搜索关键词 */
+const search = ref('');
+/** 表格加载状态 */
 const loading = ref(false);
-const tableData = ref([]);
+/** 表格数据 */
+const tableData = ref<ContentRow[]>([]);
+/** 总记录数 */
 const totalCount = ref(0);
+/** 当前页码（0-based） */
 const currentPage = ref(0);
+/** 总页数 */
 const totalPages = ref(0);
-const pageSize = 10;
-const selectedRows = ref([]);
-const contentTableRef = ref(null);
+/** 每页条数 */
+const PAGE_SIZE = 10;
+/** 表格勾选的行 */
+const selectedRows = ref<ContentRow[]>([]);
+/** el-table 组件引用 */
+const contentTableRef = ref<any>(null);
 
 // 根据所选楼栋计算单元筛选选项（主筛选）
 const filterUnitOptions = computed(() => {
@@ -742,7 +784,7 @@ const residentUnitOptions = computed(() => {
   return buildingId ? communityStore.getUnits(buildingId) : [];
 });
 
-function handleSelectionChange(rows) {
+function handleSelectionChange(rows: ContentRow[]): void {
   selectedRows.value = rows;
 }
 
@@ -751,39 +793,43 @@ onMounted(() => {
   fetchContent();
 });
 
-// 辅助函数：解包后端的 Result 包装
-function unwrap(response) {
-  return response?.data?.data !== undefined
-    ? response.data.data
-    : response?.data;
+/**
+ * 解包后端的 Result 包装器，提取 data.data 字段。
+ * 兼容 Spring Boot 统一响应格式 { code, data, message }。
+ * @returns 解包后的业务数据，不存在时返回 null
+ */
+function unwrap<T>(response: AxiosResponse): T | null {
+  return response?.data?.data !== undefined ? response.data.data as T : null;
 }
 
-async function fetchContent() {
+/** 根据当前筛选条件拉取内容列表 */
+async function fetchContent(): Promise<void> {
   loading.value = true;
   try {
-    const params = {
-      status: statusParamMap[activeTab.value],
-      type: filterType.value || undefined,
+    const params: ContentListParams = {
+      statusTab: STATUS_PARAM_MAP[activeTab.value],
+      type: (filterType.value || undefined) as 'idle' | 'help' | undefined,
       building: filterBuilding.value || undefined,
       unit: filterUnit.value || undefined,
       search: search.value || undefined,
       page: currentPage.value,
-      size: pageSize,
+      size: PAGE_SIZE,
     };
-    const res = await get("/api/admin/content", params);
-    const pageData = unwrap(res);
+    const res = await getContentList(params);
+    const pageData = unwrap<{ content: ContentRow[]; totalElements: number; totalPages: number }>(res);
     tableData.value = pageData?.content || [];
     totalCount.value = pageData?.totalElements || 0;
     totalPages.value = pageData?.totalPages || 0;
-  } catch (e) {
-    ElMessage.error("加载内容失败");
+  } catch {
+    ElMessage.error('加载内容失败');
     tableData.value = [];
   } finally {
     loading.value = false;
   }
 }
 
-function switchTab(key) {
+/** 切换标签页，重置筛选并重新加载 */
+function switchTab(key: string): void {
   activeTab.value = key;
   currentPage.value = 0;
   selectedRows.value = [];
@@ -793,161 +839,184 @@ function switchTab(key) {
   fetchContent();
 }
 
-function applyFilters() {
-  // 去除空格、换行符等空白字符；仅当仍有有效内容时才作为搜索条件
-  search.value = search.value.replace(/\s+/g, "");
+/** 应用筛选条件，重置页码并重新加载 */
+function applyFilters(): void {
+  search.value = search.value.replace(/\s+/g, '');
   currentPage.value = 0;
   fetchContent();
 }
 
-function goPage(p) {
+/** 跳转到指定页 */
+function goPage(p: number): void {
   currentPage.value = p;
   fetchContent();
 }
 
-function statusTag(status) {
-  const map = {
-    展示中: "tag tag-green",
-    进行中: "tag tag-blue",
-    已完成: "tag tag-gray",
-    已下架: "tag tag-red",
+/** 将后端状态映射为标签 CSS 类名 */
+function statusTag(status: string): string {
+  const label = statusLabel(status);
+  const map: Record<string, string> = {
+    在线中: 'tag tag-green',
+    进行中: 'tag tag-blue',
+    已完成: 'tag tag-gray',
+    已下架: 'tag tag-red',
   };
-  return map[status] || "tag tag-gray";
+  return map[label] || 'tag tag-gray';
 }
 
-// 展示中 → 在线中：后端沿用「展示中」状态值，B端统一展示为「在线中」
-function statusLabel(status) {
-  return status === "展示中" ? "在线中" : status;
+function statusLabel(status: string): string {
+  return status === '展示中' ? '在线中' : status;
 }
 
-function formatTime(ts) {
-  if (!ts) return "";
+/** 格式化 ISO 时间为可读格式，undefined/null 返回空字符串 */
+function formatTime(ts?: string): string {
+  if (!ts) return '';
   const d = new Date(ts);
-  const pad = (n) => String(n).padStart(2, "0");
+  const pad = (n: number): string => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function displayName(name) {
-  if (!name) return "——";
-  // 如果名称是纯 ASCII（英文/数字），返回占位符，避免住户列表中出现英文单词
-  if (/^[\x00-\x7F\s]+$/.test(name)) return "——";
+/** 格式化发布者显示名，空名或纯英文名显示为"——" */
+function displayName(name: string): string {
+  if (!name) return '——';
+  if (/^[\x00-\x7F\s]+$/.test(name)) return '——';
   return name;
 }
 
-// 详情
+// --- 详情弹窗 ---
 const detailVisible = ref(false);
 const detailLoading = ref(false);
-const detailItem = ref(null);
+/** 详情数据（来自 getContentDetail API 的原始 DTO） */
+const detailItem = ref<ContentItemDTO | null>(null);
 
-// 从详情图片中过滤掉空白/无效的图片 URL
+/** 详情中经过有效性过滤的图片 URL 列表 */
 const validDetailImages = computed(() => {
   if (!detailItem.value?.images) return [];
-  return detailItem.value.images.filter(
-    (url) => url && typeof url === "string" && url.trim().length > 0,
+  return (detailItem.value.images as string[]).filter(
+    (url: string) => url && typeof url === 'string' && url.trim().length > 0,
   );
 });
 
-// 跟踪加载失败的图片；若全部失败则回退显示「无」
-const failedImageIndexes = ref(new Set());
-function onImageError(index) {
+/** 记录加载失败的图片索引，用于显示占位图 */
+const failedImageIndexes = ref(new Set<number>());
+
+/** 标记指定索引的图片加载失败 */
+function onImageError(index: number): void {
   failedImageIndexes.value.add(index);
 }
 
-// 详细弹窗的选中项导航：detailList 为打开时的勾选记录快照，detailPos 为当前位置
-const detailList = ref([]);
+/** 批量勾选记录列表，用于详情弹窗左右翻页 */
+const detailList = ref<ContentRow[]>([]);
+/** 当前翻页位置索引 */
 const detailPos = ref(0);
 
-async function openDetail(row) {
+/**
+ * 打开内容详情弹窗，根据行数据拉取完整详情。
+ * @param row - 列表行数据
+ */
+async function openDetail(row: ContentRow): Promise<void> {
   detailVisible.value = true;
   detailLoading.value = true;
   detailItem.value = null;
   failedImageIndexes.value = new Set();
   try {
-    const res = await get(`/api/admin/content/${row.id}`, { type: row.type });
-    detailItem.value = unwrap(res);
-  } catch (e) {
-    ElMessage.error("加载详情失败");
+    const res = await getContentDetail(row.id, row.type as 'idle' | 'help');
+    detailItem.value = unwrap<ContentItemDTO>(res);
+  } catch {
+    ElMessage.error('加载详情失败');
   } finally {
     detailLoading.value = false;
   }
 }
 
-// 由表格勾选项打开详细弹窗（快照全部勾选项，支持左右箭头切换）
-function openDetailFromSelection() {
+/** 从勾选的记录中打开详情弹窗 */
+function openDetailFromSelection(): void {
   if (!selectedRows.value.length) return;
   detailList.value = [...selectedRows.value];
   detailPos.value = 0;
   openDetail(detailList.value[0]);
 }
 
-// 在勾选的多条记录间切换（delta = -1 上一条 / +1 下一条），越界忽略
-function detailGo(delta) {
+/** 详情弹窗左右翻页 */
+function detailGo(delta: number): void {
   const next = detailPos.value + delta;
   if (next < 0 || next >= detailList.value.length) return;
   detailPos.value = next;
   openDetail(detailList.value[next]);
 }
 
-// 下架
+// --- 下架弹窗 ---
 const offlineVisible = ref(false);
-const offlineTarget = ref(null);
-const offlineReasons = ref([]);
-const offlineCustomReason = ref("");
+/** 待下架的目标行 */
+const offlineTarget = ref<ContentRow | null>(null);
+/** 选中的下架原因（多选） */
+const offlineReasons = ref<string[]>([]);
+/** 自定义补充原因 */
+const offlineCustomReason = ref('');
+/** 下架提交进行中 */
 const offlineSubmitting = ref(false);
-const offlineReasonOptions = ["商业广告", "虚假信息", "违规物品", "骚扰内容"];
+/** 预设下架原因选项 */
+const OFFLINE_REASON_OPTIONS = ['商业广告', '虚假信息', '违规物品', '骚扰内容'];
 
-function openOffline(row) {
+/** 从列表行打开下架弹窗 */
+function openOffline(row: ContentRow): void {
   offlineTarget.value = row;
   offlineReasons.value = [];
-  offlineCustomReason.value = "";
+  offlineCustomReason.value = '';
   offlineVisible.value = true;
 }
 
-// 详细弹窗底部「下架」：关闭详细弹窗并打开下架确认弹窗
-function offlineFromDetail() {
+/** 从详情弹窗中触发下架 */
+function offlineFromDetail(): void {
   if (!detailItem.value) return;
   detailVisible.value = false;
-  openOffline(detailItem.value);
+  openOffline(detailItem.value as unknown as ContentRow);
 }
 
-async function doOffline() {
+/** 提交下架请求 */
+async function doOffline(): Promise<void> {
   if (!offlineTarget.value) return;
   offlineSubmitting.value = true;
   try {
-    await put(`/api/admin/content/${offlineTarget.value.id}/offline`, {
+    await offlineContent(offlineTarget.value.id, {
       targetType: offlineTarget.value.type,
       reasons: [...offlineReasons.value],
       customReason: offlineCustomReason.value.trim() || undefined,
     });
     offlineVisible.value = false;
-    ElMessage.success(
-      `「${offlineTarget.value.title}」已下架，通知已发送给发布者`,
-    );
+    ElMessage.success(`「${offlineTarget.value.title}」已下架，通知已发送给发布者`);
     fetchContent();
-  } catch (e) {
-    ElMessage.error("下架失败");
+  } catch {
+    ElMessage.error('下架失败');
   } finally {
     offlineSubmitting.value = false;
   }
 }
 
-// 代发
+// --- 代发弹窗 ---
+/** 代发是否可见 */
 const publishVisible = ref(false);
-const publishMode = ref("idle");
+/** 代发模式：'idle'（物品互借）或 'help'（技能互助） */
+const publishMode = ref<string>('idle');
+/** 代发提交中 */
 const publishSubmitting = ref(false);
-const publishForm = reactive({
-  title: "",
-  desc: "",
-  price: "",
+/** 代发表单数据 */
+const publishForm = reactive<PublishForm>({
+  title: '',
+  desc: '',
+  price: '',
   days: 7,
-  urgency: "一般",
-  startTime: "",
-  endTime: "",
+  urgency: '一般',
+  startTime: '',
+  endTime: '',
 });
-const selectedResident = ref("");
-const selectedResidentId = ref(null);
+/** 选中的住户名称（展示用） */
+const selectedResident = ref('');
+/** 选中的住户 ID（提交时用） */
+const selectedResidentId = ref<number | null>(null);
 
-function openPublish() {
+/** 打开代发弹窗并重置表单 */
+function openPublish(): void {
   publishMode.value = "idle";
   publishForm.title = "";
   publishForm.desc = "";
@@ -961,43 +1030,44 @@ function openPublish() {
   publishVisible.value = true;
 }
 
-async function submitPublish() {
+/** 提交代发请求 */
+async function submitPublish(): Promise<void> {
   if (!publishForm.title.trim()) {
-    ElMessage.warning("请输入标题");
+    ElMessage.warning('请输入标题');
     return;
   }
   if (!selectedResidentId.value) {
-    ElMessage.warning("请选择目标住户");
+    ElMessage.warning('请选择目标住户');
     return;
   }
   publishSubmitting.value = true;
   try {
-    if (publishMode.value === "idle") {
-      await post("/api/admin/proxy/idle", {
+    if (publishMode.value === 'idle') {
+      await proxyPublishIdle({
         userId: selectedResidentId.value,
-        postType: "LEND",
+        postType: POST_TYPE.LEND,
         title: publishForm.title,
         description: publishForm.desc,
-        category: "other",
-        price: parseFloat(publishForm.price) || 0,
+        category: 'other',
+        price: Number.parseFloat(publishForm.price) || 0,
         maxDuration: publishForm.days,
       });
     } else {
-      await post("/api/admin/proxy/help", {
+      await proxyPublishHelp({
         userId: selectedResidentId.value,
         title: publishForm.title,
         description: publishForm.desc,
-        category: "other",
-        isUrgent: publishForm.urgency === "紧急",
+        category: 'other',
+        isUrgent: publishForm.urgency === '紧急',
         timeStart: publishForm.startTime || undefined,
         timeEnd: publishForm.endTime || undefined,
       });
     }
     publishVisible.value = false;
-    ElMessage.success("代发内容已发布，将标注「物业代发」标签");
+    ElMessage.success('代发内容已发布，将标注「物业代发」标签');
     fetchContent();
-  } catch (e) {
-    ElMessage.error("代发失败");
+  } catch {
+    ElMessage.error('代发失败');
   } finally {
     publishSubmitting.value = false;
   }
@@ -1005,14 +1075,21 @@ async function submitPublish() {
 
 // 住户检索
 const residentVisible = ref(false);
-const tempSelected = ref(null);
-const residentList = ref([]);
-const residentFilterType = ref("");
-const residentFilterBuilding = ref("");
-const residentFilterUnit = ref("");
-const residentKeyword = ref("");
+const tempSelected = ref<number | null>(null);
+const residentList = ref<any[]>([]);
+const loadingResidents = ref(false);
+const residentFilterType = ref('');
+const residentFilterBuilding = ref('');
+const residentFilterUnit = ref('');
+const residentKeyword = ref('');
 
-async function loadAllResidents() {
+/**
+ * 加载住户列表（支持筛选）。
+ * 从后端分页拉取住户数据，供代发弹窗中选择目标住户使用。
+ */
+async function loadAllResidents(): Promise<void> {
+  if (loadingResidents.value) return;
+  loadingResidents.value = true;
   try {
     const params = {
       page: 0,
@@ -1022,8 +1099,8 @@ async function loadAllResidents() {
       unit: residentFilterUnit.value || undefined,
       keyword: residentKeyword.value || undefined,
     };
-    const res = await get("/api/admin/residents/search", params);
-    const data = unwrap(res);
+    const res = await searchResidents(params);
+    const data = unwrap<{ content: unknown[] }>(res);
     residentList.value = data?.content
       ? data.content
       : Array.isArray(data)
@@ -1031,10 +1108,13 @@ async function loadAllResidents() {
         : [];
   } catch (e) {
     residentList.value = [];
+  } finally {
+    loadingResidents.value = false;
   }
 }
 
-function openResidentSearch() {
+/** 打开住户检索弹窗并加载列表 */
+function openResidentSearch(): void {
   tempSelected.value = selectedResidentId.value;
   residentFilterType.value = "";
   residentFilterBuilding.value = "";
@@ -1044,21 +1124,36 @@ function openResidentSearch() {
   loadAllResidents();
 }
 
-function pickResident(r) {
+/** 住户行数据（来自 searchResidents API） */
+interface ResidentRow {
+  id: number;
+  name: string;
+  room: string;
+  userType: string;
+}
+
+/**
+ * 在住户检索弹窗中临时选中某住户。
+ * @param r - 住户行数据
+ */
+function pickResident(r: ResidentRow): void {
   tempSelected.value = r.id;
   selectedResident.value = `${r.room}(${r.userType}) - ${displayName(r.name)}`;
 }
 
-function selectResident() {
+/** 确认选择住户，关闭检索弹窗 */
+function selectResident(): void {
   if (tempSelected.value) selectedResidentId.value = tempSelected.value;
   residentVisible.value = false;
 }
 
-function handleCommand(cmd) {
+/** 顶部下拉菜单命令处理 */
+function handleCommand(cmd: string): void {
   if (cmd === "logout") handleLogout();
 }
 
-async function handleLogout() {
+/** 退出登录确认 */
+async function handleLogout(): Promise<void> {
   try {
     await ElMessageBox.confirm("确认退出登录？", "提示", {
       confirmButtonText: "退出",

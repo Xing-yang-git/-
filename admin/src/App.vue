@@ -3,6 +3,7 @@
 </template>
 
 <script setup>
+// 根组件 — 仅作为路由视图的容器，全局样式在此定义
 </script>
 
 <style>
