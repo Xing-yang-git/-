@@ -125,13 +125,13 @@ C端用户通过手机号 + 密码注册登录（`register` 页注册，`login` 
 |---|---|---|
 | 公共 | GET /api/common/* | 小区/楼栋/单元/房号查询 |
 | 认证 | POST /api/auth/* | wx-login / login / phone-login / register / appeal，GET status |
-| 闲置 | /api/idle/** | 发布/列表/详情/搜索/下架 |
-| 借入 | /api/borrow/** | 申请/审批/归还确认 |
-| 技能求助 | /api/help/** | 发布/列表/申请/审批 |
-| 评分 | /api/rating/** | 提交评分/查看评分 |
-| 聊天 | POST /api/chat/relay | 消息中继（WebSocket 转发，不持久化） |
-| 通知 | /api/notification/** | 列表/未读数/全部已读 |
-| 用户活动 | GET /api/user/* | profile / posts / approvals / in-progress / completed |
+| 闲置 | /api/idle-items/** | 发布/列表/详情/搜索/下架 |
+| 借入 | /api/borrow-requests/** | 申请/审批/归还确认 |
+| 技能求助 | /api/help-requests/** | 发布/列表/申请/审批 |
+| 评分 | /api/ratings/** | 提交评分/查看评分 |
+| 聊天 | /api/chats/** | 消息发送/历史/会话列表/撤回 |
+| 通知 | /api/notifications/** | 列表/未读数/全部已读 |
+| 用户活动 | GET /api/users/* | profile / posts / approvals / in-progress / completed |
 | 管理 | /api/admin/** | 看板/审核/内容管理/代发/记录/导出/日志 |
 | WebSocket | /ws/chat | 聊天实时消息（JwtHandshakeInterceptor 握手鉴权） |
 

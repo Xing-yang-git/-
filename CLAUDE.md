@@ -42,7 +42,7 @@ Token 转换约定：C端实现时去掉 `--ios-` 前缀；B端直接使用无�
 
 **调用模式**：子代理开工前必须先通过 Skill 工具加载其技能，技能是方法论，子代理是导航者。
 
-项目级技能：`pixel-perfect-replication`、`annotation-guarantee`、`security-audit`、`git-commit-standard`、`test-guarantee`、`database-schema-alignment`
+项目级技能：`pixel-perfect-replication`、`annotation-guarantee`、`security-audit`、`code-standards`、`git-commit-standard`、`test-guarantee`、`database-schema-alignment`
 用户级技能：`requesting-code-review`、`receiving-code-review`
 
 ## 4. 子代理清单
@@ -128,3 +128,77 @@ git-save 的三道门禁（详细流程见 [.claude/agents/git-save.md](.claude/
 **判定标准**：能从代码推导的（数量、清单、结构）→ README.md；不能从代码推导但属于项目的（约定、机制、决策原因）→ CLAUDE.md；只关于用户个人的（沟通语言、工作习惯、反馈）→ memory。
 
 **执行者**：git-save 子代理在每次提交流程中负责前两层同步（结构变了改 README，约定变了改 CLAUDE.md，并随本次提交入库），提交后自省第三层。这保证文档不再与代码脱节。
+
+## 10. 代码生成规范（2026-07-22 确立）
+
+**生成任何新代码前，确保 `code-standards` 规范已在上下文中。** 这是事前预防机制——让代码生成时就符合规范，而非依赖事后审查返工。
+
+### 加载时机（核心：加载一次，持久复用）
+
+Skill 内容加载后会一直留在会话上下文中，**不需要每轮对话重复加载**。只有在以下情况才需调用 `Skill("code-standards")`：
+
+1. **会话中首次涉及代码生成** — 上下文里还没有规范内容，调用一次加载
+2. **上下文被压缩/摘要后** — 规范内容可能被裁剪掉，需重新加载（判断标准：如果你记不清某个平台的铁律细节，说明规范已不在上下文中，此时重新加载）
+3. **规范文件本身有更新** — 如果 SKILL.md 最近被修改过，重新加载以获取最新版本
+
+以下场景**需要规范在上下文中**（首次加载后后续任务自动满足）：
+
+| 场景 | 说明 |
+|------|------|
+| 新建文件 | 任何平台的新 `.java` / `.vue` / `.ts` / `.js` / `.wxml` / `.wxss` 文件 |
+| 新增方法/函数 | 在已有文件中添加新的 public 方法或导出函数 |
+| 新增组件/页面 | C端新 Page/Component、B端新 View/Component |
+| 新增 API 端点 | 后端新 Controller 方法或新 Controller 类 |
+| 重构 | 移动/重命名文件、调整分层结构 |
+
+以下场景不需要规范在上下文中（简单操作，规范不相关）：
+
+- 修复单行 bug（如拼写错误、空指针判空）
+- 删除代码
+- 纯样式微调（调间距、改字号，不涉及 HTML/WXML 结构变更）
+- 给已有代码补注释（注释规范另有 `annotation-guarantee`）
+- 阅读/搜索/调试代码
+
+### 执行流程
+
+```
+用户请求"新增/创建/写一个…"
+       │
+       ├── 规范已在上下文中？
+       │       │
+       │       ├── 是 → 直接写代码（规范内容已在对话中）
+       │       │
+       │       └── 否 → Skill("code-standards")（加载一次，后续复用）
+       │
+       ▼
+  生成的代码自带规范合规性
+       │
+       ▼
+  quality-review（审查时再次验证，形成双保险）
+```
+
+### 规范速查（规范已在上下文中时，此处作为快速对照清单；首次加载前请先调用 Skill）
+
+| 平台 | 铁律 |
+|------|------|
+| 通用 | 命名：类 PascalCase、方法 camelCase、常量 UPPER_SNAKE；禁止拼音和单字母变量 |
+| 通用 | 异常：禁止吞异常、禁止 `printStackTrace()`；最外层必须兜底处理 |
+| 通用 | 日志：含业务上下文、禁止循环中 INFO、禁止打印敏感信息 |
+| 通用 | 常量：已定义常量时必须引用（`STATUS.PENDING`），禁止魔术字符串（`'pending'`） |
+| C端 | px ×2 → rpx；颜色必须 `var(--*)`；button 重置 `::after { border: none }`；禁止 `backdrop-filter` |
+| B端 | `<style scoped>`；`v-for` 必须 `:key`；Props/Emits 有类型；禁止无理由 `any`；函数参数必须显式类型；interface/type 和导出函数必须有 JSDoc 注释；API DTO interface/type 各字段必须有行内注释；API 封装在 `api/` 模块，请求/响应有类型 |
+| 后端 | Controller 不写 try-catch；不直接返回 Entity；构造器注入；SQL 参数绑定；URL 名词复数；DTO 类每个字段必须有 Javadoc 注释；已定义状态常量时必须引用（如 `BizStatus.PENDING`） |
+
+> 完整规范（包括 SHOULD/MAY 级规则、命名示例、代码模板）见 [.claude/skills/code-standards/SKILL.md](.claude/skills/code-standards/SKILL.md)。
+
+### 与审查机制的关系
+
+```
+code-standards（事前预防）──生成合规代码──→ quality-review（事后验证）
+                                              │
+                                              ├── 通过 → git-save 提交
+                                              │
+                                              └── 不通过 → 返工（违反铁律意味着审查 FAIL）
+```
+
+**双重保障**：生成时遵循规范减少返工，审查时再次验证确保无遗漏。规范违规在审查中最低报 Medium（MUST 级违规），严重者阻断提交。

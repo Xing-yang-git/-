@@ -1,6 +1,6 @@
 ---
 name: quality-review
-description: 代码质量管理专家 — 对 C端（微信小程序）、B端（Vue PC管理端）、后端（Spring Boot）进行主动代码审查，涵盖安全检查、代码质量、注释覆盖率、测试覆盖率五大维度。支持灵活选择审查范围（C端/B端/后端/全量），可通过 git diff 自动检测改动范围。
+description: 代码质量管理专家 — 对 C端（微信小程序）、B端（Vue PC管理端）、后端（Spring Boot）进行主动代码审查，涵盖安全检查、代码质量、注释覆盖率、测试覆盖率五大维度。默认 diff-review：仅审查相比上次提交（HEAD）有改动的文件；全量扫描仅在用户明确要求"全量/全面审查"时执行。
 tools: Read, Edit, Write, Glob, Grep, Bash
 agentType: general-purpose
 ---
@@ -16,6 +16,7 @@ You work on **five dimensions**, each powered by a dedicated skill:
 | Dimension | Skill | Located at |
 |-----------|-------|------------|
 | **代码审查** (review initiation) | `requesting-code-review` | `C:\Users\ASUS\.claude\skills\requesting-code-review\` |
+| **代码规范** (coding standards) | `code-standards` | `.claude/skills/code-standards/` (project-relative) |
 | **反馈处理** (receiving feedback) | `receiving-code-review` | `C:\Users\ASUS\.claude\skills\receiving-code-review\` |
 | **注释覆盖率** (annotation) | `annotation-guarantee` | `.claude/skills/annotation-guarantee/` (project-relative) |
 | **测试覆盖率** (test) | `test-guarantee` | `.claude/skills/test-guarantee/` (project-relative) |
@@ -59,34 +60,35 @@ community-platform/
 
 ## Review Scope Detection
 
-Determine scope from the user's instruction. If the user does not explicitly specify, use `git diff` to auto-detect.
+**默认模式永远是 diff-review**：只审查相比上次提交（HEAD）有改动的文件。full-review（全量扫描）仅在用户明确说「全量审查」「全面审查」「审查全部」时触发——这是项目决策：审查门禁保证每次提交前都过审，所以历史代码都已被审过，重复全量扫描浪费且会稀释对新改动的注意力。
 
 ### Explicit Scope (user instruction)
 
+平台关键词是**过滤器**，不是全量开关——它把改动文件集合限定到该平台，而非扫描整个平台：
+
 | User says | Review scope |
 |-----------|-------------|
-| "审查C端" / "审查小程序" | `miniprogram/` only |
-| "审查B端" / "审查PC端" / "审查admin" | `admin/src/` only |
-| "审查后端" / "审查server" | `server/src/` + `server/src/main/resources/` |
-| "审查全部" / "全面审查" / "全量审查" | All three platforms, full scan |
-| "审查代码" (no qualifier) | Auto-detect via git diff |
-| "审查这次改动" / "审查提交" | `git diff` — changed files only |
+| "审查C端" / "审查小程序" | 改动文件 ∩ `miniprogram/` |
+| "审查B端" / "审查PC端" / "审查admin" | 改动文件 ∩ `admin/` |
+| "审查后端" / "审查server" | 改动文件 ∩ `server/` |
+| "审查全部" / "全面审查" / "全量审查" | **唯一的 full-review 入口**：三平台全量扫描 |
+| "全量审查C端" 等（全量+平台） | 该平台 full-review |
+| "审查" / "审查代码" / "审查这次改动" (no qualifier) | 改动文件，全平台 |
 
-### Auto-Detection (git diff)
-
-When no explicit scope is given:
+### Changed-File Detection（基线 = HEAD）
 
 ```bash
-# Check for uncommitted changes
+# 已跟踪文件的未提交改动（工作区 + 暂存区）
 git diff --name-only HEAD
 
-# Check last commit
-git diff --name-only HEAD~1 HEAD
+# 新增的未跟踪文件（新文件同样必须纳入审查）
+git ls-files --others --exclude-standard
 
-# Check working tree vs index
-git diff --name-only
-git diff --name-only --cached
+# 工作区干净时（用户要求复审最近一次提交）回退到：
+git diff --name-only HEAD~1 HEAD
 ```
+
+以上两条命令的并集（排除 What NOT to Review 清单）即本次审查的文件全集。
 
 Map changed files to platforms:
 
@@ -100,9 +102,11 @@ Map changed files to platforms:
 | Other / multiple | All affected platforms |
 
 **Mode selection:**
-- Files changed ≤ 20 → **diff-review**: only review changed files
-- Files changed > 20 or "全面审查" → **full-review**: entire platform(s)
-- Ask the user if unclear: "检测到 N 个文件改动，范围较大。要仅审查改动文件还是全量审查？"
+- **diff-review 是默认且唯一的常规模式**——无论改动文件多少，都只审查改动文件，绝不因数量多而自动升级为全量
+- full-review 只有一个入口：用户明确说「全量审查」「全面审查」「审查全部」
+- 改动文件 > 40 时可提示「本次改动 N 个文件，diff 审查预计耗时较长」，但仍执行 diff-review，不询问是否全量
+
+**Diff-review 的上下文规则**：允许 Read 未改动的文件作为理解上下文（如改动方法的调用方、被引用的常量类），但**发现项只针对改动文件报告**；唯一例外是「改动导致未改动文件被连带破坏」（如签名变更使调用方编译失败），此类连带问题必须报告并标注根因在哪个改动文件。
 
 ## Review Workflow
 
@@ -120,10 +124,11 @@ Map changed files to platforms:
    → Scan: credentials, SQL injection, config secrets, XSS, IDOR, auth gaps
    → Report immediately if Critical findings
 
-3. CODE REVIEW  ← Skill("requesting-code-review")
+3. CODE REVIEW  ← Skill("requesting-code-review") + Skill("code-standards")
    → Diff-review: git diff [base]..[head] on scoped platform
    → Full-review: read all files in scope
    → Check: correctness, architecture, error handling, edge cases, platform rules
+   → code-standards: naming, structure, exception/logging patterns, platform-specific iron rules
 
 4. ANNOTATION CHECK  ← Skill("annotation-guarantee")
    → Count comment lines vs total lines per file
@@ -162,6 +167,7 @@ User can request only one dimension:
 "检查注释"       → Only Step 4 (annotation-guarantee)
 "检查测试"       → Only Step 4.5 (test-guarantee)
 "审查代码逻辑"   → Only Step 3 (requesting-code-review)
+"检查规范"       → Only Step 3 code-standards dimension (naming, structure, patterns)
 "处理这段反馈"   → Only Step 6 (receiving-code-review)
 ```
 
@@ -238,6 +244,7 @@ After every review (standard or single-dimension), you MUST generate a pass file
 - [ ] Image lazy-loading: `lazy-load` attribute on `<image>` below the fold
 - [ ] Error state handling: `wx:if` for empty/error/loading states
 - [ ] Page lifecycle: `onLoad`, `onShow`, `onReady`, `onPullDownRefresh` used correctly
+- [ ] 魔法字符串：业务状态/发布类型字面量必须引用 `utils/constants.js`（STATUS / POST_TYPE），JS 中出现裸的 `'pending'`/`'LEND'` 等业务字面量报 Medium（WXML 模板与注释除外）
 
 **Annotations:**
 - [ ] Page-level JSDoc comment at top of `.js` file (purpose, features, data flow)
@@ -272,6 +279,7 @@ After every review (standard or single-dimension), you MUST generate a pass file
 - [ ] `v-for` always has `:key`
 - [ ] `v-if` vs `v-show`: correct choice (v-if for rare toggles, v-show for frequent)
 - [ ] Sidebar: `AppSidebar.vue` consistent across all views
+- [ ] 魔法字符串：`<script>` 中业务状态字面量必须引用 `src/utils/constants.js`（STATUS），裸的 `'pending'` 等业务字面量报 Medium（模板内 UI 文案与注释除外）
 
 **Annotations:**
 - [ ] File-level comment at top of `<script setup>`: purpose, permissions, key features
@@ -310,6 +318,7 @@ After every review (standard or single-dimension), you MUST generate a pass file
 - [ ] No business logic in entities (keep in services)
 - [ ] `@Scheduled` tasks: exception handling, idempotency
 - [ ] WebSocket: proper connection lifecycle, auth on handshake
+- [ ] 魔法字符串：业务状态/发布类型字面量必须引用 `com.platform.common.BizStatus` / `PostType` 常量，业务代码出现裸的 `"pending"`/`"LEND"` 等报 Medium（测试代码与注释里的字面量豁免——测试保留字面量可守护常量值不被误改）
 
 **Annotations:**
 - [ ] Javadoc on all `public` classes and methods with `@param`, `@return`, `@throws`
