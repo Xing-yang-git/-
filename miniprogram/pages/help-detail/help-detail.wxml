@@ -172,11 +172,6 @@
                     value="{{helpNote}}" bindinput="onHelpNoteInput"
                     maxlength="500" auto-height />
         </view>
-
-        <!-- 确认提示 -->
-        <view class="callout" style="margin-top:24rpx;font-size:12px;">
-          <text>🤝 具体时间、地点在聊天中协商。</text>
-        </view>
       </scroll-view>
       <view class="borrow-sheet-footer">
         <button class="action-btn action-btn-secondary" bindtap="onCloseSheet">取消</button>

@@ -28,15 +28,11 @@ Page({
     // 退出登录弹窗
     showLogoutAlert: false,
 
-    // 记录详情
-    showRecordDetail: false,
-    recordDetail: {
-      item: '',
-      role: '',
-      peer: '',
-      date: '',
-      remark: ''
-    }
+    // 记录详情弹框
+    showRecordSheet: false,       // 互借/互助记录底部弹框
+    recordSheetType: '',          // 'idle' | 'help'
+    recordSheetItem: null,        // 原始记录数据
+    recordSheetParties: null,     // 双方格式化数据 { left: {...}, right: {...} }
   },
 
   onLoad() {
@@ -49,6 +45,9 @@ Page({
 
   onShow() {
     if (!auth.ensureAccess()) return; // 登录/审核门禁：覆盖 tab 切换与后台切回
+    const app = getApp();
+    app._updateTabBarBadge();   // 切换到"我的"时刷新消息红点
+    app.refreshNoticeBadge();   // 从服务端拉最新通知未读数，兜底 WS 推送丢失
     if (this.data.userId) {
       this.loadProfile();
       this.loadRecords();
@@ -116,7 +115,9 @@ Page({
         roleText: item.subType === 'borrow' ? '借出者' : '借入者',
         peerName: item.personName || '',
         dateText: this.formatDate(item.completedAt),
-        remark: item.myFeedback || item.theirFeedback || '—'
+        remark: item.myFeedback || item.theirFeedback || '—',
+        // 保留原始数据供弹框使用
+        _raw: item
       }));
       this.setData({ idleRecords });
     } catch (e) {
@@ -147,7 +148,9 @@ Page({
         roleText: item.subType === 'helpReq' ? '帮助者' : '求助者',
         peerName: item.personName || '',
         dateText: this.formatDate(item.completedAt),
-        remark: item.myFeedback || item.theirFeedback || '—'
+        remark: item.myFeedback || item.theirFeedback || '—',
+        // 保留原始数据供弹框使用
+        _raw: item
       }));
       this.setData({ helpRecords });
     } catch (e) {
@@ -168,20 +171,92 @@ Page({
   // ================================================================
   onOpenRecord(e) {
     const record = e.currentTarget.dataset.record;
+    const raw = record._raw;
+    if (!raw) return;
+    const sheetType = record.type === 'borrow' || record.type === 'lend' ? 'idle' : 'help';
+    const roomInfo = this.data.roomInfo || '';
+    const parties = sheetType === 'idle'
+      ? this._buildIdleParties(raw, roomInfo)
+      : this._buildHelpParties(raw, roomInfo);
     this.setData({
-      showRecordDetail: true,
-      recordDetail: {
-        item: record.title || '—',
-        role: record.typeText || '—',
-        peer: record.peerName || '—',
-        date: record.dateText || '—',
-        remark: record.remark || '—'
-      }
+      showRecordSheet: true,
+      recordSheetType: sheetType,
+      recordSheetItem: raw,
+      recordSheetParties: parties
     });
   },
 
-  onCloseRecordDetail() {
-    this.setData({ showRecordDetail: false });
+  onCloseRecordSheet() {
+    this.setData({ showRecordSheet: false, recordSheetItem: null, recordSheetParties: null });
+  },
+
+  /** 点击弹框中的住户地址 → 跳转与对方聊天 */
+  onTapChatWithUser(e) {
+    const userId = e.currentTarget.dataset.userId;
+    const userName = e.currentTarget.dataset.userName || '';
+    if (!userId) return;
+    const myId = auth.getUserId();
+    if (!myId || String(myId) === String(userId)) {
+      wx.showToast({ title: '不能与自己聊天', icon: 'none' });
+      return;
+    }
+    const ids = [String(myId), String(userId)].sort();
+    const sessionId = 'USER_' + ids[0] + '_' + ids[1];
+    const name = encodeURIComponent(userName || '用户');
+    wx.navigateTo({
+      url: `/pages/chat/chat?sessionId=${sessionId}&name=${name}&room=&about=&aboutId=&aboutType=&otherUserId=${userId}`
+    });
+  },
+
+  /** 互借记录：构建借出方/借入方双方数据 */
+  _buildIdleParties(raw, myRoom) {
+    const isBorrow = raw.subType === 'borrow';
+    const otherId = raw.personId || null;
+    // 在 JS 中预格式化评分为字符串，避免 WXML 复杂表达式兼容问题
+    const fmtRating = (v) => (v != null ? Number(v).toFixed(1) : null);
+    return {
+      left: {
+        label: '借出方',
+        name: isBorrow ? (raw.personName || '') : myRoom,
+        personId: isBorrow ? otherId : null,
+        rating: isBorrow ? raw.myRating : raw.theirRating,
+        ratingText: fmtRating(isBorrow ? raw.myRating : raw.theirRating),
+        feedback: isBorrow ? (raw.theirFeedback || '') : (raw.myFeedback || '')
+      },
+      right: {
+        label: '借入方',
+        name: isBorrow ? myRoom : (raw.personName || ''),
+        personId: isBorrow ? null : otherId,
+        rating: isBorrow ? raw.theirRating : raw.myRating,
+        ratingText: fmtRating(isBorrow ? raw.theirRating : raw.myRating),
+        feedback: isBorrow ? (raw.myFeedback || '') : (raw.theirFeedback || '')
+      }
+    };
+  },
+
+  /** 互助记录：构建帮助方/求助方双方数据 */
+  _buildHelpParties(raw, myRoom) {
+    const isReq = raw.subType === 'helpReq';
+    const otherId = raw.personId || null;
+    const fmtRating = (v) => (v != null ? Number(v).toFixed(1) : null);
+    return {
+      left: {
+        label: '帮助方',
+        name: isReq ? (raw.personName || '') : myRoom,
+        personId: isReq ? otherId : null,
+        rating: isReq ? raw.myRating : raw.theirRating,
+        ratingText: fmtRating(isReq ? raw.myRating : raw.theirRating),
+        feedback: isReq ? (raw.theirFeedback || '') : (raw.myFeedback || '')
+      },
+      right: {
+        label: '求助方',
+        name: isReq ? myRoom : (raw.personName || ''),
+        personId: isReq ? null : otherId,
+        rating: isReq ? raw.theirRating : raw.myRating,
+        ratingText: fmtRating(isReq ? raw.theirRating : raw.myRating),
+        feedback: isReq ? (raw.myFeedback || '') : (raw.theirFeedback || '')
+      }
+    };
   },
 
   // ================================================================
@@ -198,6 +273,8 @@ Page({
   onCancelLogout() {
     this.setData({ showLogoutAlert: false });
   },
+
+  preventTouchMove() {},
 
   onDoLogout() {
     this.setData({ showLogoutAlert: false });

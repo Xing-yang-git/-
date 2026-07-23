@@ -40,7 +40,9 @@ Page({
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     // 获取当前用户 id：优先 JWT，其次 storage 兜底
     const userId = auth.getUserId() || (wx.getStorageSync('userInfo') || {}).id || '';
-    this.setData({ today, userId });
+    // 从服务通知"待回应"卡片进入时，强制禁用操作按钮
+    const fromNotice = options.fromNotice || '';
+    this.setData({ today, userId, fromNotice });
     this.loadItem(id);
   },
 
@@ -54,8 +56,14 @@ Page({
       .then((data) => {
         wx.hideLoading();
         const item = this.formatItem(data);
+        // 从服务通知"待回应"卡片进入时，若后端未返回 userBorrowStatus，强制设为 pending 以禁用按钮
+        if (this.data.fromNotice === 'pending' && !item.userBorrowStatus) {
+          item.userBorrowStatus = STATUS.PENDING;
+        }
         const historyData = this.buildHistoryData(data);
-        this.setData({ item, images: item.images || [], historyData });
+        // 记录帖子的更新时间，用于操作前检测冲突
+        const itemUpdatedAt = data.updatedAt || '';
+        this.setData({ item, images: item.images || [], historyData, itemUpdatedAt });
       })
       .catch((err) => {
         wx.hideLoading();
@@ -231,11 +239,60 @@ Page({
       return;
     }
 
+    // 操作前重新拉取帖子数据，检测是否在浏览期间被发布者更新
+    this._checkItemFreshness(() => this._showBorrowSheet());
+  },
+
+  /** 重新拉取帖子，检测是否在浏览期间被发布者更新；通过则执行回调 */
+  _checkItemFreshness(onFresh) {
+    const id = this.data.item.id;
+    if (!id) return;
+    wx.showLoading({ title: '校验中...', mask: true });
+    api.get(`/api/idle-items/${id}`)
+      .then((data) => {
+        wx.hideLoading();
+        const newUpdatedAt = data.updatedAt || '';
+        const oldUpdatedAt = this.data.itemUpdatedAt || '';
+        // 帖子被更新或状态变更（不再是在线）→ 拦截
+        if (newUpdatedAt !== oldUpdatedAt || data.status !== this.data.item.status) {
+          wx.showModal({
+            title: '帖子已更新',
+            content: '帖子信息已被发布者修改，请重新确认相关信息',
+            showCancel: false,
+            confirmText: '知道了',
+            success: () => {
+              // 刷新页面数据
+              const item = this.formatItem(data);
+              if (this.data.fromNotice === 'pending' && !item.userBorrowStatus) {
+                item.userBorrowStatus = STATUS.PENDING;
+              }
+              const historyData = this.buildHistoryData(data);
+              this.setData({
+                item, images: item.images || [],
+                historyData, itemUpdatedAt: newUpdatedAt
+              });
+            }
+          });
+          return;
+        }
+        // 未变更，执行原操作
+        onFresh();
+      })
+      .catch((err) => {
+        wx.hideLoading();
+        wx.showToast({ title: err.message || '网络异常', icon: 'none' });
+      });
+  },
+
+  /** 显示借入/借出申请弹层 */
+  _showBorrowSheet() {
+    const { item } = this.data;
+
     // 初始化表单：需求借入的借出意向使用默认时长范围（1~7天 / 1~24小时），
     // 不做特殊限制；闲置借出的借入申请沿用物品本身的时长设置
     const isWanted = item.isWanted;
-    const maxDuration = isWanted ? (item.durationUnit === 'hour' ? 24 : 7) : (item.maxDuration || 7);
-    const unit = isWanted ? 'day' : (item.durationUnit || 'day');
+    const unit = item.durationUnit || 'day';
+    const maxDuration = isWanted ? (unit === 'hour' ? 24 : 7) : (item.maxDuration || 7);
     const durationOptions = this.buildDurationOptions(unit, maxDuration);
     // 默认选中最大时长
     const durationIndex = durationOptions.length - 1;
@@ -343,6 +400,8 @@ Page({
       .catch((err) => {
         wx.hideLoading();
         wx.showToast({ title: err.message, icon: 'none' });
+        // 操作失败（如帖子已下架/已被别人申请），刷新数据同步最新状态
+        this.loadItem(this.data.item.id);
       });
   },
 

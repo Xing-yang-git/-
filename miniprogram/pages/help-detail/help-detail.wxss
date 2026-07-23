@@ -57,11 +57,12 @@ swiper {
   display: inline-block;
   background: var(--red);
   color: var(--surface);
-  font-size: 24rpx;
-  padding: 4rpx 12rpx;
+  font-size: 26rpx;
+  padding: 8rpx 14rpx;
   border-radius: 8rpx;
   margin-right: 12rpx;
   vertical-align: middle;
+  opacity: 0.9;
 }
 
 .detail-desc {

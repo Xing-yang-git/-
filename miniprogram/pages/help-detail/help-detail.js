@@ -21,6 +21,11 @@ Page({
       wx.showToast({ title: '参数错误', icon: 'none' });
       return;
     }
+    // 从服务通知"待回应"卡片进入时，按钮应禁用
+    const fromNotice = options.fromNotice || '';
+    if (fromNotice === 'pending') {
+      this.setData({ hasApplied: true });
+    }
     this.loadItem(id);
   },
 
@@ -35,7 +40,9 @@ Page({
         wx.hideLoading();
         const item = this.formatItem(data);
         const historyData = this.buildHistoryData(data);
-        this.setData({ item, images: item.images || [], historyData });
+        // 记录帖子的更新时间，用于操作前检测冲突
+        const itemUpdatedAt = data.updatedAt || '';
+        this.setData({ item, images: item.images || [], historyData, itemUpdatedAt });
       })
       .catch((err) => {
         wx.hideLoading();
@@ -156,7 +163,43 @@ Page({
       return;
     }
 
-    this.setData({ showSheet: true, helpNote: '' });
+    // 操作前重新拉取，检测浏览期间帖子是否被发布者更新
+    this._checkHelpFreshness(() => {
+      this.setData({ showSheet: true, helpNote: '' });
+    });
+  },
+
+  /** 重新拉取求助帖，检测是否在浏览期间被发布者更新；通过则执行回调 */
+  _checkHelpFreshness(onFresh) {
+    const id = this.data.item.id;
+    if (!id) return;
+    wx.showLoading({ title: '校验中...', mask: true });
+    api.get(`/api/help-requests/${id}`)
+      .then((data) => {
+        wx.hideLoading();
+        const newUpdatedAt = data.updatedAt || '';
+        const oldUpdatedAt = this.data.itemUpdatedAt || '';
+        if (newUpdatedAt !== oldUpdatedAt || data.status !== this.data.item.status) {
+          wx.showModal({
+            title: '帖子已更新',
+            content: '帖子信息已被发布者修改，请重新确认相关信息',
+            showCancel: false,
+            confirmText: '知道了',
+            success: () => {
+              const item = this.formatItem(data);
+              const historyData = this.buildHistoryData(data);
+              // 刷新后重置 hasApplied，按钮状态由最新数据决定
+              this.setData({ item, images: item.images || [], historyData, itemUpdatedAt: newUpdatedAt, hasApplied: false });
+            }
+          });
+          return;
+        }
+        onFresh();
+      })
+      .catch((err) => {
+        wx.hideLoading();
+        wx.showToast({ title: err.message || '网络异常', icon: 'none' });
+      });
   },
 
   onCloseSheet() {
@@ -185,6 +228,8 @@ Page({
         wx.hideLoading();
         this.setData({ submittingHelp: false });
         wx.showToast({ title: err.message, icon: 'none' });
+        // 操作失败（如帖子已下架/已被别人申请），刷新数据
+        this.loadItem(this.data.item.id);
       });
   },
 

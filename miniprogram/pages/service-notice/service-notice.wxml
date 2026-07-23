@@ -15,7 +15,8 @@
           <view class="notice-card-title">{{item.title}}</view>
           <view class="notice-card-content">{{item.content}}</view>
           <view class="notice-card-footer">
-            <text class="notice-card-arrow" wx:if="{{item.isTappable}}">去审批 ›</text>
+            <text class="notice-card-arrow" wx:if="{{item.isApprovalType}}">去审批 ›</text>
+            <text class="notice-card-arrow" wx:if="{{item.isPendingResponseType}}">待回应 ›</text>
             <text class="notice-card-expired" wx:if="{{item.isExpired}}">已失效</text>
             <text class="notice-card-rate" wx:if="{{item.isRateable && !item.isRated}}">去评价 ›</text>
             <text class="notice-card-rated" wx:if="{{item.isRateable && item.isRated}}">已评价</text>

@@ -121,34 +121,142 @@
   </view>
 </view>
 
-<!-- 记录详情弹窗 -->
-<view class="alert-overlay" wx:if="{{showRecordDetail}}" catchtap="onCloseRecordDetail">
-  <view class="alert" catchtap="">
-    <view class="alert-title">互助记录详情</view>
-    <view class="alert-body">
-      <view class="info-row">
-        <text class="info-label">物品/事项</text>
-        <text class="info-value">{{recordDetail.item}}</text>
-      </view>
-      <view class="info-row">
-        <text class="info-label">我的角色</text>
-        <text class="info-value">{{recordDetail.role}}</text>
-      </view>
-      <view class="info-row">
-        <text class="info-label">对方</text>
-        <text class="info-value">{{recordDetail.peer}}</text>
-      </view>
-      <view class="info-row">
-        <text class="info-label">日期</text>
-        <text class="info-value">{{recordDetail.date}}</text>
-      </view>
-      <view class="info-row">
-        <text class="info-label">评价</text>
-        <text class="info-value">{{recordDetail.remark}}</text>
-      </view>
-    </view>
-    <view class="alert-actions">
-      <view class="alert-btn alert-btn-bold" bindtap="onCloseRecordDetail">关闭</view>
-    </view>
+<!-- ===== 互借记录弹框（对齐管理页审批弹框样式） ===== -->
+<view class="record-sheet-overlay" wx:if="{{showRecordSheet && recordSheetType === 'idle'}}" catchtouchmove="preventTouchMove" bindtap="onCloseRecordSheet"></view>
+<view class="record-sheet" wx:if="{{showRecordSheet && recordSheetType === 'idle'}}">
+  <view class="record-sheet-header">
+    <view class="record-sheet-handle"></view>
+    <view class="record-sheet-title">互助记录详情</view>
   </view>
+  <scroll-view class="record-sheet-body" scroll-y enhanced show-scrollbar="{{false}}">
+    <!-- 物品 + 借用时长 -->
+    <view class="approval-section">
+      <text class="approval-section-label">物品</text>
+      <text class="approval-item-title">{{recordSheetItem.title}}</text>
+      <view class="approval-duration-row">
+        <text class="approval-duration-label">借用时长：</text>
+        <text class="approval-duration-value">{{recordSheetItem.maxDuration}}{{(recordSheetItem.durationUnit === 'hour' ? '小时' : '天')}}</text>
+      </view>
+    </view>
+
+    <!-- 借出方 -->
+    <view class="approval-section">
+      <text class="approval-section-label">{{recordSheetParties.left.label}}</text>
+      <view class="approval-resident-card">
+        <view class="approval-resident-row">
+          <text class="approval-resident-addr approval-resident-addr-link" wx:if="{{recordSheetParties.left.personId}}" catchtap="onTapChatWithUser" data-user-id="{{recordSheetParties.left.personId}}" data-user-name="{{recordSheetParties.left.name}}">{{recordSheetParties.left.name}}</text>
+          <text class="approval-resident-addr" wx:else>{{recordSheetParties.left.name}}</text>
+          <view class="approval-rating-inline">
+            <text class="approval-rating-label">获评</text>
+            <view class="approval-rating-score-row" wx:if="{{recordSheetParties.left.ratingText}}">
+              <text class="approval-rating-value">{{recordSheetParties.left.ratingText}}</text>
+              <text class="approval-rating-unit">/ 5.0</text>
+            </view>
+            <text wx:else class="approval-rating-label">对方还未评分</text>
+          </view>
+        </view>
+        <text class="record-feedback-text">互助感想：{{recordSheetParties.left.feedback || '无'}}</text>
+      </view>
+    </view>
+
+    <!-- 借入方 -->
+    <view class="approval-section">
+      <text class="approval-section-label">{{recordSheetParties.right.label}}</text>
+      <view class="approval-resident-card">
+        <view class="approval-resident-row">
+          <text class="approval-resident-addr approval-resident-addr-link" wx:if="{{recordSheetParties.right.personId}}" catchtap="onTapChatWithUser" data-user-id="{{recordSheetParties.right.personId}}" data-user-name="{{recordSheetParties.right.name}}">{{recordSheetParties.right.name}}</text>
+          <text class="approval-resident-addr" wx:else>{{recordSheetParties.right.name}}</text>
+          <view class="approval-rating-inline">
+            <text class="approval-rating-label">获评</text>
+            <view class="approval-rating-score-row" wx:if="{{recordSheetParties.right.ratingText}}">
+              <text class="approval-rating-value">{{recordSheetParties.right.ratingText}}</text>
+              <text class="approval-rating-unit">/ 5.0</text>
+            </view>
+            <text wx:else class="approval-rating-label">对方还未评分</text>
+          </view>
+        </view>
+        <text class="record-feedback-text">互助感想：{{recordSheetParties.right.feedback || '无'}}</text>
+      </view>
+    </view>
+
+    <!-- 物品状况（借出前） -->
+    <view class="approval-section">
+      <text class="approval-section-label">物品状况（借出前）</text>
+      <text class="approval-note-text">{{recordSheetItem.condition === 'like-new' ? '几乎全新' : (recordSheetItem.condition === 'normal' || recordSheetItem.condition === 'good' ? '正常使用痕迹' : (recordSheetItem.condition === 'worn' ? '有明显磨损' : (recordSheetItem.condition || '—')))}}</text>
+    </view>
+
+    <!-- 物品状况（借出后） -->
+    <view class="approval-section">
+      <text class="approval-section-label">物品状况（借出后）</text>
+      <text class="approval-note-text">{{recordSheetItem.damageType === 'normal' ? '正常损耗' : (recordSheetItem.damageType === 'severe' ? '严重损坏' : (recordSheetItem.damageType === 'broken' ? '完全损坏' : (recordSheetItem.damageType || '—')))}}</text>
+    </view>
+
+    <!-- 归还情况 -->
+    <view class="approval-section">
+      <text class="approval-section-label">归还情况</text>
+      <text class="approval-note-text" style="{{recordSheetItem.isOnTime === false ? 'color:var(--red);' : ''}}">{{recordSheetItem.isOnTime === false ? '逾期归还' : (recordSheetItem.isOnTime === true ? '按时归还' : '—')}}</text>
+    </view>
+    <view style="height:40rpx;"></view>
+  </scroll-view>
+</view>
+
+<!-- ===== 互助记录弹框（对齐管理页审批弹框样式） ===== -->
+<view class="record-sheet-overlay" wx:if="{{showRecordSheet && recordSheetType === 'help'}}" catchtouchmove="preventTouchMove" bindtap="onCloseRecordSheet"></view>
+<view class="record-sheet" wx:if="{{showRecordSheet && recordSheetType === 'help'}}" style="height: 60vh;">
+  <view class="record-sheet-header">
+    <view class="record-sheet-handle"></view>
+    <view class="record-sheet-title">互助记录详情</view>
+  </view>
+  <scroll-view class="record-sheet-body" scroll-y enhanced show-scrollbar="{{false}}">
+    <!-- 标题 + 时间段 -->
+    <view class="approval-section">
+      <text class="approval-section-label">标题</text>
+      <text class="approval-item-title">{{recordSheetItem.title}}</text>
+      <view class="approval-duration-row" wx:if="{{recordSheetItem.timeStart || recordSheetItem.timeEnd}}">
+        <text class="approval-duration-label">时间段：</text>
+        <text class="approval-duration-value">{{recordSheetItem.timeStart && recordSheetItem.timeEnd ? (recordSheetItem.timeStart + ' ~ ' + recordSheetItem.timeEnd) : (recordSheetItem.timeStart || recordSheetItem.timeEnd)}}</text>
+      </view>
+    </view>
+
+    <!-- 帮助方 -->
+    <view class="approval-section">
+      <text class="approval-section-label">{{recordSheetParties.left.label}}</text>
+      <view class="approval-resident-card">
+        <view class="approval-resident-row">
+          <text class="approval-resident-addr approval-resident-addr-link" wx:if="{{recordSheetParties.left.personId}}" catchtap="onTapChatWithUser" data-user-id="{{recordSheetParties.left.personId}}" data-user-name="{{recordSheetParties.left.name}}">{{recordSheetParties.left.name}}</text>
+          <text class="approval-resident-addr" wx:else>{{recordSheetParties.left.name}}</text>
+          <view class="approval-rating-inline">
+            <text class="approval-rating-label">获评</text>
+            <view class="approval-rating-score-row" wx:if="{{recordSheetParties.left.ratingText}}">
+              <text class="approval-rating-value">{{recordSheetParties.left.ratingText}}</text>
+              <text class="approval-rating-unit">/ 5.0</text>
+            </view>
+            <text wx:else class="approval-rating-label">对方还未评分</text>
+          </view>
+        </view>
+        <text class="record-feedback-text">互助感想：{{recordSheetParties.left.feedback || '无'}}</text>
+      </view>
+    </view>
+
+    <!-- 求助方 -->
+    <view class="approval-section">
+      <text class="approval-section-label">{{recordSheetParties.right.label}}</text>
+      <view class="approval-resident-card">
+        <view class="approval-resident-row">
+          <text class="approval-resident-addr approval-resident-addr-link" wx:if="{{recordSheetParties.right.personId}}" catchtap="onTapChatWithUser" data-user-id="{{recordSheetParties.right.personId}}" data-user-name="{{recordSheetParties.right.name}}">{{recordSheetParties.right.name}}</text>
+          <text class="approval-resident-addr" wx:else>{{recordSheetParties.right.name}}</text>
+          <view class="approval-rating-inline">
+            <text class="approval-rating-label">获评</text>
+            <view class="approval-rating-score-row" wx:if="{{recordSheetParties.right.ratingText}}">
+              <text class="approval-rating-value">{{recordSheetParties.right.ratingText}}</text>
+              <text class="approval-rating-unit">/ 5.0</text>
+            </view>
+            <text wx:else class="approval-rating-label">对方还未评分</text>
+          </view>
+        </view>
+        <text class="record-feedback-text">互助感想：{{recordSheetParties.right.feedback || '无'}}</text>
+      </view>
+    </view>
+    <view style="height:40rpx;"></view>
+  </scroll-view>
 </view>

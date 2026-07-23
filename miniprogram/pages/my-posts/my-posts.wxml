@@ -217,8 +217,7 @@
             <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
-              <view class="progress-name">帮助住户：{{item.personName}}</view>
-              <view class="progress-meta">{{item.metaText}}</view>
+              <view class="progress-meta">帮助住户：{{item.personName}}</view>
             </view>
             <view class="progress-act-btn end-btn" catchtap="onEndHelpReq" data-id="{{item.id}}">结束</view>
           </view>
@@ -235,8 +234,7 @@
             <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
-              <view class="progress-name">求助住户：{{item.personName}}</view>
-              <view class="progress-meta">{{item.metaText}}</view>
+              <view class="progress-meta">求助住户：{{item.personName}}</view>
             </view>
             <view class="progress-act-btn end-btn" catchtap="onEndHelpPro" data-id="{{item.id}}">结束</view>
           </view>
@@ -598,27 +596,33 @@
         <textarea class="edit-textarea" value="{{editDesc}}" bindinput="onEditInput" data-field="editDesc" placeholder="描述具体情况、需要什么帮助、大概需要多长时间等" />
       </view>
 
-      <!-- 预计时间范围 -->
+      <!-- 预计时间范围（选填，开关控制） -->
       <view class="input-group">
-        <text class="edit-input-label">预计时间范围</text>
-        <view class="time-row">
-          <text class="time-label">从</text>
-          <picker class="time-picker" mode="date" value="{{editTimeStartDate}}" bindchange="onEditTimeStartDateChange">
-            <view class="time-value">{{editTimeStartDate || '请选择日期'}}</view>
-          </picker>
-          <picker class="time-picker" mode="selector" range="{{hourOptions}}" value="{{editTimeStartHour}}" bindchange="onEditTimeStartHourChange">
-            <view class="time-value">{{hourOptions[editTimeStartHour]}}</view>
-          </picker>
+        <view class="label-with-switch">
+          <text class="edit-input-label" style="margin:0;">预计时间范围（选填）</text>
+          <switch class="time-switch" checked="{{editEnableTimeRange}}" bindchange="onEditToggleTimeRange" color="#0071e3" />
         </view>
-        <view class="time-row">
-          <text class="time-label">至</text>
-          <picker class="time-picker" mode="date" value="{{editTimeEndDate}}" bindchange="onEditTimeEndDateChange">
-            <view class="time-value">{{editTimeEndDate || '请选择日期'}}</view>
-          </picker>
-          <picker class="time-picker" mode="selector" range="{{hourOptions}}" value="{{editTimeEndHour}}" bindchange="onEditTimeEndHourChange">
-            <view class="time-value">{{hourOptions[editTimeEndHour]}}</view>
-          </picker>
-        </view>
+        <block wx:if="{{editEnableTimeRange}}">
+          <view class="time-row">
+            <text class="time-label">从</text>
+            <picker class="time-picker" mode="date" value="{{editTimeStartDate}}" bindchange="onEditTimeStartDateChange">
+              <view class="time-value">{{editTimeStartDate || '请选择日期'}}</view>
+            </picker>
+            <picker class="time-picker" mode="selector" range="{{hourOptions}}" value="{{editTimeStartHour}}" bindchange="onEditTimeStartHourChange">
+              <view class="time-value">{{hourOptions[editTimeStartHour]}}</view>
+            </picker>
+          </view>
+          <view class="time-row">
+            <text class="time-label">至</text>
+            <picker class="time-picker" mode="date" value="{{editTimeEndDate}}" bindchange="onEditTimeEndDateChange">
+              <view class="time-value">{{editTimeEndDate || '请选择日期'}}</view>
+            </picker>
+            <picker class="time-picker" mode="selector" range="{{hourOptions}}" value="{{editTimeEndHour}}" bindchange="onEditTimeEndHourChange">
+              <view class="time-value">{{hourOptions[editTimeEndHour]}}</view>
+            </picker>
+          </view>
+        </block>
+        <view wx:else class="time-hint">打开开关可设置期望的帮助时间范围，不设置则表示时间灵活</view>
       </view>
 
       <view class="input-group" style="margin-bottom:0;">
@@ -682,8 +686,8 @@
       <text class="approval-section-label">{{approvalSheetItem.approvalType === 'borrow' ? '愿意借出的住户' : (approvalSheetItem.approvalType === 'lend' ? '希望借用的住户' : '主动帮忙的住户')}}</text>
       <view class="approval-resident-card">
         <view class="approval-resident-row">
-          <text class="approval-resident-addr approval-resident-addr-link" wx:if="{{approvalSheetItem.applicantUserId}}" catchtap="onTapChatWithUser" data-user-id="{{approvalSheetItem.applicantUserId}}" data-user-name="{{approvalSheetItem.applicantName}}">{{approvalSheetItem.applicantAddress}}（{{approvalSheetItem.applicantType}}）</text>
-          <text class="approval-resident-addr" wx:else>{{approvalSheetItem.applicantAddress}}（{{approvalSheetItem.applicantType}}）</text>
+          <text class="approval-resident-addr approval-resident-addr-link" wx:if="{{approvalSheetItem.applicantUserId}}" catchtap="onTapChatWithUser" data-user-id="{{approvalSheetItem.applicantUserId}}" data-user-name="{{approvalSheetItem.applicantName}}">{{approvalSheetItem.applicantAddress}}</text>
+          <text class="approval-resident-addr" wx:else>{{approvalSheetItem.applicantAddress}}</text>
           <view class="approval-rating-inline">
             <text class="approval-rating-label">综合评分</text>
             <view class="approval-rating-score-row">
@@ -749,16 +753,16 @@
     <view class="progress-sheet-title">{{progressSheetType === 'helpReq' || progressSheetType === 'helpPro' ? '结束' : (progressSheetType === 'lend' ? '确认归还' : '归还物品')}}</view>
   </view>
 
-  <scroll-view class="progress-sheet-body" scroll-y enhanced show-scrollbar="{{false}}">
+  <scroll-view class="progress-sheet-body" scroll-y enhanced show-scrollbar="{{false}}" style="padding-bottom: {{sheetPaddingBottom}}px;">
     <!-- 物品标题 -->
     <view class="approval-section">
-      <text class="approval-section-label">物品</text>
+      <text class="approval-section-label">{{progressSheetType === 'helpReq' || progressSheetType === 'helpPro' ? '标题' : '物品'}}</text>
       <text class="approval-item-title">{{progressSheetItem.itemTitle}}</text>
     </view>
 
     <!-- 备注（借入说明/借出说明/求助说明） -->
     <view class="approval-section" wx:if="{{progressSheetItem.note}}">
-      <text class="approval-section-label">{{progressSheetType === 'helpReq' || progressSheetType === 'helpPro' ? '求助说明' : (progressSheetItem.postType === 'WANTED' ? '借出说明' : '借入说明')}}</text>
+      <text class="approval-section-label">{{progressSheetType === 'helpReq' ? '求助说明' : (progressSheetType === 'helpPro' ? '帮助说明' : (progressSheetItem.postType === 'WANTED' ? '借出说明' : '借入说明'))}}</text>
       <text class="approval-note-text">{{progressSheetItem.note}}</text>
     </view>
 
@@ -767,8 +771,8 @@
       <text class="approval-section-label">{{progressSheetItem.roleLabel}}</text>
       <view class="approval-resident-card">
         <view class="approval-resident-row">
-          <text class="approval-resident-addr approval-resident-addr-link" wx:if="{{progressSheetItem.personUserId}}" catchtap="onTapChatWithUser" data-user-id="{{progressSheetItem.personUserId}}" data-user-name="{{progressSheetItem.personName}}">{{progressSheetItem.personAddress}}（{{progressSheetItem.personType}}）</text>
-          <text class="approval-resident-addr" wx:else>{{progressSheetItem.personAddress}}（{{progressSheetItem.personType}}）</text>
+          <text class="approval-resident-addr approval-resident-addr-link" wx:if="{{progressSheetItem.personUserId}}" catchtap="onTapChatWithUser" data-user-id="{{progressSheetItem.personUserId}}" data-user-name="{{progressSheetItem.personName}}">{{progressSheetItem.personAddress}}</text>
+          <text class="approval-resident-addr" wx:else>{{progressSheetItem.personAddress}}</text>
           <view class="approval-rating-inline">
             <text class="approval-rating-label">综合评分</text>
             <view class="approval-rating-score-row">
@@ -822,7 +826,7 @@
     <!-- 反馈（选填） -->
     <view class="approval-section">
       <text class="approval-section-label">互助感想（选填）</text>
-      <textarea class="progress-feedback-input" value="{{progressSheetFeedback}}" bindinput="onProgressFeedbackInput" placeholder="分享一下此次互助的感受…" maxlength="200" />
+      <textarea class="progress-feedback-input" value="{{progressSheetFeedback}}" bindinput="onProgressFeedbackInput" placeholder="分享一下此次互助的感受…" maxlength="200" adjust-position="{{false}}" bindkeyboardheightchange="onKeyboardHeightChange" />
     </view>
     <view style="height:20rpx;"></view>
   </scroll-view>
@@ -840,10 +844,10 @@
     <view class="completed-sheet-title">互助详情</view>
   </view>
 
-  <scroll-view class="completed-sheet-body" scroll-y enhanced show-scrollbar="{{false}}">
+  <scroll-view class="completed-sheet-body" scroll-y enhanced show-scrollbar="{{false}}" style="padding-bottom: {{sheetPaddingBottom}}px;">
     <!-- 物品标题 -->
     <view class="approval-section">
-      <text class="approval-section-label">物品</text>
+      <text class="approval-section-label">{{completedSheetItem.type === 'helpReq' || completedSheetItem.type === 'helpPro' ? '标题' : '物品'}}</text>
       <text class="approval-item-title">{{completedSheetItem.itemTitle}}</text>
     </view>
 
@@ -858,8 +862,8 @@
       <text class="approval-section-label">{{completedSheetItem.roleLabel}}</text>
       <view class="approval-resident-card">
         <view class="approval-resident-row">
-          <text class="approval-resident-addr approval-resident-addr-link" wx:if="{{completedSheetItem.personUserId}}" catchtap="onTapChatWithUser" data-user-id="{{completedSheetItem.personUserId}}" data-user-name="{{completedSheetItem.personName}}">{{completedSheetItem.personAddress}}（{{completedSheetItem.personType}}）</text>
-          <text class="approval-resident-addr" wx:else>{{completedSheetItem.personAddress}}（{{completedSheetItem.personType}}）</text>
+          <text class="approval-resident-addr approval-resident-addr-link" wx:if="{{completedSheetItem.personUserId}}" catchtap="onTapChatWithUser" data-user-id="{{completedSheetItem.personUserId}}" data-user-name="{{completedSheetItem.personName}}">{{completedSheetItem.personAddress}}</text>
+          <text class="approval-resident-addr" wx:else>{{completedSheetItem.personAddress}}</text>
         </view>
       </view>
     </view>
@@ -897,7 +901,7 @@
         <view class="progress-star {{completedRating >= 4 ? 'active' : ''}}" bindtap="onCompletedRatingTap" data-star="4">★</view>
         <view class="progress-star {{completedRating >= 5 ? 'active' : ''}}" bindtap="onCompletedRatingTap" data-star="5">★</view>
       </view>
-      <textarea class="progress-feedback-input" style="margin-top:12px;" value="{{completedFeedback}}" bindinput="onCompletedFeedbackInput" placeholder="分享一下此次互助的感受…" maxlength="200" />
+      <textarea class="progress-feedback-input" style="margin-top:12px;" value="{{completedFeedback}}" bindinput="onCompletedFeedbackInput" placeholder="分享一下此次互助的感受…" maxlength="200" adjust-position="{{false}}" bindkeyboardheightchange="onKeyboardHeightChange" />
       <view class="progress-confirm-btn" style="margin-top:12px;" bindtap="onSubmitCompletedRating">提交评价</view>
     </view>
 

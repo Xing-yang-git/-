@@ -434,3 +434,168 @@
   color: var(--text-tertiary);
   background: var(--surface);
 }
+
+/* ============================================================
+   记录详情底部弹框
+   ============================================================ */
+.record-sheet-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+}
+
+.record-sheet {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  z-index: 1001;
+}
+
+.record-sheet-header {
+  flex-shrink: 0;
+  background: var(--surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.record-sheet-handle {
+  width: 72rpx;
+  height: 10rpx;
+  border-radius: 6rpx;
+  background: var(--fill-primary);
+  margin: 16rpx auto 0;
+}
+
+.record-sheet-title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  text-align: center;
+  padding: 24rpx 0;
+  color: var(--text);
+}
+
+.record-sheet-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0 var(--margin);
+}
+
+/* ============================================================
+   弹框内容区块 — 对齐管理页 my-posts sheet 样式
+   ============================================================ */
+.approval-section {
+  padding: 24rpx 0;
+  border-bottom: 1rpx solid var(--border);
+}
+
+.approval-section-label {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin-bottom: 8rpx;
+}
+
+.approval-item-title {
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--text);
+  display: block;
+}
+
+.approval-note-text {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  background: var(--fill-quaternary);
+  padding: 16rpx 20rpx;
+  border-radius: var(--radius-sm);
+  display: block;
+}
+
+/* 住户卡片 */
+.approval-resident-card {
+  background: var(--fill-quaternary);
+  border-radius: var(--radius);
+  padding: 24rpx;
+}
+
+.approval-resident-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.approval-resident-addr {
+  font-size: var(--text-sm);
+  color: var(--text);
+  flex: 1;
+  word-break: break-all;
+}
+
+/* 评分组件 */
+.approval-rating-inline {
+  display: flex;
+  align-items: baseline;
+  gap: 20rpx;
+  flex-shrink: 0;
+}
+
+.approval-rating-score-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4rpx;
+}
+
+.approval-rating-label {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.approval-rating-value {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--orange);
+}
+
+.approval-rating-unit {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* 时长行（对齐审批弹框） */
+.approval-duration-row {
+  display: flex;
+  align-items: center;
+  margin-top: 12rpx;
+}
+
+.approval-duration-label {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.approval-duration-value {
+  font-size: var(--text-xs);
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* 互助感谢文本（透明背景） */
+.record-feedback-text {
+  display: block;
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid var(--border);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* 住户地址链接（蓝色可点击） */
+.approval-resident-addr-link {
+  color: var(--blue);
+}

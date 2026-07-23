@@ -70,16 +70,23 @@ Page({
     const cleanContent = (n.content || '').replace(/\[/g, '').replace(/\]/g, '');
     // rateable 由后端根据实际状态（已完成 + 未评分）计算
     const backendRateable = n.rateable === true;
-    // 审批类通知：后端 actionable 决定是否仍可操作（待审批）；help_approved 始终有效
+    // 审批类通知（对方视角）：需要我去审批
     const isApprovalType = ['help_application', 'borrow_request'].includes(n.type);
     const isApprovalActive = isApprovalType && n.actionable === true;
+    // 我的申请类通知（申请人视角）：等待对方回应
+    const isPendingResponseType = ['borrow_application', 'help_application_submitted'].includes(n.type);
+    const isPendingResponseActive = isPendingResponseType && n.actionable === true;
+    // 已失效：审批类或待回应类中不再可操作的
+    const isExpired = (isApprovalType || isPendingResponseType) && !n.actionable;
     return {
       ...n,
       title: cleanTitle,
       content: cleanContent,
       dateTimeText: this.formatDateTime(n.createdAt),
-      isTappable: isApprovalActive || (!isApprovalType && ['help_approved'].includes(n.type)),
-      isExpired: isApprovalType && !isApprovalActive,
+      isTappable: isApprovalActive || isPendingResponseActive || (!isApprovalType && !isPendingResponseType && ['help_approved'].includes(n.type)),
+      isApprovalType: isApprovalActive,
+      isPendingResponseType: isPendingResponseActive,
+      isExpired: isExpired,
       isRateable: backendRateable && !ratedIds.includes(n.relatedId),
       isRated: backendRateable && ratedIds.includes(n.relatedId)
     };
@@ -91,11 +98,16 @@ Page({
     if (ratedIds.length === 0) return;
     const notifications = this.data.notifications.map(n => {
       const isApprovalType = ['help_application', 'borrow_request'].includes(n.type);
+      const isPendingResponseType = ['borrow_application', 'help_application_submitted'].includes(n.type);
       const isApprovalActive = isApprovalType && n.actionable === true;
+      const isPendingResponseActive = isPendingResponseType && n.actionable === true;
+      const isExpired = (isApprovalType || isPendingResponseType) && !n.actionable;
       return {
         ...n,
-        isTappable: isApprovalActive || (!isApprovalType && ['help_approved'].includes(n.type)),
-        isExpired: isApprovalType && !isApprovalActive,
+        isTappable: isApprovalActive || isPendingResponseActive || (!isApprovalType && !isPendingResponseType && ['help_approved'].includes(n.type)),
+        isApprovalType: isApprovalActive,
+        isPendingResponseType: isPendingResponseActive,
+        isExpired: isExpired,
         isRateable: n.rateable && !ratedIds.includes(n.relatedId),
         isRated: n.rateable && ratedIds.includes(n.relatedId)
       };
@@ -128,6 +140,12 @@ Page({
         type: item.type
       };
       wx.switchTab({ url: '/pages/my-posts/my-posts' });
+    } else if (item.type === 'borrow_application') {
+      // 我的借入/借出申请（待回应）→ 跳转到闲置详情页，传递标识以便禁用操作按钮
+      wx.navigateTo({ url: '/pages/idle-detail/idle-detail?id=' + item.relatedId + '&fromNotice=pending' });
+    } else if (item.type === 'help_application_submitted') {
+      // 我的帮助申请（待回应）→ 跳转到求助详情页，传递标识以便禁用操作按钮
+      wx.navigateTo({ url: '/pages/help-detail/help-detail?id=' + item.relatedId + '&fromNotice=pending' });
     } else if (item.type === 'help_approved') {
       // 帮助申请已通过 → 跳转到管理页，用户在「进行中」tab 查看
       wx.switchTab({ url: '/pages/my-posts/my-posts' });
