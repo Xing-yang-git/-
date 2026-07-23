@@ -86,6 +86,15 @@ public class BorrowService {
                         : ("有人想借入您的物品：" + idleItem.getTitle()),
                 borrowRequest.getId());
 
+        // 通知申请人：申请已提交（服务通知展示"待回应"）
+        // 先清理该用户对同一物品的旧借入/借出申请通知，避免上一轮申请的通知仍显示为待回应
+        notificationService.deleteByUserIdAndTypeAndRelatedId(borrowerId, "borrow_application", idleItem.getId());
+        createNotification(borrowerId, "borrow_application",
+                wanted ? "借出申请已提交" : "借入申请已提交",
+                wanted ? ("你已成功申请借出「" + idleItem.getTitle() + "」，等待对方确认")
+                        : ("你已成功申请借入「" + idleItem.getTitle() + "」，等待对方确认"),
+                idleItem.getId());
+
         return toDTO(borrowRequest);
     }
 
@@ -198,8 +207,13 @@ public class BorrowService {
 
         borrowRequest.setReturnStatus(req.getReturnStatus());
         borrowRequest.setReturnNote(req.getReturnNote());
-        borrowRequest.setDamageType(req.getDamageType());
-        borrowRequest.setDamageNote(req.getDamageNote());
+        // 仅当请求中有值时才覆盖，避免借入方归还时把借出方已填的物品状况冲掉
+        if (req.getDamageType() != null) {
+            borrowRequest.setDamageType(req.getDamageType());
+        }
+        if (req.getDamageNote() != null) {
+            borrowRequest.setDamageNote(req.getDamageNote());
+        }
         borrowRequest.setIsOnTime(req.getIsOnTime());
         borrowRequest.setReturnPhotos(req.getReturnPhotos());
         borrowRequest.setStatus(BizStatus.RETURNED);

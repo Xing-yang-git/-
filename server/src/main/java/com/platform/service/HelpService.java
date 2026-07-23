@@ -214,6 +214,14 @@ public class HelpService {
                 "新的帮助申请", "有人想帮助您：" + helpRequest.getTitle(),
                 application.getId());
 
+        // 通知帮助者：申请已提交（服务通知展示"待回应"）
+        // 先清理该用户对同一求助的旧"帮助申请已提交"通知，避免上一轮申请的通知仍显示为待回应
+        notificationService.deleteByUserIdAndTypeAndRelatedId(helperId, "help_application_submitted", helpRequest.getId());
+        createNotification(helperId, "help_application_submitted",
+                "帮助申请已提交",
+                "你已成功申请帮助「" + helpRequest.getTitle() + "」，等待对方确认",
+                helpRequest.getId());
+
         return toDTO(helpRequest);
     }
 

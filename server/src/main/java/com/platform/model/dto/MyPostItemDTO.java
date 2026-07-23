@@ -73,4 +73,8 @@ public class MyPostItemDTO {
     private String myFeedback;
     private Double theirRating;
     private String theirFeedback;
+
+    // 借用归还明细（"我的"页记录弹框使用）
+    private String damageType;     // 归还后物品状况（normal/severe/broken）
+    private Boolean isOnTime;      // 是否按时归还
 }

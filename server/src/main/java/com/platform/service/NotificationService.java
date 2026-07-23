@@ -69,6 +69,11 @@ public class NotificationService {
         notificationRepository.deleteAllByUserId(userId);
     }
 
+    /** 删除指定用户、指定类型、指定关联ID的旧通知（重复申请时清理上一轮通知，避免旧通知仍显示待回应） */
+    public void deleteByUserIdAndTypeAndRelatedId(Long userId, String type, Long relatedId) {
+        notificationRepository.deleteByUserIdAndTypeAndRelatedId(userId, type, relatedId);
+    }
+
     public NotificationDTO create(Long userId, String type, String title, String content, Long relatedId) {
         Notification notification = new Notification();
         notification.setUserId(userId);
@@ -155,6 +160,18 @@ public class NotificationService {
         if ("help_application".equals(type)) {
             Optional<HelpApplication> appOpt = helpApplicationRepository.findById(relatedId);
             return appOpt.isPresent() && BizStatus.PENDING.equals(appOpt.get().getStatus());
+        }
+
+        // 借入/借出申请（申请人视角，relatedId 为闲置物品 ID）：检查是否有待审批的申请
+        if ("borrow_application".equals(type)) {
+            return borrowRequestRepository
+                    .existsByBorrowerIdAndIdleIdAndStatus(userId, relatedId, BizStatus.PENDING);
+        }
+
+        // 帮助申请（帮助者视角，relatedId 为求助 ID）：检查是否有待审批的申请
+        if ("help_application_submitted".equals(type)) {
+            return helpApplicationRepository
+                    .existsByHelperIdAndHelpIdAndStatus(userId, relatedId, BizStatus.PENDING);
         }
 
         // 评价类：同 rateable

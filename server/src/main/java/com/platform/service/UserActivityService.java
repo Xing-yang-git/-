@@ -38,6 +38,7 @@ import java.util.stream.Collectors;
 public class UserActivityService {
 
     private static final Logger log = LoggerFactory.getLogger(UserActivityService.class);
+    private static final java.time.format.DateTimeFormatter DT_FMT = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final IdleItemRepository idleItemRepository;
     private final HelpRequestRepository helpRequestRepository;
@@ -322,7 +323,7 @@ public class UserActivityService {
                 dto.setType("help");
                 dto.setSubType("helpReq");
                 dto.setPostType(PostType.HELP);
-                dto.setRoleLabel("求助住户");
+                dto.setRoleLabel("帮助住户");
                 dto.setDisplayStatus("进行中");
                 dto.setNote(app.getNote());
                 dto.setPersonId(app.getHelperId());
@@ -332,6 +333,8 @@ public class UserActivityService {
                     dto.setPersonRoom(UserFormatter.formatRoomWithType(helper));
                     dto.setPersonType(UserFormatter.getUserTypeLabel(helper.getUserType()));
                 }
+                Double avgScore = ratingRepository.getAverageScore(app.getHelperId());
+                dto.setPersonRating(avgScore != null ? Math.round(avgScore * 10.0) / 10.0 : null);
                 calculateHelpRemaining(dto, hr);
                 result.add(dto);
             }
@@ -357,7 +360,7 @@ public class UserActivityService {
             dto.setType("help");
             dto.setSubType("helpPro");
             dto.setPostType(PostType.HELP);
-            dto.setRoleLabel("帮助住户");
+            dto.setRoleLabel("求助住户");
             dto.setDisplayStatus("进行中");
             dto.setNote(app.getNote());
             dto.setPersonId(hr.getUserId());
@@ -367,6 +370,8 @@ public class UserActivityService {
                 dto.setPersonRoom(UserFormatter.formatRoomWithType(requester));
                 dto.setPersonType(UserFormatter.getUserTypeLabel(requester.getUserType()));
             }
+            Double avgScore = ratingRepository.getAverageScore(hr.getUserId());
+            dto.setPersonRating(avgScore != null ? Math.round(avgScore * 10.0) / 10.0 : null);
             calculateHelpRemaining(dto, hr);
             result.add(dto);
         }
@@ -413,6 +418,9 @@ public class UserActivityService {
             dto.setCompletedAt(br.getUpdatedAt());
             populateBorrowPeer(dto, br, userId);
             loadBorrowRatings(dto, br, userId);
+            // 借用归还明细（"我的"页记录弹框）
+            dto.setDamageType(br.getDamageType());
+            dto.setIsOnTime(br.getIsOnTime());
             result.add(dto);
         }
         return result;
@@ -433,7 +441,7 @@ public class UserActivityService {
                 dto.setType("help");
                 dto.setSubType("helpReq");
                 dto.setPostType(PostType.HELP);
-                dto.setRoleLabel("求助住户");
+                dto.setRoleLabel("帮助住户");
                 dto.setCompletedAt(app.getCompletedAt());
                 dto.setNote(app.getNote());
                 dto.setPersonId(app.getHelperId());
@@ -443,6 +451,8 @@ public class UserActivityService {
                     dto.setPersonRoom(UserFormatter.formatRoomWithType(helper));
                     dto.setPersonType(UserFormatter.getUserTypeLabel(helper.getUserType()));
                 }
+                Double avgScore = ratingRepository.getAverageScore(app.getHelperId());
+                dto.setPersonRating(avgScore != null ? Math.round(avgScore * 10.0) / 10.0 : null);
                 loadHelpRatings(dto, app, userId);
                 result.add(dto);
             }
@@ -468,7 +478,7 @@ public class UserActivityService {
             dto.setType("help");
             dto.setSubType("helpPro");
             dto.setPostType(PostType.HELP);
-            dto.setRoleLabel("帮助住户");
+            dto.setRoleLabel("求助住户");
             dto.setCompletedAt(app.getCompletedAt());
             dto.setNote(app.getNote());
             dto.setPersonId(hr.getUserId());
@@ -478,6 +488,8 @@ public class UserActivityService {
                 dto.setPersonRoom(UserFormatter.formatRoomWithType(requester));
                 dto.setPersonType(UserFormatter.getUserTypeLabel(requester.getUserType()));
             }
+            Double avgScore = ratingRepository.getAverageScore(hr.getUserId());
+            dto.setPersonRating(avgScore != null ? Math.round(avgScore * 10.0) / 10.0 : null);
             loadHelpRatings(dto, app, userId);
             result.add(dto);
         }
@@ -533,6 +545,11 @@ public class UserActivityService {
         String personRoom = UserFormatter.formatRoomWithType(user);
         String personType = user != null ? UserFormatter.getUserTypeLabel(user.getUserType()) : null;
 
+        // 格式化时间范围供前端展示（与 helpRequestToDTO 保持一致）
+        java.time.format.DateTimeFormatter dtf = DT_FMT;
+        String timeStartStr = hr.getTimeStart() != null ? hr.getTimeStart().format(dtf) : null;
+        String timeEndStr = hr.getTimeEnd() != null ? hr.getTimeEnd().format(dtf) : null;
+
         return MyPostItemDTO.builder()
                 .id(hr.getId())
                 .type("help")
@@ -546,6 +563,8 @@ public class UserActivityService {
                 .displayStatus(displayStatus)
                 .createdAt(hr.getCreatedAt())
                 .updatedAt(hr.getUpdatedAt())
+                .timeStart(timeStartStr)
+                .timeEnd(timeEndStr)
                 .personName(personName)
                 .personRoom(personRoom)
                 .personType(personType)
@@ -557,7 +576,7 @@ public class UserActivityService {
      */
     private MyPostItemDTO helpRequestToDTO(HelpRequest hr) {
         // 格式化时间范围供前端展示
-        java.time.format.DateTimeFormatter dtf = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+        java.time.format.DateTimeFormatter dtf = DT_FMT;
         String timeStartStr = hr.getTimeStart() != null ? hr.getTimeStart().format(dtf) : null;
         String timeEndStr = hr.getTimeEnd() != null ? hr.getTimeEnd().format(dtf) : null;
 
@@ -638,9 +657,16 @@ public class UserActivityService {
     private void calculateRemaining(MyPostItemDTO dto, BorrowRequest br) {
         if (br.getDurationDays() == null) return;
 
-        // startDate 优先，未设置时回退到 createdAt（审批通过时间）
-        LocalDate start = br.getStartDate() != null ? br.getStartDate() : br.getCreatedAt().toLocalDate();
-        LocalDateTime expectedReturn = start.plusDays(br.getDurationDays()).atStartOfDay();
+        LocalDateTime expectedReturn;
+        if ("hour".equals(br.getDurationType())) {
+            // 按小时计算：从审批通过时间（updatedAt）开始，兜底用 createdAt
+            LocalDateTime startDateTime = br.getUpdatedAt() != null ? br.getUpdatedAt() : br.getCreatedAt();
+            expectedReturn = startDateTime.plusHours(br.getDurationDays());
+        } else {
+            // 按天计算：从 startDate（审批当天）开始，未设置时回退到 createdAt
+            LocalDate start = br.getStartDate() != null ? br.getStartDate() : br.getCreatedAt().toLocalDate();
+            expectedReturn = start.plusDays(br.getDurationDays()).atStartOfDay();
+        }
         long remainingDays = ChronoUnit.DAYS.between(LocalDate.now(), expectedReturn.toLocalDate());
         long remainingHours = ChronoUnit.HOURS.between(LocalDateTime.now(), expectedReturn);
 
@@ -762,6 +788,8 @@ public class UserActivityService {
             dto.setPersonRoom(UserFormatter.formatRoomWithType(peer));
             dto.setPersonType(UserFormatter.getUserTypeLabel(peer.getUserType()));
         }
+        Double avgScore = ratingRepository.getAverageScore(peerId);
+        dto.setPersonRating(avgScore != null ? Math.round(avgScore * 10.0) / 10.0 : null);
     }
 
     /** 互助统计结果：四项次数 + 按时归还率的分子分母 */

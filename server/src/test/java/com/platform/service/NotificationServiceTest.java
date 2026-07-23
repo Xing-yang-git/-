@@ -1,7 +1,11 @@
 package com.platform.service;
 
 import com.platform.model.dto.NotificationDTO;
+import com.platform.model.entity.BorrowRequest;
+import com.platform.model.entity.HelpApplication;
 import com.platform.model.entity.Notification;
+import com.platform.repository.BorrowRequestRepository;
+import com.platform.repository.HelpApplicationRepository;
 import com.platform.repository.NotificationRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -15,9 +19,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -26,6 +33,12 @@ class NotificationServiceTest {
 
     @Mock
     private NotificationRepository notificationRepository;
+
+    @Mock
+    private BorrowRequestRepository borrowRequestRepository;
+
+    @Mock
+    private HelpApplicationRepository helpApplicationRepository;
 
     @InjectMocks
     private NotificationService notificationService;
@@ -152,5 +165,79 @@ class NotificationServiceTest {
         Notification saved = captor.getValue();
         assertThat(saved.getUserId()).isEqualTo(userId);
         assertThat(saved.getIsRead()).isFalse();
+    }
+
+    // ── computeActionable 新类型测试（borrow_application / help_application_submitted） ──
+
+    @Test
+    @DisplayName("borrow_application 待审批 → actionable=true")
+    void should_actionableTrue_when_borrowApplicationPending() {
+        // 准备：借入申请仍为 PENDING 状态
+        when(borrowRequestRepository.existsByBorrowerIdAndIdleIdAndStatus(userId, relatedId, "pending"))
+                .thenReturn(true);
+        notification.setType("borrow_application");
+        when(notificationRepository.findByUserIdOrderByCreatedAtDesc(userId))
+                .thenReturn(List.of(notification));
+
+        // 执行
+        List<NotificationDTO> result = notificationService.getNotifications(userId);
+
+        // 断言
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getActionable()).isTrue();
+    }
+
+    @Test
+    @DisplayName("borrow_application 已审批 → actionable=false")
+    void should_actionableFalse_when_borrowApplicationNotPending() {
+        // 准备：借入申请已不再是 PENDING
+        when(borrowRequestRepository.existsByBorrowerIdAndIdleIdAndStatus(userId, relatedId, "pending"))
+                .thenReturn(false);
+        notification.setType("borrow_application");
+        when(notificationRepository.findByUserIdOrderByCreatedAtDesc(userId))
+                .thenReturn(List.of(notification));
+
+        // 执行
+        List<NotificationDTO> result = notificationService.getNotifications(userId);
+
+        // 断言
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getActionable()).isFalse();
+    }
+
+    @Test
+    @DisplayName("help_application_submitted 待审批 → actionable=true")
+    void should_actionableTrue_when_helpApplicationSubmittedPending() {
+        // 准备：帮助申请仍为 PENDING 状态
+        when(helpApplicationRepository.existsByHelperIdAndHelpIdAndStatus(userId, relatedId, "pending"))
+                .thenReturn(true);
+        notification.setType("help_application_submitted");
+        when(notificationRepository.findByUserIdOrderByCreatedAtDesc(userId))
+                .thenReturn(List.of(notification));
+
+        // 执行
+        List<NotificationDTO> result = notificationService.getNotifications(userId);
+
+        // 断言
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getActionable()).isTrue();
+    }
+
+    @Test
+    @DisplayName("help_application_submitted 已审批 → actionable=false")
+    void should_actionableFalse_when_helpApplicationSubmittedNotPending() {
+        // 准备：帮助申请已不再是 PENDING
+        when(helpApplicationRepository.existsByHelperIdAndHelpIdAndStatus(userId, relatedId, "pending"))
+                .thenReturn(false);
+        notification.setType("help_application_submitted");
+        when(notificationRepository.findByUserIdOrderByCreatedAtDesc(userId))
+                .thenReturn(List.of(notification));
+
+        // 执行
+        List<NotificationDTO> result = notificationService.getNotifications(userId);
+
+        // 断言
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getActionable()).isFalse();
     }
 }

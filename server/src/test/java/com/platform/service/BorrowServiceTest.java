@@ -152,7 +152,7 @@ class BorrowServiceTest {
         assertThat(result).isNotNull();
         assertThat(result.getBorrowerId()).isEqualTo(borrowerId);
         assertThat(result.getStatus()).isEqualTo("pending");
-        verify(notificationService).create(any(), any(), any(), any(), any());
+        verify(notificationService, times(2)).create(any(), any(), any(), any(), any());
         verify(borrowRequestRepository).save(any(BorrowRequest.class));
     }
 
