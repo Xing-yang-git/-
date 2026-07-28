@@ -66,7 +66,7 @@
         </div>
 
         <!-- 管理员列表（仅超级管理员可见）-->
-        <div v-if="isSuperAdmin" class="panel">
+        <div v-if="isSuperAdmin || isSeniorAdmin" class="panel">
           <div class="panel-header">
             <span class="panel-title">管理员列表</span>
             <el-button type="primary" size="small" @click="openAddAdmin">+ 添加子账号</el-button>
@@ -78,6 +78,7 @@
                 <span :class="['badge', roleBadge(row.userType)]">{{ row.userTypeLabel }}</span>
               </template>
             </el-table-column>
+            <el-table-column prop="tenantName" label="小区" align="center" />
             <el-table-column prop="phone" label="手机" align="center" />
             <el-table-column label="创建时间" align="center" width="160">
               <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
@@ -98,9 +99,10 @@
         </div>
 
         <!-- 操作日志（仅超级管理员可见）-->
-        <div v-if="isSuperAdmin" class="panel">
+        <div v-if="isSuperAdmin || isSeniorAdmin" class="panel">
           <div class="panel-header">
             <span class="panel-title">操作日志</span>
+            <el-button size="small" :loading="exportingLogs" @click="handleExportLogs">导出日志</el-button>
           </div>
           <el-table :data="operationLogs" style="width:100%;" v-loading="logsLoading">
             <el-table-column label="时间" align="center" width="160">
@@ -128,6 +130,17 @@
             <el-form-item label="密码" prop="password">
               <el-input v-model="addAdminForm.password" type="password" placeholder="请输入初始密码" show-password />
             </el-form-item>
+            <el-form-item label="小区" prop="tenantId">
+              <el-select v-model="addAdminForm.tenantId" placeholder="请选择目标小区" style="width:100%;">
+                <el-option v-for="t in tenantList" :key="t.id" :label="t.name" :value="t.id" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="角色">
+              <el-radio-group v-model="addAdminForm.userType">
+                <el-radio value="senior_admin">高级管理员</el-radio>
+                <el-radio value="admin">普通管理员</el-radio>
+              </el-radio-group>
+            </el-form-item>
           </el-form>
           <template #footer>
             <el-button @click="addAdminVisible = false">取消</el-button>
@@ -139,6 +152,12 @@
   </el-container>
 </template>
 
+<!--
+  SettingsView.vue — 系统设置
+
+  功能：管理员个人信息展示、小区/楼栋/单元/房间层级数据查看、管理员账号增删管理（仅超级管理员）。
+  权限：个人信息所有管理员可查看；管理员账号管理仅超级管理员可操作。
+-->
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
@@ -146,7 +165,7 @@ import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus';
 import { ArrowDown } from '@element-plus/icons-vue';
 
 import { useAuthStore } from '../stores/auth';
-import { updateProfile, updatePassword, getAdmins, createAdmin, deleteAdmin, getLogs, type OperationLogDTO } from '../api/admin';
+import { updateProfile, updatePassword, getAdmins, createAdmin, deleteAdmin, getLogs, getTenants, exportOperationLogs, type OperationLogDTO } from '../api/admin';
 import AppSidebar from '../components/AppSidebar.vue';
 import type { AxiosError } from 'axios';
 import type { AdminUser } from '../api/auth';
@@ -170,6 +189,14 @@ interface AddAdminForm {
   name: string;
   phone: string;
   password: string;
+  tenantId: number | null;
+  userType: string;
+}
+
+/** 小区下拉选项 */
+interface TenantOption {
+  id: number;
+  name: string;
 }
 
 /** 管理员列表行数据 */
@@ -178,6 +205,8 @@ interface AdminRow {
   name: string;
   phone?: string;
   userType: string;
+  /** 所属小区名称（super_admin 显示 "全部小区"） */
+  tenantName?: string;
 }
 
 const router = useRouter();
@@ -185,9 +214,11 @@ const authStore = useAuthStore();
 
 /** 是否为超级管理员（超级管理员可管理子账号） */
 const isSuperAdmin = computed(() => authStore.user?.userType === 'super_admin');
+/** 是否为高级管理员 */
+const isSeniorAdmin = computed(() => authStore.user?.userType === 'senior_admin');
 /** 当前用户类型的中文标签 */
 const userTypeLabel = computed(() => {
-  const map: Record<string, string> = { super_admin: '超级管理员', admin: '普通管理员' };
+  const map: Record<string, string> = { super_admin: '超级管理员', senior_admin: '高级管理员', admin: '普通管理员' };
   return map[authStore.user?.userType || ''] || authStore.user?.userType || '管理员';
 });
 
@@ -286,7 +317,19 @@ async function fetchAdmins(): Promise<void> {
 
 /** 角色标签 CSS 映射 */
 function roleBadge(userType: string): string {
-  return userType === 'super_admin' ? 'badge-info' : 'badge-success';
+  if (userType === 'super_admin') return 'badge-info';
+  if (userType === 'senior_admin') return 'badge-warning';
+  return 'badge-success';
+}
+
+/** 小区列表（super_admin 创建管理员时选择目标小区） */
+const tenantList = ref<TenantOption[]>([]);
+/** 加载小区列表 */
+async function fetchTenants(): Promise<void> {
+  try {
+    const res = await getTenants();
+    tenantList.value = res.data.data || [];
+  } catch { /* silent */ }
 }
 
 /** 确认并删除指定管理员 */
@@ -312,7 +355,7 @@ async function confirmDeleteAdmin(row: AdminRow): Promise<void> {
 // ==================== 添加管理员弹窗 ====================
 const addAdminVisible = ref(false);
 const addAdminFormRef = ref<FormInstance>();
-const addAdminForm = reactive<AddAdminForm>({ name: '', phone: '', password: '' });
+const addAdminForm = reactive<AddAdminForm>({ name: '', phone: '', password: '', tenantId: null, userType: 'admin' });
 const addAdminLoading = ref(false);
 
 const addAdminRules = {
@@ -324,13 +367,16 @@ const addAdminRules = {
   password: [
     { required: true, message: '请输入初始密码', trigger: 'blur' },
     { min: 6, message: '密码长度不能少于6位', trigger: 'blur' }
-  ]
+  ],
+  tenantId: [{ required: true, message: '请选择小区', trigger: 'change' }],
 };
 
 function openAddAdmin(): void {
   addAdminForm.name = '';
   addAdminForm.phone = '';
   addAdminForm.password = '';
+  addAdminForm.tenantId = null;
+  addAdminForm.userType = 'admin';
   addAdminVisible.value = true;
 }
 
@@ -340,7 +386,13 @@ async function submitAddAdmin(): Promise<void> {
 
   addAdminLoading.value = true;
   try {
-    await createAdmin({ name: addAdminForm.name, phone: addAdminForm.phone, password: addAdminForm.password });
+    await createAdmin({
+      name: addAdminForm.name,
+      phone: addAdminForm.phone,
+      password: addAdminForm.password,
+      tenantId: addAdminForm.tenantId!,
+      userType: addAdminForm.userType
+    });
     addAdminVisible.value = false;
     ElMessage.success(`子账号「${addAdminForm.name}」已添加`);
     fetchAdmins();
@@ -355,6 +407,7 @@ async function submitAddAdmin(): Promise<void> {
 // ==================== 操作日志 ====================
 const operationLogs = ref<OperationLogDTO[]>([]);
 const logsLoading = ref(false);
+const exportingLogs = ref(false);
 
 async function fetchLogs(): Promise<void> {
   logsLoading.value = true;
@@ -365,6 +418,19 @@ async function fetchLogs(): Promise<void> {
     // silent
   } finally {
     logsLoading.value = false;
+  }
+}
+
+/** 导出操作日志为 Excel */
+async function handleExportLogs(): Promise<void> {
+  exportingLogs.value = true;
+  try {
+    await exportOperationLogs();
+    ElMessage.success('操作日志已导出');
+  } catch (err: any) {
+    ElMessage.error(err.message || '导出失败');
+  } finally {
+    exportingLogs.value = false;
   }
 }
 
@@ -405,7 +471,8 @@ function formatTime(t?: string): string {
 // ==================== 生命周期 ====================
 onMounted(() => {
   profile.name = authStore.user?.name || '';
-  if (isSuperAdmin.value) {
+  if (isSuperAdmin.value || isSeniorAdmin.value) {
+    if (isSuperAdmin.value) fetchTenants();
     fetchAdmins();
     fetchLogs();
   }

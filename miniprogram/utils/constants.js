@@ -21,8 +21,10 @@ const STATUS = {
   BANNED: 'banned',           // 已封禁
   CANCELLED: 'cancelled',     // 已取消（借用申请取消）
   // 借用交互 UI 状态（与后端 idleItem.status 对齐）
-  RESERVED: 'reserved',       // 已被预定（申请提交后后端会同步设为 reserved）
-  BORROWING: 'borrowing'      // 已借出（owner 同意借出申请后后端设为 borrowing）
+  ACTIVE: 'active',           // 进行中（借用/帮助进行中，统一替换旧值 borrowing/helping）
+  // 以下为兼容旧值的别名，取值已与上方统一，避免存量代码报错
+  RESERVED: 'pending',         // 已合并到 pending（申请提交后帖子标记为待审批）
+  BORROWING: 'active'          // 已合并到 active（旧名 borrowing → 统一为进行中）
 };
 
 /**
@@ -34,4 +36,24 @@ const POST_TYPE = {
   HELP: 'HELP'      // 技能求助
 };
 
-module.exports = { STATUS, POST_TYPE };
+/**
+ * 损坏类型 — borrow_requests.damage_type 字段的唯一合法取值。
+ * 与后端 com.platform.common.DamageType 保持一致。
+ */
+const DAMAGE_TYPE = {
+  NORMAL: 'normal',    // 正常损耗
+  ABNORMAL: 'severe',  // 非正常损坏（数据库值保持 severe）
+  BROKEN: 'broken'     // 完全损坏
+};
+
+/**
+ * 归还状态 — borrow_requests.return_status 字段的唯一合法取值。
+ * 与后端 com.platform.common.ReturnStatus 保持一致。
+ */
+const RETURN_STATUS = {
+  ON_TIME: 'ontime',           // 按时归还
+  DELAYED: 'delayed',          // 逾期归还
+  NOT_RETURNED: 'not_returned' // 未归还
+};
+
+module.exports = { STATUS, POST_TYPE, DAMAGE_TYPE, RETURN_STATUS };

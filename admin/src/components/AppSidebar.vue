@@ -7,6 +7,7 @@
 
     <div class="sidebar-nav">
       <div
+        v-if="!isSuperAdmin"
         class="sidebar-item"
         :class="{ active: activeRoute === '/dashboard' }"
         @click="$router.push('/dashboard')"
@@ -18,6 +19,7 @@
       </div>
 
       <div
+        v-if="!isSuperAdmin"
         class="sidebar-item"
         :class="{ active: activeRoute === '/audit' }"
         @click="$router.push('/audit')"
@@ -29,6 +31,7 @@
       </div>
 
       <div
+        v-if="!isSuperAdmin"
         class="sidebar-item"
         :class="{ active: activeRoute === '/content' }"
         @click="$router.push('/content')"
@@ -40,6 +43,7 @@
       </div>
 
       <div
+        v-if="!isSuperAdmin"
         class="sidebar-item"
         :class="{ active: activeRoute === '/records' }"
         @click="$router.push('/records')"
@@ -51,6 +55,7 @@
       </div>
 
       <div
+        v-if="isSeniorAdmin"
         class="sidebar-item"
         :class="{ active: activeRoute === '/export' }"
         @click="$router.push('/export')"
@@ -62,6 +67,7 @@
       </div>
 
       <div
+        v-if="isSeniorAdmin"
         class="sidebar-item"
         :class="{ active: activeRoute === '/settings' }"
         @click="$router.push('/settings')"
@@ -73,18 +79,29 @@
       </div>
     </div>
 
-    <div class="sidebar-footer">物业运营端 v1.0 · 赵经理</div>
+    <div class="sidebar-footer">物业运营端 v1.0 · {{ authStore.userName }}</div>
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
+import { useAuthStore } from '../stores/auth';
+import { USER_TYPE } from '../utils/constants';
 
 const route = useRoute();
+const authStore = useAuthStore();
 
 /** 当前激活的路由路径，用于高亮侧边栏菜单项 */
 const activeRoute = computed(() => route.path);
+
+/** 是否为超级管理员（仅系统设置，无业务数据权限） */
+const isSuperAdmin = computed(() => authStore.user?.userType === USER_TYPE.SUPER_ADMIN);
+/** 是否为高级管理员及以上（可访问系统设置、管理员列表、操作日志等） */
+const isSeniorAdmin = computed(() => {
+  const ut = authStore.user?.userType;
+  return ut === USER_TYPE.SUPER_ADMIN || ut === USER_TYPE.SENIOR_ADMIN;
+});
 </script>
 
 <style scoped>

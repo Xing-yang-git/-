@@ -40,24 +40,24 @@
     </view>
   </view>
 
-  <!-- 损坏类型 -->
+  <!-- 物品状况 -->
   <view class="card">
     <view class="card-title">物品状况</view>
     <view class="damage-options">
-      <view class="damage-item {{damageType === 'none' ? 'selected green-bg' : ''}}" bindtap="onDamageTap" data-value="none">
-        <text>无损坏</text>
+      <view class="damage-item {{damageType === 'normal' ? 'selected green-bg' : ''}}" bindtap="onDamageTap" data-value="normal">
+        <text>正常损耗</text>
       </view>
-      <view class="damage-item {{damageType === 'minor' ? 'selected yellow-bg' : ''}}" bindtap="onDamageTap" data-value="minor">
-        <text>轻微损坏</text>
+      <view class="damage-item {{damageType === 'severe' ? 'selected yellow-bg' : ''}}" bindtap="onDamageTap" data-value="severe">
+        <text>非正常损坏</text>
       </view>
-      <view class="damage-item {{damageType === 'severe' ? 'selected red-bg' : ''}}" bindtap="onDamageTap" data-value="severe">
-        <text>严重损坏</text>
+      <view class="damage-item {{damageType === 'broken' ? 'selected red-bg' : ''}}" bindtap="onDamageTap" data-value="broken">
+        <text>完全损坏</text>
       </view>
     </view>
   </view>
 
-  <!-- 损坏说明（条件显示） -->
-  <view class="card" wx:if="{{damageType !== 'none' && damageType}}">
+  <!-- 损坏说明（正常损耗不显示） -->
+  <view class="card" wx:if="{{damageType !== 'normal' && damageType}}">
     <view class="card-title">损坏说明</view>
     <textarea class="textarea" placeholder="请描述物品损坏情况" value="{{damageNote}}" bindinput="onInput" data-field="damageNote" />
   </view>

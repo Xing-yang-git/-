@@ -86,6 +86,13 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- EasyExcel — 流式写入 Excel 导出，内存友好 -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>easyexcel</artifactId>
+            <version>4.0.3</version>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

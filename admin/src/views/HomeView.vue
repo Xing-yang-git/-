@@ -187,7 +187,8 @@
           </div>
         </div>
 
-        <!-- 系统设置 -->
+        <!-- 系统设置（仅高级管理员及以上可见） -->
+        <template v-if="isSeniorAdmin">
         <div class="section-label-title">系统</div>
         <div class="launcher-grid">
           <div class="launch-card" @click="$router.push('/settings')">
@@ -215,21 +216,42 @@
             <div class="card-desc">权限管理 · 操作日志 · 系统备用</div>
           </div>
         </div>
+        </template>
       </el-main>
     </el-container>
   </el-container>
 </template>
 
+<!--
+  HomeView.vue — 物业运营端入口布局页
+
+  功能：侧边栏导航 + 顶部栏（日期时间 + 用户信息 + 退出登录）+ 子路由出口。
+  权限：需管理员 / 超级管理员登录。
+-->
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessageBox } from "element-plus";
 
 import { useAuthStore } from "../stores/auth";
+import { USER_TYPE } from "../utils/constants";
 import AppSidebar from "../components/AppSidebar.vue";
 
 const router = useRouter();
 const authStore = useAuthStore();
+
+// super_admin 仅管理平台，自动跳转系统设置页
+onMounted(() => {
+  if (authStore.user?.userType === USER_TYPE.SUPER_ADMIN) {
+    router.replace('/settings');
+  }
+});
+
+/** 是否为高级管理员及以上 */
+const isSeniorAdmin = computed(() => {
+  const ut = authStore.user?.userType;
+  return ut === USER_TYPE.SUPER_ADMIN || ut === USER_TYPE.SENIOR_ADMIN;
+});
 
 /** 当前日期 + 时间，格式：2026年7月22日周四 14:30 */
 const todayWithTime = computed(() => {

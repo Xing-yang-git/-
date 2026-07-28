@@ -81,7 +81,7 @@ class RatingServiceTest {
                 .build();
 
         when(borrowRequestRepository.findById(borrowId)).thenReturn(Optional.of(borrowRequest));
-        when(ratingRepository.findByBorrowIdAndFromUserId(borrowId, fromUserId)).thenReturn(Optional.empty());
+        when(ratingRepository.findFirstByBorrowIdAndFromUserId(borrowId, fromUserId)).thenReturn(Optional.empty());
         when(idleItemRepository.findById(idleId)).thenReturn(Optional.of(idleItem));
         when(ratingRepository.save(any(Rating.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -174,7 +174,7 @@ class RatingServiceTest {
         // 物品必须存在，否则会先触发"对方用户信息缺失"防御而到不了重复评价检查
         when(idleItemRepository.findById(idleId)).thenReturn(Optional.of(
                 IdleItem.builder().id(idleId).userId(ownerId).build()));
-        when(ratingRepository.findByBorrowIdAndFromUserId(borrowId, fromUserId))
+        when(ratingRepository.findFirstByBorrowIdAndFromUserId(borrowId, fromUserId))
                 .thenReturn(Optional.of(new Rating()));
 
         // 执行 & 断言
@@ -230,7 +230,7 @@ class RatingServiceTest {
                 .build();
 
         when(borrowRequestRepository.findById(borrowId)).thenReturn(Optional.of(borrowRequest));
-        when(ratingRepository.findByBorrowIdAndFromUserId(borrowId, fromUserId)).thenReturn(Optional.empty());
+        when(ratingRepository.findFirstByBorrowIdAndFromUserId(borrowId, fromUserId)).thenReturn(Optional.empty());
         when(idleItemRepository.findById(idleId)).thenReturn(Optional.of(idleItem));
         when(ratingRepository.save(any(Rating.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -265,7 +265,7 @@ class RatingServiceTest {
                 .build();
 
         when(helpApplicationRepository.findById(helpApplicationId)).thenReturn(Optional.of(application));
-        when(ratingRepository.findByHelpApplicationIdAndFromUserId(helpApplicationId, fromUserId))
+        when(ratingRepository.findFirstByHelpApplicationIdAndFromUserId(helpApplicationId, fromUserId))
                 .thenReturn(Optional.empty());
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
         when(ratingRepository.save(any(Rating.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -402,7 +402,7 @@ class RatingServiceTest {
         @SuppressWarnings("unchecked")
         List<RatingDTO> ratings = (List<RatingDTO>) result.get("ratings");
         assertThat(ratings).isEmpty();
-        assertThat((Double) result.get("averageScore")).isEqualTo(0.0);
+        assertThat(((Number) result.get("averageScore")).doubleValue()).isEqualTo(5.0);
         assertThat((Long) result.get("totalRatings")).isEqualTo(0L);
     }
 }

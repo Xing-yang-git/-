@@ -2,6 +2,12 @@ const api = require('../../utils/api');
 const auth = require('../../utils/auth');
 const { POST_TYPE } = require('../../utils/constants');
 
+/**
+ * 求助详情页 — 求助信息展示 + 接单操作入口。
+ *
+ * 功能：求助信息展示、接单按钮/接单历史查看、
+ *        发布者操作面板（下架/删除/修改）、完成确认、用户评价入口。
+ */
 Page({
   data: {
     item: {},

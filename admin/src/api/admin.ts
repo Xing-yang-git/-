@@ -71,7 +71,7 @@ export function auditUser(userId: number, body: AuditUserBody): Promise<AxiosRes
 // ============================================================
 
 export interface ContentListParams {
-  statusTab?: string;
+  status?: string;
   type?: 'idle' | 'help';
   building?: string;
   unit?: string;
@@ -129,6 +129,11 @@ export interface ContentItemDTO {
   violationType?: string;
   violatedAt?: string;
   violatorName?: string;
+  // 审批信息（待审批时填充）
+  /** 审批人姓名 */
+  approverName?: string;
+  /** 申请人姓名（即发布者） */
+  applicantName?: string;
 }
 
 export interface ContentOfflineBody {
@@ -139,6 +144,7 @@ export interface ContentOfflineBody {
 
 export interface ContentCounts {
   showing: number;
+  pending: number;
   progressing: number;
   completed: number;
   violation: number;
@@ -165,32 +171,60 @@ export function offlineContent(id: number, body: ContentOfflineBody): Promise<Ax
 // 代发
 // ============================================================
 
-export interface ProxyIdleBody {
-  userId: number | null;
+export interface PublishIdleBody {
+  /** 目标住户 ID（管理员代发时指定） */
+  userId?: number | null;
+  /** 是否为物业代发（管理员代发时设为 true） */
+  isProxy?: boolean;
+  /** 发布类型：LEND（闲置借出）或 WANTED（需求借入） */
   postType: string;
+  /** 物品标题 */
   title: string;
-  description: string;
+  /** 物品描述（选填） */
+  description?: string;
+  /** 物品分类 */
   category: string;
-  price: number;
-  maxDuration: number;
+  /** 物品成色：like-new / normal / worn */
+  condition?: string;
+  /** 参考价格（元） */
+  price?: number;
+  /** 物品图片 URL 的 JSON 数组字符串 */
+  images?: string;
+  /** 最大借出天数/小时数 */
+  maxDuration?: number;
+  /** 借出时长单位：day / hour */
+  durationUnit?: string;
+  /** 借出形式：self_pickup / both */
+  pickupMethod?: string;
 }
 
-export interface ProxyHelpBody {
-  userId: number | null;
+export interface PublishHelpBody {
+  /** 目标住户 ID（管理员代发时指定） */
+  userId?: number | null;
+  /** 是否为物业代发（管理员代发时设为 true） */
+  isProxy?: boolean;
+  /** 求助标题 */
   title: string;
-  description: string;
+  /** 求助描述（选填） */
+  description?: string;
+  /** 求助分类 */
   category: string;
-  isUrgent: boolean;
+  /** 是否紧急 */
+  isUrgent?: boolean;
+  /** 预计开始时间（格式：yyyy-MM-dd HH:mm） */
   timeStart?: string;
+  /** 预计结束时间（格式：yyyy-MM-dd HH:mm） */
   timeEnd?: string;
+  /** 图片 URL 的 JSON 数组字符串 */
+  images?: string;
 }
 
-export function proxyPublishIdle(body: ProxyIdleBody): Promise<AxiosResponse> {
-  return post('/api/admin/proxy/idle', body);
+export function publishIdle(body: PublishIdleBody): Promise<AxiosResponse> {
+  return post('/api/idle-items', body);
 }
 
-export function proxyPublishHelp(body: ProxyHelpBody): Promise<AxiosResponse> {
-  return post('/api/admin/proxy/help', body);
+export function publishHelp(body: PublishHelpBody): Promise<AxiosResponse> {
+  return post('/api/help-requests', body);
 }
 
 // ============================================================
@@ -241,6 +275,56 @@ export function getDashboard(): Promise<AxiosResponse> {
 }
 
 // ============================================================
+// 互助记录
+// ============================================================
+
+/** 互助记录列表查询参数 */
+export interface RecordsListParams {
+  type?: string;
+  page?: number;
+  size?: number;
+}
+
+/** 互助记录条目（后端 getRecords 返回的单条记录） */
+export interface RecordItemDTO {
+  id: number;
+  type: 'borrow' | 'help';
+  title: string;
+  publisher: string;
+  peer: string;
+  content: string;
+  room: string;
+  /** 格式化时间 "yyyy-MM-dd HH:mm" */
+  timeStart: string;
+  timeEnd: string | null;
+  status: string;
+  createdAt: string;
+  // 时间线（5 节点）
+  publishedAt: string | null;
+  applyAt: string | null;
+  approveAt: string | null;
+  rating1Label?: string | null;
+  rating1Time?: string | null;
+  rating2Label?: string | null;
+  rating2Time?: string | null;
+  // 借用详情（已中文化）
+  lendDuration?: string;
+  condBefore?: string | null;
+  condAfter?: string | null;
+  returnStatus?: string | null;
+  damageType?: string | null;
+  // 评分（1-5 数字）
+  pubRatingScore?: number | null;
+  pubComment?: string | null;
+  peerRatingScore?: number | null;
+  peerComment?: string | null;
+}
+
+export function getRecords(params: RecordsListParams = {}): Promise<AxiosResponse> {
+  return get('/api/admin/records', { type: params.type ?? 'all', page: params.page ?? 0, size: params.size ?? 200 });
+}
+
+// ============================================================
 // 小区数据
 // ============================================================
 
@@ -264,6 +348,14 @@ export function getCommunity(): Promise<AxiosResponse> {
   return get('/api/admin/community');
 }
 
+export function getBuildings(): Promise<AxiosResponse> {
+  return get('/api/admin/buildings');
+}
+
+export function getTenants(): Promise<AxiosResponse> {
+  return get('/api/admin/tenants');
+}
+
 // ============================================================
 // 管理员管理
 // ============================================================
@@ -272,6 +364,10 @@ export interface CreateAdminBody {
   name: string;
   phone: string;
   password: string;
+  /** 目标小区ID（super_admin 创建时必须指定） */
+  tenantId: number;
+  /** 管理员类型：admin 或 senior_admin */
+  userType: string;
 }
 
 export function getAdmins(): Promise<AxiosResponse> {
@@ -331,26 +427,110 @@ export function getLogs(params: LogListParams = {}): Promise<AxiosResponse> {
 }
 
 // ============================================================
-// 数据导出（原生 fetch，文件下载不走 axios JSON 流）
+// 数据导出（原生 fetch，POST JSON body，文件下载不走 axios JSON 流）
 // ============================================================
 
+/** 导出请求参数 */
 export interface ExportParams {
-  format: 'csv' | 'xlsx';
-  start?: string;
-  end?: string;
+  /** 导出格式，固定 "xlsx" */
+  format: 'xlsx';
+  /** 筛选开始日期（yyyy-MM-dd），可选 */
+  dateStart?: string;
+  /** 筛选结束日期（yyyy-MM-dd），可选 */
+  dateEnd?: string;
+  /** 勾选的导出项目列表：residents / posts / borrows / removals / ratings */
   options: string[];
 }
 
-export function exportData(params: ExportParams): Promise<Response> {
+/** 导出日志条目 */
+export interface ExportLogItem {
+  /** 日志ID */
+  id: number;
+  /** 操作人姓名 */
+  adminName: string;
+  /** 导出时间 */
+  createdAt: string;
+  /** 导出格式 */
+  exportFormat: string;
+  /** 勾选项目（JSON数组字符串） */
+  selectedOptions: string;
+  /** 各 Sheet 记录数汇总描述 */
+  countSummary: string;
+  /** 文件名 */
+  fileName: string;
+}
+
+/** 导出日志查询参数 */
+export interface ExportLogParams {
+  page?: number;
+  size?: number;
+}
+
+/**
+ * 执行数据导出，发送 POST 请求到后端生成多 Sheet Excel 文件。
+ * @param params - 导出参数（options、日期范围、格式）
+ * @returns 包含 Blob 和文件名的对象
+ */
+export async function exportData(params: ExportParams): Promise<{ blob: Blob; fileName: string }> {
   const token = localStorage.getItem('admin_token');
-  const searchParams = new URLSearchParams();
-  searchParams.set('format', params.format);
-  if (params.start) searchParams.set('start', params.start);
-  if (params.end) searchParams.set('end', params.end);
-  if (params.options.length > 0) {
-    searchParams.set('options', params.options.join(','));
-  }
-  return fetch(`/api/admin/export?${searchParams.toString()}`, {
-    headers: { Authorization: `Bearer ${token}` }
+  const response = await fetch('/api/admin/exports', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      options: params.options,
+      dateStart: params.dateStart || null,
+      dateEnd: params.dateEnd || null,
+      format: params.format,
+    }),
   });
+
+  if (!response.ok) {
+    throw new Error(`导出失败: HTTP ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  // 从 Content-Disposition 响应头提取后端生成的文件名（兼容 RFC 5987 filename*= 格式）
+  const disposition = response.headers.get('Content-Disposition');
+  const match = disposition?.match(/filename\*?=(?:UTF-8'')?(.+)/i);
+  const fileName = match ? decodeURIComponent(match[1]) : `export.xlsx`;
+
+  return { blob, fileName };
+}
+
+/**
+ * 查询导出日志列表（分页）。
+ * @param params - 分页参数
+ * @returns AxiosResponse，data 为分页日志数据
+ */
+export function getExportLogs(params: ExportLogParams = {}): Promise<AxiosResponse> {
+  return get('/api/admin/exports/logs', { page: params.page ?? 0, size: params.size ?? 10 });
+}
+
+/**
+ * 导出操作日志为 Excel 文件，触发浏览器下载。
+ */
+export async function exportOperationLogs(): Promise<void> {
+  const token = localStorage.getItem('admin_token');
+  const response = await fetch('/api/admin/logs/export', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ message: '导出失败' }));
+    throw new Error(err.message || '导出失败');
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get('Content-Disposition');
+  const match = disposition?.match(/filename\*?=(?:UTF-8'')?(.+)/i);
+  const fileName = match ? decodeURIComponent(match[1]) : '操作日志.xlsx';
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
 }

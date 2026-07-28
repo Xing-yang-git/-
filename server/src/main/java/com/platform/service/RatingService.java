@@ -106,7 +106,7 @@ public class RatingService {
             throw new RuntimeException("对方用户信息缺失，无法评价");
         }
 
-        if (ratingRepository.findByBorrowIdAndFromUserId(req.getBorrowId(), fromUserId).isPresent()) {
+        if (ratingRepository.findFirstByBorrowIdAndFromUserId(req.getBorrowId(), fromUserId).isPresent()) {
             throw new RuntimeException("您已经评价过该借入记录");
         }
 
@@ -148,7 +148,7 @@ public class RatingService {
             throw new RuntimeException("对方用户信息缺失，无法评价");
         }
 
-        if (ratingRepository.findByHelpApplicationIdAndFromUserId(req.getHelpApplicationId(), fromUserId).isPresent()) {
+        if (ratingRepository.findFirstByHelpApplicationIdAndFromUserId(req.getHelpApplicationId(), fromUserId).isPresent()) {
             throw new RuntimeException("您已经评价过该帮助");
         }
 
@@ -181,7 +181,7 @@ public class RatingService {
         double averageScore = ratings.stream()
                 .mapToInt(Rating::getScore)
                 .average()
-                .orElse(0.0);
+                .orElse(5.0);
 
         Map<String, Object> result = new HashMap<>();
         result.put("ratings", ratingDTOs);

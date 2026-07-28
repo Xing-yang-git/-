@@ -129,14 +129,14 @@ public class NotificationService {
             Optional<BorrowRequest> brOpt = borrowRequestRepository.findById(relatedId);
             if (brOpt.isEmpty()) return false;
             if (!BizStatus.RETURNED.equals(brOpt.get().getStatus())) return false;
-            return ratingRepository.findByBorrowIdAndFromUserId(relatedId, userId).isEmpty();
+            return ratingRepository.findFirstByBorrowIdAndFromUserId(relatedId, userId).isEmpty();
         }
 
         if ("help_result".equals(type)) {
             Optional<HelpApplication> appOpt = helpApplicationRepository.findById(relatedId);
             if (appOpt.isEmpty()) return false;
             if (!BizStatus.COMPLETED.equals(appOpt.get().getStatus())) return false;
-            return ratingRepository.findByHelpApplicationIdAndFromUserId(relatedId, userId).isEmpty();
+            return ratingRepository.findFirstByHelpApplicationIdAndFromUserId(relatedId, userId).isEmpty();
         }
 
         return false;

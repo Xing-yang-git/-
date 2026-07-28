@@ -120,13 +120,13 @@ CREATE TABLE IF NOT EXISTS idle_items (
     title           VARCHAR(100)   NOT NULL,                                       -- 标题
     description     VARCHAR(200),                                                  -- 描述，最多200字
     category        VARCHAR(20)    NOT NULL,                                       -- 分类：工具/电子产品/书籍/家居/运动/玩具/服饰/其他
-    condition       VARCHAR(10)    NOT NULL DEFAULT 'normal',                      -- 成色：like-new(几乎全新)/normal(正常使用痕迹)/good(正常使用痕迹)/worn(有明显磨损)
+    condition       VARCHAR(10)    NOT NULL DEFAULT 'normal',                      -- 成色：like-new(几乎全新)/normal(正常使用痕迹)/worn(有明显磨损)
     price           DECIMAL(10,2)  NOT NULL DEFAULT 0,                             -- 参考价格（元）
     images          TEXT,                                                          -- 图片URL（JSON数组），最多9张
     max_duration    INTEGER        DEFAULT 7,                                      -- 最大借出时长值
     duration_unit   VARCHAR(10)    NOT NULL DEFAULT 'day',                         -- 时长单位：day(天)/hour(小时)
     pickup_method   VARCHAR(30)    NOT NULL DEFAULT 'self_pickup',                 -- 取件方式：self_pickup(需自提)/both(自提或送上门)
-    status          VARCHAR(20)    NOT NULL DEFAULT 'online',                      -- 状态：online(在线)/offline(已下架)/deleted(已删除)/borrowing(借出中)/completed(已完成)
+    status          VARCHAR(20)    NOT NULL DEFAULT 'online',                      -- 状态：online(在线)/pending(待审批)/active(进行中)/completed(已完成)/offline(已下架)/deleted(已删除)
     delist_reason   VARCHAR(200),                                                  -- 下架原因，最多200字
     is_proxy        BOOLEAN        NOT NULL DEFAULT FALSE,                         -- 是否物业代发：false(否)/true(是)
     violation_type  VARCHAR(20),                                                   -- 违规类型
@@ -144,13 +144,13 @@ COMMENT ON COLUMN idle_items.post_type       IS '发布类型：LEND(闲置借�
 COMMENT ON COLUMN idle_items.title           IS '标题';
 COMMENT ON COLUMN idle_items.description     IS '描述，物品现状、使用痕迹、附件清单等，最多200字';
 COMMENT ON COLUMN idle_items.category        IS '分类：工具/电子产品/书籍/家居/运动/玩具/服饰/其他（用户自定义）';
-COMMENT ON COLUMN idle_items.condition       IS '成色：like-new(几乎全新)/normal(正常使用痕迹)/good(正常使用痕迹)/worn(有明显磨损)';
+COMMENT ON COLUMN idle_items.condition       IS '成色：like-new(几乎全新)/normal(正常使用痕迹)/worn(有明显磨损)';
 COMMENT ON COLUMN idle_items.price           IS '参考价格（元），用于损坏赔偿基准';
 COMMENT ON COLUMN idle_items.images          IS '图片URL（JSON数组格式），最多9张';
 COMMENT ON COLUMN idle_items.max_duration    IS '最大借出时长值，如7天=7';
 COMMENT ON COLUMN idle_items.duration_unit   IS '时长单位：day(天)/hour(小时)';
 COMMENT ON COLUMN idle_items.pickup_method   IS '取件方式：self_pickup(需自提)/both(自提或送上门)';
-COMMENT ON COLUMN idle_items.status          IS '状态：online(在线)/offline(已下架)/deleted(已删除)/borrowing(借出中)/completed(已完成)';
+COMMENT ON COLUMN idle_items.status          IS '状态：online(在线)/pending(待审批)/active(进行中)/completed(已完成)/offline(已下架)/deleted(已删除)';
 COMMENT ON COLUMN idle_items.delist_reason   IS '下架原因，最多200字';
 COMMENT ON COLUMN idle_items.is_proxy        IS '是否物业代发：false(否)/true(是)';
 COMMENT ON COLUMN idle_items.violation_type  IS '违规类型，管理员标记';
@@ -174,7 +174,7 @@ CREATE TABLE IF NOT EXISTS help_requests (
     time_start      TIMESTAMP,                                                  -- 预计开始时间，可选
     time_end        TIMESTAMP,                                                  -- 预计结束时间，可选
     images          TEXT,                                                       -- 图片URL（JSON数组格式）
-    status          VARCHAR(20) NOT NULL DEFAULT 'online',                      -- 状态：online(在线)/offline(已下架)/helping(进行中)/completed(已完成)/deleted(已删除)
+    status          VARCHAR(20) NOT NULL DEFAULT 'online',                      -- 状态：online(在线)/pending(待审批)/active(进行中)/completed(已完成)/offline(已下架)/deleted(已删除)
     delist_reason   VARCHAR(200),                                               -- 下架原因，最多200字
     is_proxy        BOOLEAN     NOT NULL DEFAULT FALSE,                         -- 是否物业代发：false(否)/true(是)
     violation_type  VARCHAR(20),                                                -- 违规类型
@@ -195,7 +195,7 @@ COMMENT ON COLUMN help_requests.is_urgent     IS '是否紧急：false(普通)/t
 COMMENT ON COLUMN help_requests.time_start    IS '预计开始时间，可选';
 COMMENT ON COLUMN help_requests.time_end      IS '预计结束时间，可选';
 COMMENT ON COLUMN help_requests.images        IS '图片URL（JSON数组格式）';
-COMMENT ON COLUMN help_requests.status        IS '状态：online(在线)/offline(已下架)/helping(进行中)/completed(已完成)/deleted(已删除)';
+COMMENT ON COLUMN help_requests.status        IS '状态：online(在线)/pending(待审批)/active(进行中)/completed(已完成)/offline(已下架)/deleted(已删除)';
 COMMENT ON COLUMN help_requests.delist_reason IS '下架原因，最多200字';
 COMMENT ON COLUMN help_requests.is_proxy      IS '是否物业代发：false(否)/true(是)';
 COMMENT ON COLUMN help_requests.violation_type IS '违规类型，管理员标记';
@@ -240,9 +240,11 @@ CREATE TABLE IF NOT EXISTS borrow_requests (
     note            VARCHAR(200),                                               -- 申请备注，最多200字
     status          VARCHAR(20) NOT NULL DEFAULT 'pending',                    -- 状态：pending(待确认)/active(进行中)/returned(已归还)/rejected(已拒绝)
     handoff_photos  TEXT,                                                       -- 交接照片URL（JSON数组格式）
-    return_status   VARCHAR(20),                                               -- 归还状态：perfect(完好)/damaged(轻微损坏)/lost(严重损坏或丢失)
+    approved_at     TIMESTAMP,                                                  -- 审批通过时间（物主同意借出时设置）
+    returned_at     TIMESTAMP,                                                  -- 归还完成时间（任意一方确认归还时设置）
+    return_status   VARCHAR(20),                                               -- 归还状态：ontime(按时归还)/delayed(逾期归还)/not_returned(未归还)
     return_note     VARCHAR(200),                                               -- 归还备注，最多200字
-    damage_type     VARCHAR(20),                                               -- 损坏类型：none(无损坏)/slight(轻微)/moderate(中度)/severe(严重)
+    damage_type     VARCHAR(20),                                               -- 损坏类型：normal(正常损耗)/severe(非正常损坏)/broken(完全损坏)
     damage_note     VARCHAR(200),                                               -- 损坏说明，最多200字
     is_on_time      BOOLEAN,                                                   -- 是否按时归还：false(逾期)/true(按时)
     return_photos   TEXT,                                                       -- 归还照片URL（JSON数组格式）
@@ -256,11 +258,13 @@ COMMENT ON COLUMN borrow_requests.borrower_id   IS '借入者用户ID，外键�
 COMMENT ON COLUMN borrow_requests.duration_type IS '借入时长类型：hour(小时)/day(天)';
 COMMENT ON COLUMN borrow_requests.duration_days IS '借入时长值（数字），如借3天=3';
 COMMENT ON COLUMN borrow_requests.note          IS '申请备注，申请时填写的说明，最多200字';
-COMMENT ON COLUMN borrow_requests.status        IS '状态：pending(待确认)/active(进行中)/returned(已归还)/rejected(已拒绝)';
+COMMENT ON COLUMN borrow_requests.status        IS '状态：pending(待确认)/approved(已同意)/active(进行中)/returned(已归还)/rejected(已拒绝)';
 COMMENT ON COLUMN borrow_requests.handoff_photos IS '交接照片URL（JSON数组格式）';
-COMMENT ON COLUMN borrow_requests.return_status IS '归还状态：perfect(完好)/damaged(轻微损坏)/lost(严重损坏或丢失)';
+COMMENT ON COLUMN borrow_requests.approved_at  IS '审批通过时间（物主同意借出时设置）';
+COMMENT ON COLUMN borrow_requests.returned_at  IS '归还完成时间（任意一方确认归还时设置）';
+COMMENT ON COLUMN borrow_requests.return_status IS '归还状态：ontime(按时归还)/delayed(逾期归还)/not_returned(未归还)';
 COMMENT ON COLUMN borrow_requests.return_note   IS '归还备注，最多200字';
-COMMENT ON COLUMN borrow_requests.damage_type   IS '损坏类型：none(无损坏)/slight(轻微)/moderate(中度)/severe(严重)';
+COMMENT ON COLUMN borrow_requests.damage_type   IS '损坏类型：normal(正常损耗)/severe(非正常损坏)/broken(完全损坏)';
 COMMENT ON COLUMN borrow_requests.damage_note   IS '损坏说明，最多200字';
 COMMENT ON COLUMN borrow_requests.is_on_time    IS '是否按时归还：false(逾期)/true(按时)';
 COMMENT ON COLUMN borrow_requests.return_photos IS '归还照片URL（JSON数组格式）';
@@ -308,7 +312,7 @@ COMMENT ON COLUMN operation_logs.id             IS '日志ID（自增主键）';
 COMMENT ON COLUMN operation_logs.admin_id       IS '管理员ID，外键→users.id';
 COMMENT ON COLUMN operation_logs.tenant_id     IS '所属小区ID，外键→tenants.id，用于按小区导出操作日志';
 COMMENT ON COLUMN operation_logs.action         IS '操作动作：审核认证/下架物品/封禁用户/删除帖子等';
-COMMENT ON COLUMN operation_logs.target_type    IS '操作对象类型：user/idle_item/help_request等';
+COMMENT ON COLUMN operation_logs.target_type    IS '操作对象类型：user(住户)/idle(闲置物品)/help(技能求助)';
 COMMENT ON COLUMN operation_logs.target_id      IS '操作对象ID';
 COMMENT ON COLUMN operation_logs.detail         IS '操作详情（JSON格式），存储操作前后数据';
 COMMENT ON COLUMN operation_logs.created_at     IS '创建时间';
@@ -366,3 +370,40 @@ COMMENT ON COLUMN messages.updated_at           IS '更新时间';
 CREATE INDEX IF NOT EXISTS idx_msg_session_time ON messages(session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_msg_from_user    ON messages(from_user_id);
 CREATE INDEX IF NOT EXISTS idx_msg_to_user      ON messages(to_user_id);
+
+-- =============================================================================
+-- 14. 导出日志表
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS export_logs (
+    id               BIGINT       GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,   -- 日志ID
+    admin_id         BIGINT       NOT NULL REFERENCES users(id),                   -- 导出操作人ID
+    tenant_id        BIGINT       NOT NULL REFERENCES tenants(id),                -- 所属小区ID
+    export_format    VARCHAR(10)  NOT NULL DEFAULT 'xlsx',                        -- 导出格式：xlsx
+    selected_options TEXT         NOT NULL,                                        -- 勾选项目（JSON数组），如 ["residents","posts"]
+    date_range_start VARCHAR(10),                                                  -- 筛选开始日期（yyyy-MM-dd）
+    date_range_end   VARCHAR(10),                                                  -- 筛选结束日期（yyyy-MM-dd）
+    residents_count  INTEGER      NOT NULL DEFAULT 0,                             -- 住户清单记录数
+    posts_count      INTEGER      NOT NULL DEFAULT 0,                             -- 发布记录数
+    borrows_count    INTEGER      NOT NULL DEFAULT 0,                             -- 互借记录数
+    helps_count      INTEGER      NOT NULL DEFAULT 0,                             -- 互助记录数（技能求助）
+    removals_count   INTEGER      NOT NULL DEFAULT 0,                             -- 下架记录数
+    ratings_count    INTEGER      NOT NULL DEFAULT 0,                             -- 评分记录数
+    file_name        VARCHAR(200) NOT NULL,                                        -- 生成的文件名
+    created_at       TIMESTAMP    NOT NULL DEFAULT NOW()                          -- 创建时间
+);
+COMMENT ON TABLE  export_logs                       IS '导出日志表，记录每次B端数据导出操作';
+COMMENT ON COLUMN export_logs.id                    IS '日志ID（自增主键）';
+COMMENT ON COLUMN export_logs.admin_id              IS '导出操作人ID，外键→users.id';
+COMMENT ON COLUMN export_logs.tenant_id             IS '所属小区ID，外键→tenants.id';
+COMMENT ON COLUMN export_logs.export_format         IS '导出文件格式：xlsx';
+COMMENT ON COLUMN export_logs.selected_options      IS '勾选的导出项目（JSON数组字符串），如 ["residents","posts","borrows"]';
+COMMENT ON COLUMN export_logs.date_range_start      IS '筛选开始日期（yyyy-MM-dd），NULL表示不限';
+COMMENT ON COLUMN export_logs.date_range_end        IS '筛选结束日期（yyyy-MM-dd），NULL表示不限';
+COMMENT ON COLUMN export_logs.residents_count       IS '住户清单Sheet记录数';
+COMMENT ON COLUMN export_logs.posts_count           IS '发布记录Sheet记录数';
+COMMENT ON COLUMN export_logs.borrows_count         IS '互借记录Sheet记录数';
+COMMENT ON COLUMN export_logs.helps_count           IS '互助记录（技能求助）Sheet记录数';
+COMMENT ON COLUMN export_logs.removals_count        IS '下架记录Sheet记录数';
+COMMENT ON COLUMN export_logs.ratings_count         IS '评分数据Sheet记录数';
+COMMENT ON COLUMN export_logs.file_name             IS '生成的文件名（不含路径），如 export_2026-07-01_2026-07-25.xlsx';
+COMMENT ON COLUMN export_logs.created_at            IS '创建时间';

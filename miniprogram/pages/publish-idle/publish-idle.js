@@ -2,6 +2,12 @@ const api = require('../../utils/api');
 const auth = require('../../utils/auth');
 const { POST_TYPE } = require('../../utils/constants');
 
+/**
+ * 发布页 — 闲置物品 / 互助求助发布。
+ *
+ * 功能：发布类型选择（出借/求借/求助）、标题/分类/图片/价格/时长/取货方式填写、
+ *        图片上传、发布提交。求助类型额外支持紧急标记和时间范围。
+ */
 Page({
   data: {
     postType: POST_TYPE.LEND,   // 'LEND' | 'WANTED' | 'HELP'
@@ -300,8 +306,13 @@ Page({
       wx.showToast({ title: '请填写参考价格', icon: 'none' });
       return;
     }
-    if (this.data.images.length === 0) {
-      wx.showToast({ title: '请至少上传 1 张图片', icon: 'none' });
+    const priceVal = Number.parseFloat(this.data.price);
+    if (Number.isNaN(priceVal) || priceVal <= 0) {
+      wx.showToast({ title: '请输入有效的价格', icon: 'none' });
+      return;
+    }
+    if (priceVal > 99999999.99) {
+      wx.showToast({ title: '价格不能超过 99,999,999.99 元', icon: 'none' });
       return;
     }
     if (!this.data.condition) {

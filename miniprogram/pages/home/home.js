@@ -39,6 +39,12 @@ function pickIcon(item, index, iconList) {
   return iconList[index % iconList.length];
 }
 
+/**
+ * 首页 — 闲置物品/互助求助双 Tab 瀑布流浏览。
+ *
+ * 功能：LEND/WANTED/HELP 三类型切换、下拉刷新、滚动分页、分类图标映射。
+ * 数据缓存：页面级 data 维护列表，避免重复请求。
+ */
 Page({
   data: {
     communityName: '社区互助闲置',

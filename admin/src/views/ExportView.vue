@@ -10,7 +10,14 @@
         </div>
         <div class="topbar-right">
           <el-dropdown @command="handleCommand">
-            <span style="cursor:pointer;display:flex;align-items:center;gap:4px;">
+            <span
+              style="
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+              "
+            >
               {{ authStore.userName }} <el-icon><ArrowDown /></el-icon>
             </span>
             <template #dropdown>
@@ -27,59 +34,55 @@
           <div class="panel-header">
             <span class="panel-title">导出内容（可多选）</span>
           </div>
-          <div style="padding:20px;">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-              <el-checkbox v-model="exportOptions.residents" :checked="true">住户清单（含认证状态、互助统计）</el-checkbox>
-              <el-checkbox v-model="exportOptions.idleRecords" :checked="true">闲置发布记录（含下架方式、损坏记录）</el-checkbox>
-              <el-checkbox v-model="exportOptions.helpRecords" :checked="true">技能发布记录（含下架方式）</el-checkbox>
-              <el-checkbox v-model="exportOptions.mutualRecords" :checked="true">互助记录（发布者、对象、内容、时间）</el-checkbox>
-              <el-checkbox v-model="exportOptions.offlineRecords">内容下架记录（物业操作日志）</el-checkbox>
-              <el-checkbox v-model="exportOptions.ratings">评分数据</el-checkbox>
+          <div style="padding: 20px">
+            <div
+              style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px"
+            >
+              <el-checkbox v-model="exportOptions.residents"
+                >住户清单（含认证状态、互助统计）</el-checkbox
+              >
+              <el-checkbox v-model="exportOptions.posts"
+                >发布记录（闲置借出/需求借入/技能求助合并）</el-checkbox
+              >
+              <el-checkbox v-model="exportOptions.borrows"
+                >互借记录 + 互助记录（闲置物品借用 & 技能求助交易）</el-checkbox
+              >
+              <el-checkbox v-model="exportOptions.removals"
+                >内容下架记录（物业操作日志）</el-checkbox
+              >
+              <el-checkbox v-model="exportOptions.ratings"
+                >评分数据</el-checkbox
+              >
             </div>
             <div class="dv-divider"></div>
-            <div style="display:flex;gap:24px;align-items:flex-end;">
+            <div style="display: flex; gap: 24px; align-items: flex-end">
               <div>
                 <div class="text-sm text-secondary mb-8">时间范围</div>
-                <div style="display:flex;gap:8px;align-items:center;">
-                  <el-date-picker
-                    v-model="dateRange"
-                    type="daterange"
-                    range-separator="~"
-                    start-placeholder="开始日期"
-                    end-placeholder="结束日期"
-                    size="small"
-                    format="YYYY-MM-DD"
-                    value-format="YYYY-MM-DD"
-                  />
-                </div>
+                <el-date-picker
+                  v-model="dateRange"
+                  type="daterange"
+                  range-separator="~"
+                  start-placeholder="开始日期"
+                  end-placeholder="结束日期"
+                  size="small"
+                  format="YYYY-MM-DD"
+                  value-format="YYYY-MM-DD"
+                />
               </div>
               <div>
                 <div class="text-sm text-secondary mb-8">导出格式</div>
-                <el-select v-model="exportFormat" size="small" style="width:140px;">
-                  <el-option label="Excel (.xlsx)" value="xlsx" />
-                  <el-option label="CSV (.csv)" value="csv" />
-                </el-select>
+                <span style="font-size: 14px; color: #333">Excel (.xlsx)</span>
               </div>
             </div>
-            <div class="mt-16" style="display:flex;gap:8px;">
-              <el-button type="primary" :loading="exporting" @click="doExport">
+            <div class="mt-16" style="display: flex; gap: 8px">
+              <el-button
+                type="primary"
+                :loading="exporting"
+                @click="confirmExport"
+              >
                 <el-icon><Download /></el-icon> 立即导出
               </el-button>
-              <el-button @click="setupAutoExport">
-                <el-icon><Calendar /></el-icon> 设置自动导出
-              </el-button>
             </div>
-          </div>
-        </div>
-
-        <!-- 自动备份 -->
-        <div class="panel">
-          <div class="panel-header">
-            <span class="panel-title">自动备份设置</span>
-          </div>
-          <div style="padding:20px;">
-            <el-checkbox v-model="autoBackup.weekly" style="display:flex;margin-bottom:12px;">每周全量导出（周一 02:00）</el-checkbox>
-            <el-checkbox v-model="autoBackup.daily" style="display:flex;">每日增量导出（每日 02:00）</el-checkbox>
           </div>
         </div>
 
@@ -88,15 +91,27 @@
           <div class="panel-header">
             <span class="panel-title">导出日志</span>
           </div>
-          <el-table :data="exportLogs" style="width:100%;">
-            <el-table-column prop="time" label="时间" width="200" />
-            <el-table-column prop="type" label="类型" width="150" />
-            <el-table-column label="状态" width="120">
+          <el-table
+            :data="exportLogs"
+            style="width: 100%"
+            v-loading="loadingLogs"
+          >
+            <el-table-column label="时间" width="155">
               <template #default="{ row }">
-                <span class="badge badge-success">{{ row.status }}</span>
+                {{ fmtTime(row.createdAt) }}
               </template>
             </el-table-column>
-            <el-table-column prop="count" label="条数" width="120" />
+            <el-table-column prop="adminName" label="操作人" width="130" />
+            <el-table-column label="导出项目" width="250">
+              <template #default="{ row }">
+                {{ row.selectedOptions }}
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="80">
+              <template #default>
+                <span class="badge badge-success">成功</span>
+              </template>
+            </el-table-column>
           </el-table>
         </div>
       </el-main>
@@ -104,108 +119,184 @@
   </el-container>
 </template>
 
-<script setup lang="ts">
-import { ref, reactive } from 'vue';
-import { useRouter } from 'vue-router';
-import { ElMessage, ElMessageBox } from 'element-plus';
-import { ArrowDown, Download, Calendar } from '@element-plus/icons-vue';
+<!--
+  ExportView.vue — 数据导出管理
 
-import { useAuthStore } from '../stores/auth';
-import { exportData } from '../api/admin';
-import AppSidebar from '../components/AppSidebar.vue';
+  功能：选择导出项（住户/帖子/借用/帮助/下架/评价）、设置日期范围筛选、导出 Excel 文件、查看导出历史。
+  权限：需管理员 / 超级管理员登录。
+-->
+<script setup lang="ts">
+import { ref, reactive, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { ArrowDown, Download } from "@element-plus/icons-vue";
+
+import { useAuthStore } from "../stores/auth";
+import { exportData, getExportLogs } from "../api/admin";
+import type { ExportLogItem } from "../api/admin";
+import AppSidebar from "../components/AppSidebar.vue";
 
 const router = useRouter();
 const authStore = useAuthStore();
 
-/** 导出数据的时间范围 */
-const dateRange = ref<string[]>(['2026-06-01', '2026-06-30']);
-/** 导出文件格式 */
-const exportFormat = ref<'csv' | 'xlsx'>('csv');
+/** 导出数据的时间范围（可选，不选则导出全部） */
+const dateRange = ref<string[] | null>(null);
 
-/** 导出内容选项（按模块勾选） */
+/** 导出内容选项（5项可多选，默认勾选前三项） */
 const exportOptions = reactive({
-  residents: true,
-  idleRecords: true,
-  helpRecords: true,
-  mutualRecords: true,
-  offlineRecords: false,
+  residents: false,
+  posts: false,
+  borrows: false,
+  removals: false,
   ratings: false,
-});
-
-/** 自动备份策略配置 */
-const autoBackup = reactive({
-  weekly: true,
-  daily: true,
 });
 
 /** 是否正在执行导出 */
 const exporting = ref<boolean>(false);
 
-/** 历史导出日志（展示用） */
-const exportLogs = reactive([
-  { time: '2026-06-29 02:00', type: '每日增量', status: '成功', count: '156条' },
-  { time: '2026-06-23 02:00', type: '每周全量', status: '成功', count: '1,250条' },
-  { time: '2026-06-22 02:00', type: '每日增量', status: '成功', count: '142条' },
-]);
+/** 历史导出日志 */
+const exportLogs = ref<ExportLogItem[]>([]);
+
+/** 日志加载状态 */
+const loadingLogs = ref<boolean>(false);
 
 /**
- * 执行数据导出。
- * 收集当前勾选的导出选项，调用后端导出接口并触发浏览器下载。
+ * 根据选中的日期范围生成确认弹窗的描述文本。
  */
-function doExport(): void {
+function buildDateDescription(): string {
+  const start = dateRange.value?.[0];
+  const end = dateRange.value?.[1];
+
+  if (start && end) {
+    return `${start} 至 ${end}`;
+  }
+  if (start && !end) {
+    return `${start}（包括）至至今`;
+  }
+  if (!start && end) {
+    return `截止至 ${end}`;
+  }
+  return "全部";
+}
+
+/**
+ * 弹出确认对话框。用户确认后执行实际导出。
+ */
+async function confirmExport(): Promise<void> {
   const selected = (Object.entries(exportOptions) as [string, boolean][])
     .filter(([, v]) => v)
     .map(([k]) => k);
   if (!selected.length) {
-    ElMessage.warning('请至少选择一项导出内容');
+    ElMessage.warning("请至少选择一项导出内容");
+    return;
+  }
+
+  const dateDesc = buildDateDescription();
+  let message: string;
+  if (dateDesc === "全部") {
+    message = `已选择 ${selected.length} 项导出内容，确认全部导出？`;
+  } else {
+    message = `已选择 ${selected.length} 项导出内容，时间范围：${dateDesc}，确认导出？`;
+  }
+
+  try {
+    await ElMessageBox.confirm(message, "确认导出", {
+      confirmButtonText: "导出",
+      cancelButtonText: "取消",
+      type: "info",
+    });
+    await doExport();
+  } catch {
+    // 用户取消
+  }
+}
+
+/**
+ * 执行数据导出。
+ * 调用后端导出接口，触发浏览器下载，并根据返回数据量提示用户。
+ */
+async function doExport(): Promise<void> {
+  const selected = (Object.entries(exportOptions) as [string, boolean][])
+    .filter(([, v]) => v)
+    .map(([k]) => k);
+  if (!selected.length) {
+    ElMessage.warning("请至少选择一项导出内容");
     return;
   }
 
   exporting.value = true;
 
-  exportData({
-    format: exportFormat.value,
-    start: dateRange.value?.[0],
-    end: dateRange.value?.[1],
-    options: selected,
-  })
-    .then((res: Response) => res.blob())
-    .then((blob: Blob) => {
+  try {
+    const { blob, fileName } = await exportData({
+      format: "xlsx",
+      dateStart: dateRange.value?.[0] || undefined,
+      dateEnd: dateRange.value?.[1] || undefined,
+      options: selected,
+    });
+
+    // 刷新日志检查最新导出是否所有勾选项数据均为 0
+    await loadExportLogs();
+    const latest = exportLogs.value[0];
+    if (latest && !latest.countSummary) {
+      ElMessage.warning("没有查询到数据，换个时间范围试试呢");
+    } else {
       const downloadUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
+      const link = document.createElement("a");
       link.href = downloadUrl;
-      link.download = `export_${dateRange.value?.[0] || 'all'}_${dateRange.value?.[1] || 'all'}.${exportFormat.value}`;
+      link.download = fileName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(downloadUrl);
-    })
-    .catch(() => {
-      // 后端不可用 — 显示提示消息
-      ElMessage.success('导出任务已开始，完成后将自动下载');
-    })
-    .finally(() => {
-      exporting.value = false;
-    });
+      ElMessage.success("导出完成，文件已开始下载");
+    }
+  } catch {
+    ElMessage.error("导出失败，请稍后重试");
+  } finally {
+    exporting.value = false;
+  }
 }
 
-function setupAutoExport(): void {
-  ElMessage.success('自动导出已设置');
+/** 加载导出日志 */
+async function loadExportLogs(): Promise<void> {
+  loadingLogs.value = true;
+  try {
+    const res = await getExportLogs({ page: 0, size: 10 });
+    exportLogs.value = res.data?.data?.content || [];
+  } catch (err: any) {
+    console.error("加载导出日志失败:", err);
+  } finally {
+    loadingLogs.value = false;
+  }
+}
+
+/** 格式化导出时间为 MM-DD HH:mm */
+function fmtTime(ts?: string): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return ts.substring(0, 16);
+  return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 function handleCommand(cmd: string): void {
-  if (cmd === 'logout') handleLogout();
+  if (cmd === "logout") handleLogout();
 }
 
 async function handleLogout(): Promise<void> {
   try {
-    await ElMessageBox.confirm('确认退出登录？', '提示', {
-      confirmButtonText: '退出',
-      cancelButtonText: '取消',
-      type: 'warning'
+    await ElMessageBox.confirm("确认退出登录？", "提示", {
+      confirmButtonText: "退出",
+      cancelButtonText: "取消",
+      type: "warning",
     });
     authStore.logout();
-    router.push('/login');
-  } catch { /* 已取消 */ }
+    router.push("/login");
+  } catch {
+    /* 已取消 */
+  }
 }
+
+onMounted(() => {
+  loadExportLogs();
+});
 </script>

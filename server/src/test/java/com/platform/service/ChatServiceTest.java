@@ -1,7 +1,9 @@
 package com.platform.service;
 
 import com.platform.model.dto.WebSocketMessage;
+import com.platform.model.entity.Message;
 import com.platform.model.entity.User;
+import com.platform.repository.MessageRepository;
 import com.platform.repository.UserRepository;
 import com.platform.websocket.ChatWebSocketHandler;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +27,8 @@ class ChatServiceTest {
     @Mock
     private UserRepository userRepository;
     @Mock
+    private MessageRepository messageRepository;
+    @Mock
     private ChatWebSocketHandler webSocketHandler;
 
     @InjectMocks
@@ -37,6 +41,14 @@ class ChatServiceTest {
     void setUp() {
         fromUserId = 1L;
         toUserId = 2L;
+        // save() 返回入参并补全 createdAt（模拟 JPA @PrePersist）
+        when(messageRepository.save(any(Message.class))).thenAnswer(inv -> {
+            Message m = inv.getArgument(0);
+            if (m.getCreatedAt() == null) {
+                m.setCreatedAt(java.time.LocalDateTime.now());
+            }
+            return m;
+        });
     }
 
     @Test
@@ -57,9 +69,9 @@ class ChatServiceTest {
         verify(webSocketHandler).sendToUser(eq(toUserId.toString()), captor.capture());
         WebSocketMessage msg = captor.getValue();
         assertThat(msg.getType()).isEqualTo("chat_message");
-        assertThat(msg.getSessionId()).isEqualTo("session-abc");
+        assertThat(msg.getSessionId()).isEqualTo("USER_1_2");
         assertThat(msg.getFromUserId()).isEqualTo(fromUserId.toString());
-        assertThat(msg.getFromUserName()).isEqualTo("张三");
+        assertThat(msg.getFromUserName()).isEqualTo("张三(业主)");
         assertThat(msg.getToUserId()).isEqualTo(toUserId.toString());
         assertThat(msg.getContent()).isEqualTo("你好");
         assertThat(msg.getMessageType()).isEqualTo("text");

@@ -42,6 +42,9 @@ public interface HelpRequestRepository extends JpaRepository<HelpRequest, Long> 
 
     long countByStatus(String status);
 
+    /** 按小区统计指定状态的互助请求数 */
+    long countByTenantIdAndStatus(Long tenantId, String status);
+
     List<HelpRequest> findByStatus(String status);
 
     /**

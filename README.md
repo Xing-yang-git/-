@@ -22,18 +22,20 @@ community-platform/
 │       ├── main/java/com/platform/
 │       │   ├── config/        # CORS, Security, WebSocket, DataInitializer, SchemaMigration
 │       │   ├── security/      # JwtTokenProvider, JwtAuthenticationFilter, JwtHandshakeInterceptor
-│       │   ├── model/entity/  # 12 JPA 实体（Tenant, Building, Unit, Room, User,
+│       │   ├── model/entity/  # 14 JPA 实体（Tenant, Building, Unit, Room, User,
 │       │   │                  #   IdleItem, HelpRequest, HelpApplication,
-│       │   │                  #   BorrowRequest, Notification, OperationLog, Rating）
+│       │   │                  #   BorrowRequest, Message, Notification,
+│       │   │                  #   OperationLog, Rating, ExportLog）
+│       │   ├── model/entity/column/  # 14 表字段常量类（实体列名集中管理）
 │       │   ├── model/dto/     # DTO
-│       │   ├── repository/    # 12 Repository
+│       │   ├── repository/    # 14 Repository
 │       │   ├── service/       # 11 Service（含 WeChatService）
 │       │   ├── controller/    # 10 Controller
 │       │   ├── websocket/     # ChatWebSocketHandler, DashboardWebSocketHandler
-│       │   └── common/        # Result + Exception
+│       │   └── common/        # Result + Exception + 常量类（BizStatus, PostType, UserType 等）
 │       ├── main/resources/
 │       │   ├── application.yml
-│       │   └── db/            # schema.sql（12 张表）+ seed-*.sql
+│       │   └── db/            # schema.sql（14 张表）+ seed-*.sql + alter-*.sql
 │       └── test/java/com/platform/service/   # 8 个 Service 单元测试
 │
 ├── miniprogram/               # C端微信小程序

@@ -36,8 +36,9 @@ Page({
   },
 
   onShow() {
-    // 从 my-posts 评价完返回时，同步已评价状态
+    // 从 my-posts 评价完返回时，同步已评价状态并刷新列表
     this._syncRatedStatus();
+    this.loadNotifications();
   },
 
   onUnload() {

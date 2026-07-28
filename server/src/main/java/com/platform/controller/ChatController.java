@@ -10,6 +10,13 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * 聊天消息 REST API — 发送消息、获取历史、撤回消息、会话列表。
+ *
+ * <p>C端用户之间的一对一聊天功能，通过 WebSocket 实时推送 + REST 持久化。
+ * 消息状态流转：sent（已发送）→ delivered（已送达）→ read（已读）。
+ * 支持消息撤回（2 分钟内），撤回后 content 置为 NULL。</p>
+ */
 @RestController
 @RequestMapping("/api/chats")
 public class ChatController {

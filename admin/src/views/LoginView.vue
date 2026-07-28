@@ -67,15 +67,22 @@
   </div>
 </template>
 
-<script setup lang="ts">
-import { ref, reactive } from 'vue';
-import { useRouter } from 'vue-router';
-import { ElMessage, type FormInstance } from 'element-plus';
-import { HomeFilled, User, Lock } from '@element-plus/icons-vue';
+<!--
+  LoginView.vue — 物业运营端登录页面
 
-import { useAuthStore } from '../stores/auth';
-import { login, type AdminUser } from '../api/auth';
-import type { AxiosError } from 'axios';
+  功能：管理员用户名 + 密码登录，支持回车快速提交。
+  权限：公开页面，无需登录即可访问。
+-->
+<script setup lang="ts">
+import { ref, reactive } from "vue";
+import { useRouter } from "vue-router";
+import { ElMessage, type FormInstance } from "element-plus";
+import { HomeFilled, User, Lock } from "@element-plus/icons-vue";
+
+import { useAuthStore } from "../stores/auth";
+import { login, type AdminUser } from "../api/auth";
+import { USER_TYPE } from "../utils/constants";
+import type { AxiosError } from "axios";
 
 /** 登录表单数据结构 */
 interface LoginForm {
@@ -93,20 +100,24 @@ const passwordRef = ref<HTMLInputElement | null>(null);
 /** 登录请求进行中 */
 const loading = ref(false);
 /** 登录失败时的错误提示文本 */
-const errorMsg = ref('');
+const errorMsg = ref("");
 /** 密码是否明文显示 */
 const showPwd = ref(false);
 
 /** 登录表单双向绑定数据 */
 const form = reactive<LoginForm>({
-  username: '',
-  password: '',
+  username: "",
+  password: "",
 });
 
 /** el-form 校验规则 */
 const rules = {
-  username: [{ required: true, message: '请输入管理员账号', trigger: 'blur' as const }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' as const }],
+  username: [
+    { required: true, message: "请输入管理员账号", trigger: "blur" as const },
+  ],
+  password: [
+    { required: true, message: "请输入密码", trigger: "blur" as const },
+  ],
 };
 
 /** 将焦点移至密码输入框 */
@@ -119,7 +130,7 @@ function focusPassword(): void {
  * 校验通过后调用后端登录接口，成功后保存 token 并跳转首页。
  */
 async function handleLogin(): Promise<void> {
-  errorMsg.value = '';
+  errorMsg.value = "";
 
   const valid = await formRef.value?.validate().catch(() => false);
   if (!valid) return;
@@ -131,12 +142,19 @@ async function handleLogin(): Promise<void> {
     const { token, user }: { token: string; user: AdminUser } = res.data.data;
     authStore.login(token, user);
     await authStore.initCommunity();
-    ElMessage.success('登录成功，正在跳转...');
-    setTimeout(() => router.push('/home'), 300);
+    ElMessage.success("登录成功");
+    setTimeout(() => {
+      // super_admin 仅管理平台，直接跳系统设置；普通管理员跳首页
+      if (user.userType === USER_TYPE.SUPER_ADMIN) {
+        router.push('/settings');
+      } else {
+        router.push('/home');
+      }
+    }, 300);
   } catch (err) {
     const axiosErr = err as AxiosError<{ message?: string }>;
-    errorMsg.value = axiosErr.response?.data?.message || '账号或密码错误';
-    form.password = '';
+    errorMsg.value = axiosErr.response?.data?.message || "账号或密码错误";
+    form.password = "";
   } finally {
     loading.value = false;
   }

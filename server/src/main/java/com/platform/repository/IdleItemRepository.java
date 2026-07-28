@@ -49,6 +49,9 @@ public interface IdleItemRepository extends JpaRepository<IdleItem, Long> {
 
     long countByStatus(String status);
 
+    /** 按小区统计指定状态的闲置物品数 */
+    long countByTenantIdAndStatus(Long tenantId, String status);
+
     long countByStatusAndPostType(String status, String postType);
 
     long countByStatusAndCreatedAtBetween(String status, LocalDateTime start, LocalDateTime end);

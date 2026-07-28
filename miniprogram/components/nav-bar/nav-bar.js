@@ -1,17 +1,31 @@
+/**
+ * 自定义导航栏组件 — 替代系统导航栏，适配异形屏安全区。
+ *
+ * @property {String}  title      — 导航栏标题
+ * @property {Boolean} showBack   — 是否显示返回按钮（默认 true）
+ * @property {String}  rightText  — 右侧操作文字（如"发布"）
+ * @property {Boolean} customBack — 是否使用自定义返回逻辑（触发 back 事件）
+ * @event back   — customBack 为 true 时点击返回触发
+ * @event action — 点击右侧文字触发
+ */
 Component({
   properties: {
+    /** 导航栏标题 */
     title: {
       type: String,
       value: ''
     },
+    /** 是否显示返回按钮 */
     showBack: {
       type: Boolean,
       value: true
     },
+    /** 右侧操作文字（如"发布"） */
     rightText: {
       type: String,
       value: ''
     },
+    /** 是否使用自定义返回逻辑（触发 back 事件而非 wx.navigateBack） */
     customBack: {
       type: Boolean,
       value: false

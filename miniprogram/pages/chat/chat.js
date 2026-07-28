@@ -6,6 +6,12 @@ const app = getApp();
 
 const CACHE_PREFIX = 'chat_cache_';
 
+/**
+ * 聊天页 — 一对一即时通讯。
+ *
+ * 功能：WebSocket 实时消息收发、消息历史加载、消息撤回（2分钟内）、
+ *        本地缓存加速、下拉加载历史消息。
+ */
 Page({
   data: {
     statusBarHeight: 0,
@@ -241,7 +247,15 @@ Page({
     api.get('/api/chats/history', { sessionId: this.data.sessionId, size: 30 })
       .then((res) => {
         const data = this._unwrapRes(res);
+        // 保留本地已播放的语音状态，避免 loadHistory 覆盖 loadCache 恢复的 voicePlayed
+        const existingMap = {};
+        this.data.messages.forEach(m => {
+          if (m.id && m.voicePlayed) existingMap[m.id] = true;
+        });
         const serverMessages = this._normalizeMessages(data.messages || []);
+        serverMessages.forEach(m => {
+          if (m.id && existingMap[m.id]) m.voicePlayed = true;
+        });
         if (serverMessages.length > 0) {
           serverMessages.sort((a, b) => (a.id || 0) - (b.id || 0));
           this.setData({
@@ -273,7 +287,15 @@ Page({
     api.get('/api/chats/history', { sessionId: this.data.sessionId, beforeId: beforeId, size: 30 })
       .then((res) => {
         const data = this._unwrapRes(res);
+        // 保留本地已播放的语音状态
+        const existingMap = {};
+        this.data.messages.forEach(m => {
+          if (m.id && m.voicePlayed) existingMap[m.id] = true;
+        });
         const olderMessages = this._normalizeMessages(data.messages || []);
+        olderMessages.forEach(m => {
+          if (m.id && existingMap[m.id]) m.voicePlayed = true;
+        });
         olderMessages.sort((a, b) => (a.id || 0) - (b.id || 0));
         const merged = [...olderMessages, ...this.data.messages];
         this.setData({

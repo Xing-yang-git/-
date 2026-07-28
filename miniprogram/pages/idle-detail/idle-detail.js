@@ -2,6 +2,12 @@ const api = require('../../utils/api');
 const auth = require('../../utils/auth');
 const { STATUS, POST_TYPE } = require('../../utils/constants');
 
+/**
+ * 闲置物品详情页 — 物品信息展示 + 借用操作入口。
+ *
+ * 功能：图片轮播、物品信息展示、借用按钮/借用历史查看、
+ *        物主操作面板（下架/删除/修改）、用户评价入口。
+ */
 Page({
   data: {
     item: {},
@@ -288,14 +294,16 @@ Page({
   _showBorrowSheet() {
     const { item } = this.data;
 
-    // 初始化表单：需求借入的借出意向使用默认时长范围（1~7天 / 1~24小时），
+    // 初始化表单：需求借入的借出意向使用默认时长范围（1~7天 / 1~23小时），
     // 不做特殊限制；闲置借出的借入申请沿用物品本身的时长设置
     const isWanted = item.isWanted;
     const unit = item.durationUnit || 'day';
-    const maxDuration = isWanted ? (unit === 'hour' ? 24 : 7) : (item.maxDuration || 7);
+    const maxDuration = isWanted ? (unit === 'hour' ? 23 : 7) : (item.maxDuration || 7);
     const durationOptions = this.buildDurationOptions(unit, maxDuration);
-    // 默认选中最大时长
-    const durationIndex = durationOptions.length - 1;
+    // LEND 默认帖子的最大借出时长，WANTED 默认帖子的最小借入时长（均为 item.maxDuration）
+    const durationIndex = isWanted
+      ? Math.min(Math.max((item.maxDuration || 1) - 1, 0), durationOptions.length - 1)
+      : (durationOptions.length - 1);
 
     this.setData({
       showSheet: true,
@@ -315,7 +323,7 @@ Page({
       const cap = Math.min(max, 30);
       for (let i = 1; i <= cap; i++) options.push(i + ' 天');
     } else {
-      const cap = Math.min(max, 24);
+      const cap = Math.min(max, 23);
       for (let i = 1; i <= cap; i++) options.push(i + ' 小时');
     }
     return options;
@@ -331,8 +339,8 @@ Page({
     const isWanted = this.data.item.isWanted;
     let max;
     if (isWanted) {
-      // 需求借入：借出意向使用默认范围 1~7天 / 1~24小时
-      max = unit === 'day' ? 7 : 24;
+      // 需求借入：借出意向使用默认范围 1~7天 / 1~23小时
+      max = unit === 'day' ? 7 : 23;
     } else {
       const itemUnit = this.data.item.durationUnit || 'day';
       const itemMax = this.data.item.maxDuration || 7;
@@ -344,7 +352,7 @@ Page({
         max = Math.max(1, Math.floor(itemMax / 24));
       }
     }
-    const cap = unit === 'day' ? Math.min(max, 30) : Math.min(max, 24);
+    const cap = unit === 'day' ? Math.min(max, 30) : Math.min(max, 23);
     const options = [];
     if (unit === 'day') {
       for (let i = 1; i <= cap; i++) options.push(i + ' 天');

@@ -66,6 +66,7 @@ public class IdleService {
         item.setMaxDuration(req.getMaxDuration() != null ? req.getMaxDuration() : 7);
         item.setDurationUnit(req.getDurationUnit() != null ? req.getDurationUnit() : "day");
         item.setPickupMethod(req.getPickupMethod() != null ? req.getPickupMethod() : "self_pickup");
+        item.setIsProxy(req.getIsProxy() != null && req.getIsProxy());
         item.setStatus(BizStatus.ONLINE);
         item.setCreatedAt(LocalDateTime.now());
         item = idleItemRepository.save(item);

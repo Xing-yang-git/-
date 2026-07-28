@@ -91,6 +91,7 @@ public final class UserFormatter {
             case "owner" -> "业主";
             case "tenant" -> "租客";
             case "admin" -> "管理员";
+            case "senior_admin" -> "高级管理员";
             case "super_admin" -> "超级管理员";
             default -> userType;
         };

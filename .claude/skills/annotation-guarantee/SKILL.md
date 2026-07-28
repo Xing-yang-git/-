@@ -49,7 +49,7 @@ total_non_blank_lines = all lines - blank lines
 | Core business logic (Service, domain) | 25-30% | Complex rules need documentation |
 | Public API (Controller, exported functions) | 25-30% | External contract — must be documented |
 | Internal utilities / helpers | 20-25% | Documented at function level |
-| DTOs / Entities / Models | 15-20% | Self-documenting if well-named; comment only constraints and non-obvious fields |
+| DTOs / Entities / Models | 20-25% | 每个字段必须有 Javadoc；类级 Javadoc 必须；取值范围必须注明 |
 | Config files (YML, JSON, XML) | 10-15% | Structure is self-evident; comment environment-specific values |
 | Tests | 10-15% | Test names should tell the story; comment only non-obvious setup or assertions |
 | CSS / WXSS / SCSS | 5-10% | Section markers and utility explanations only |
@@ -60,6 +60,12 @@ total_non_blank_lines = all lines - blank lines
 ### Required (must comment)
 
 - **Public APIs**: Every `public` method/function/class — Javadoc/JSDoc with `@param`, `@return`, `@throws`
+- **Entity classes**: 每个 Entity 类必须有 `/** 实体中文名 — 对应 xxx 表 */` 格式的类级 Javadoc（说明对应数据库表及业务含义）
+- **Entity fields**: 每个 `@Column` 字段必须有 Javadoc，说明其业务含义、约束（外键指向、取值范围、是否可空）、有歧义的单位。取值可穷举的字段必须注明所有合法取值
+- **Controller classes**: 每个 Controller 类必须有 `/** 业务域 REST API — 功能1、功能2 */` 格式的类级 Javadoc
+- **Controller endpoints**: 每个 `@GetMapping` / `@PostMapping` / `@PutMapping` / `@DeleteMapping` 端点方法必须有 Javadoc，包含接口用途、权限要求、参数说明、返回数据结构
+- **Service classes**: 每个 `@Service` 类必须有 `/** 业务逻辑 — 核心职责 */` 格式的类级 Javadoc
+- **Service methods**: 每个 `public` 方法必须有 Javadoc，包含 `@param` 约束、`@return` 状态、`@throws` 场景
 - **Business rules**: Non-obvious domain logic (`// Refund window closes 7 days after delivery, per policy v2.1`)
 - **Magic numbers**: Constants that aren't extracted to named variables (`// 0.97 = iOS default tap-scale per HIG`)
 - **Workarounds**: Temporary fixes or platform-specific hacks (`// WXSS does not support backdrop-filter; fallback to opacity`)

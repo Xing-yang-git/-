@@ -1,6 +1,12 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
 
+/**
+ * 评价页 — 借用/帮助完成后的互评。
+ *
+ * 功能：1-5 星评分、文字反馈、评价提交。
+ * 评价类型支持 borrow（借用评价）和 help（帮助评价）。
+ */
 Page({
   data: {
     borrowId: '',

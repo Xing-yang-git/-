@@ -1,104 +1,141 @@
 package com.platform.model.entity;
 
 import com.platform.common.BizStatus;
+import com.platform.common.DurationUnit;
+import com.platform.common.PickupMethod;
 import com.platform.common.PostType;
+import com.platform.model.entity.column.IdleItemsColumn;
 import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+/**
+ * 闲置物品实体，对应 idle_items 表。
+ *
+ * <p>支持出借（LEND）和求借（WANTED）两种发布类型。
+ * 物品状态流转：online（展示中）→ reserved（已预订）→ returned（已归还）/ offline（已下架）。
+ * 物品成色分为 like-new（几乎全新）、normal（正常）、worn（有磨损）。
+ * 借出时长可按天、周、月计算；取货方式支持自取和快递。</p>
+ */
 @Entity
-@Table(name = "idle_items")
+@Table(name = IdleItemsColumn.TABLE_NAME)
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 public class IdleItem {
+
+    /** 物品 ID（自增主键） */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "user_id", nullable = false)
+    /** 发布用户 ID，外键 → users.id */
+    @Column(name = IdleItemsColumn.COL_USER_ID, nullable = false)
     private Long userId;
 
-    @Column(name = "tenant_id", nullable = false)
+    /** 所属小区 ID，外键 → tenants.id */
+    @Column(name = IdleItemsColumn.COL_TENANT_ID, nullable = false)
     private Long tenantId;
 
-    @Column(name = "post_type", nullable = false, length = 10)
+    /** 发布类型：LEND(出借) / WANTED(求借)，引用 {@link PostType} */
+    @Column(name = IdleItemsColumn.COL_POST_TYPE, nullable = false, length = 10)
     @Builder.Default
     private String postType = PostType.LEND;
 
-    @Column(nullable = false, length = 100)
+    /** 物品标题 */
+    @Column(name = IdleItemsColumn.COL_TITLE, nullable = false, length = 100)
     private String title;
 
-    @Column(length = 200)
+    /** 物品描述 */
+    @Column(name = IdleItemsColumn.COL_DESCRIPTION, length = 200)
     private String description;
 
-    @Column(nullable = false, length = 20)
+    /** 物品分类（如：书籍、电子产品、工具等） */
+    @Column(name = IdleItemsColumn.COL_CATEGORY, nullable = false, length = 20)
     private String category;
 
-    @Column(nullable = false, length = 10)
+    /** 物品成色：like-new(几乎全新) / normal(正常) / worn(有磨损)，引用 {@link BizStatus} */
+    @Column(name = IdleItemsColumn.COL_CONDITION, nullable = false, length = 10)
     @Builder.Default
     private String condition = BizStatus.NORMAL;
 
-    @Column(nullable = false, precision = 10, scale = 2)
+    /** 价格（元），0 表示免费出借 */
+    @Column(name = IdleItemsColumn.COL_PRICE, nullable = false, precision = 10, scale = 2)
     @Builder.Default
     private BigDecimal price = BigDecimal.ZERO;
 
-    @Column(columnDefinition = "TEXT")
+    /** 物品图片 URL 列表（JSON 数组字符串） */
+    @Column(name = IdleItemsColumn.COL_IMAGES, columnDefinition = "TEXT")
     private String images;
 
-    @Column(name = "max_duration")
+    /** 单次最多借出天数 */
+    @Column(name = IdleItemsColumn.COL_MAX_DURATION)
     @Builder.Default
     private Integer maxDuration = 7;
 
-    @Column(name = "duration_unit", nullable = false, length = 10)
+    /** 借出时长单位：day(天) / week(周) / month(月)，引用 {@link DurationUnit} */
+    @Column(name = IdleItemsColumn.COL_DURATION_UNIT, nullable = false, length = 10)
     @Builder.Default
-    private String durationUnit = "day";
+    private String durationUnit = DurationUnit.DAY;
 
-    @Column(name = "pickup_method", nullable = false, length = 30)
+    /** 取货方式：self_pickup(自取) / express(快递)，引用 {@link PickupMethod} */
+    @Column(name = IdleItemsColumn.COL_PICKUP_METHOD, nullable = false, length = 30)
     @Builder.Default
-    private String pickupMethod = "self_pickup";
+    private String pickupMethod = PickupMethod.SELF_PICKUP;
 
-    @Column(nullable = false, length = 20)
+    /** 状态：online(展示中) / reserved(已预订) / offline(已下架) / deleted(已删除)，引用 {@link BizStatus} */
+    @Column(name = IdleItemsColumn.COL_STATUS, nullable = false, length = 20)
     @Builder.Default
     private String status = BizStatus.ONLINE;
 
-    @Column(name = "delist_reason", length = 200)
+    /** 下架原因（delist_reason 为 violation 表示违规下架） */
+    @Column(name = IdleItemsColumn.COL_DELIST_REASON, length = 200)
     private String delistReason;
 
-    @Column(name = "is_proxy", nullable = false)
+    /** 是否为代发（管理员代住户发布） */
+    @Column(name = IdleItemsColumn.COL_IS_PROXY, nullable = false)
     @Builder.Default
     private Boolean isProxy = false;
 
-    @Column(name = "violation_type", length = 20)
+    /** 违规类型 */
+    @Column(name = IdleItemsColumn.COL_VIOLATION_TYPE, length = 20)
     private String violationType;
 
-    @Column(name = "violation_reason", length = 200)
+    /** 违规原因描述 */
+    @Column(name = IdleItemsColumn.COL_VIOLATION_REASON, length = 200)
     private String violationReason;
 
-    @Column(name = "violated_by")
+    /** 违规处理人 ID，外键 → users.id */
+    @Column(name = IdleItemsColumn.COL_VIOLATED_BY)
     private Long violatedBy;
 
-    @Column(name = "violated_at")
+    /** 违规处理时间 */
+    @Column(name = IdleItemsColumn.COL_VIOLATED_AT)
     private LocalDateTime violatedAt;
 
-    @Column(name = "created_at", nullable = false)
+    /** 创建时间 */
+    @Column(name = IdleItemsColumn.COL_CREATED_AT, nullable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "updated_at", nullable = false)
+    /** 更新时间 */
+    @Column(name = IdleItemsColumn.COL_UPDATED_AT, nullable = false)
     private LocalDateTime updatedAt;
 
+    /** 关联发布用户实体（懒加载） */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", insertable = false, updatable = false)
+    @JoinColumn(name = IdleItemsColumn.COL_USER_ID, insertable = false, updatable = false)
     private User user;
 
+    /** 关联小区实体（懒加载） */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "tenant_id", insertable = false, updatable = false)
+    @JoinColumn(name = IdleItemsColumn.COL_TENANT_ID, insertable = false, updatable = false)
     private Tenant tenant;
 
+    /** 关联违规处理人实体（懒加载） */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "violated_by", insertable = false, updatable = false)
+    @JoinColumn(name = IdleItemsColumn.COL_VIOLATED_BY, insertable = false, updatable = false)
     private User violator;
 
     @PrePersist

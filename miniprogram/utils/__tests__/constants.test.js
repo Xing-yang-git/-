@@ -35,8 +35,9 @@ describe('constants', () => {
     });
 
     it('应包含全部借用交互状态', () => {
-      expect(constants.STATUS.RESERVED).toBe('reserved');
-      expect(constants.STATUS.BORROWING).toBe('borrowing');
+      expect(constants.STATUS.ACTIVE).toBe('active');
+      expect(constants.STATUS.RESERVED).toBe('pending');   // 已合并到 pending
+      expect(constants.STATUS.BORROWING).toBe('active');   // 已合并到 active
     });
 
     it('所有常量值应为小写字符串', () => {

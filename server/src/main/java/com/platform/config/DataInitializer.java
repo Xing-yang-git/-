@@ -67,7 +67,7 @@ public class DataInitializer implements CommandLineRunner {
                 .passwordHash(passwordEncoder.encode("admin123"))
                 .name("系统管理员")
                 .userType("super_admin")
-                .tenantId(tenantId)
+                .tenantId(null)  // super_admin 为平台级，不绑定具体小区
                 .authStatus(BizStatus.APPROVED)
                 .build();
         userRepository.save(admin);

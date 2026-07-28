@@ -3,14 +3,13 @@ package com.platform.service;
 import com.platform.model.dto.ApproveRequest;
 import com.platform.model.dto.HelpRequestDTO;
 import com.platform.model.dto.HelpResponseDTO;
+import com.platform.model.dto.NotificationDTO;
 import com.platform.model.dto.PageDTO;
 import com.platform.model.entity.HelpApplication;
 import com.platform.model.entity.HelpRequest;
-import com.platform.model.entity.Notification;
 import com.platform.model.entity.User;
 import com.platform.repository.HelpApplicationRepository;
 import com.platform.repository.HelpRequestRepository;
-import com.platform.repository.NotificationRepository;
 import com.platform.repository.RatingRepository;
 import com.platform.repository.RoomRepository;
 import com.platform.repository.UserRepository;
@@ -42,7 +41,9 @@ class HelpServiceTest {
     @Mock
     private HelpApplicationRepository helpApplicationRepository;
     @Mock
-    private NotificationRepository notificationRepository;
+    private NotificationService notificationService;
+    @Mock
+    private UserActivityService userActivityService;
     @Mock
     private UserRepository userRepository;
     @Mock
@@ -188,8 +189,8 @@ class HelpServiceTest {
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(ratingRepository.getAverageScore(userId)).thenReturn(4.0);
-        when(helpRequestRepository.findByUserId(userId)).thenReturn(List.of(helpRequest));
-        when(helpApplicationRepository.countByHelperIdAndStatus(userId, "approved")).thenReturn(5L);
+        when(userActivityService.interactionStats(anyLong()))
+                .thenReturn(new UserActivityService.InteractionStats(0, 0, 1, 5, 0, 0));
 
         // 执行
         HelpResponseDTO result = helpService.getDetail(helpId);
@@ -301,7 +302,7 @@ class HelpServiceTest {
     @DisplayName("申请帮助 - 正常申请成功")
     void should_applyHelp_when_validInput() {
         // 准备
-        when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
+        when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
         when(helpApplicationRepository.existsByHelpIdAndHelperIdAndStatusIn(
                 eq(helpId), eq(helperId), anyList())).thenReturn(false);
         when(helpApplicationRepository.save(any(HelpApplication.class))).thenAnswer(inv -> {
@@ -309,7 +310,7 @@ class HelpServiceTest {
             app.setId(appId);
             return app;
         });
-        when(notificationRepository.save(any(Notification.class))).thenReturn(new Notification());
+        when(notificationService.create(anyLong(), anyString(), anyString(), anyString(), anyLong())).thenReturn(new NotificationDTO());
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
         // 执行
@@ -318,7 +319,7 @@ class HelpServiceTest {
         // 断言
         assertThat(result).isNotNull();
         verify(helpApplicationRepository).save(any(HelpApplication.class));
-        verify(notificationRepository).save(any(Notification.class));
+        verify(notificationService, atLeastOnce()).create(anyLong(), anyString(), anyString(), anyString(), anyLong());
     }
 
     @Test
@@ -326,19 +327,19 @@ class HelpServiceTest {
     void should_throwException_when_helpClosed() {
         // 准备
         helpRequest.setStatus("offline");
-        when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
+        when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
 
         // 执行 & 断言
         assertThatThrownBy(() -> helpService.apply(helperId, helpId, "note"))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessage("该求助已关闭");
+                .hasMessage("该求助已被其他人抢先申请，请浏览其他求助");
     }
 
     @Test
     @DisplayName("申请帮助 - 申请自己的求助时抛出异常")
     void should_throwException_when_applyingOwnHelp() {
         // 准备
-        when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
+        when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
 
         // 执行 & 断言
         assertThatThrownBy(() -> helpService.apply(userId, helpId, "note"))
@@ -359,7 +360,7 @@ class HelpServiceTest {
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
         when(helpApplicationRepository.save(any(HelpApplication.class))).thenReturn(application);
         when(helpRequestRepository.save(any(HelpRequest.class))).thenReturn(helpRequest);
-        when(notificationRepository.save(any(Notification.class))).thenReturn(new Notification());
+        when(notificationService.create(anyLong(), anyString(), anyString(), anyString(), anyLong())).thenReturn(new NotificationDTO());
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
         // 执行
@@ -367,7 +368,7 @@ class HelpServiceTest {
 
         // 断言
         assertThat(application.getStatus()).isEqualTo("approved");
-        assertThat(helpRequest.getStatus()).isEqualTo("helping");
+        assertThat(helpRequest.getStatus()).isEqualTo("active");
     }
 
     @Test
@@ -416,7 +417,7 @@ class HelpServiceTest {
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
         when(helpApplicationRepository.save(any(HelpApplication.class))).thenReturn(application);
         when(helpRequestRepository.save(any(HelpRequest.class))).thenReturn(helpRequest);
-        when(notificationRepository.save(any(Notification.class))).thenReturn(new Notification());
+        when(notificationService.create(anyLong(), anyString(), anyString(), anyString(), anyLong())).thenReturn(new NotificationDTO());
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
         // 执行
@@ -425,7 +426,7 @@ class HelpServiceTest {
         // 断言
         assertThat(application.getStatus()).isEqualTo("completed");
         assertThat(helpRequest.getStatus()).isEqualTo("completed");
-        verify(notificationRepository).save(any(Notification.class));
+        verify(notificationService, atLeastOnce()).create(anyLong(), anyString(), anyString(), anyString(), anyLong());
     }
 
     @Test

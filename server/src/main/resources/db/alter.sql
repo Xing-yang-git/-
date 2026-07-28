@@ -6,7 +6,7 @@
 
 -- 0. users — 首先修复 CHECK 约束（先于其他所有变更）
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_user_type_check;
-ALTER TABLE users ADD CONSTRAINT users_user_type_check CHECK (user_type IN ('业主','租客','物业','admin','super_admin'));
+ALTER TABLE users ADD CONSTRAINT users_user_type_check CHECK (user_type IN ('业主','租客','物业','admin','senior_admin','super_admin'));
 
 -- 6. verifications — 补充缺失列
 ALTER TABLE verifications ADD COLUMN IF NOT EXISTS reject_reason TEXT;
@@ -53,6 +53,7 @@ ALTER TABLE borrow_requests ADD COLUMN IF NOT EXISTS damage_note TEXT;
 ALTER TABLE borrow_requests ADD COLUMN IF NOT EXISTS is_on_time BOOLEAN;
 ALTER TABLE borrow_requests ADD COLUMN IF NOT EXISTS return_photos TEXT;
 ALTER TABLE borrow_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW();
+ALTER TABLE borrow_requests ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP;
 
 -- 11. chat_sessions — 补充缺失列 + 可空性修复
 ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS last_message TEXT;
@@ -122,7 +123,7 @@ DO $$ BEGIN
 EXCEPTION WHEN others THEN NULL;
 END $$;
 ALTER TABLE users ADD CONSTRAINT users_user_type_check
-    CHECK (user_type IN ('业主','租客','物业','admin','super_admin'));
+    CHECK (user_type IN ('业主','租客','物业','admin','senior_admin','super_admin'));
 
 -- =============================================================================
 -- 18. idle_items — 新增 duration_unit 列
@@ -136,7 +137,7 @@ ALTER TABLE idle_items ALTER COLUMN condition SET DEFAULT 'normal';
 ALTER TABLE users ALTER COLUMN user_type SET DEFAULT '业主';
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_user_type_check;
 ALTER TABLE users ADD CONSTRAINT users_user_type_check
-    CHECK (user_type IN ('业主','租客','物业','admin','super_admin'));
+    CHECK (user_type IN ('业主','租客','物业','admin','senior_admin','super_admin'));
 
 -- 21. idle_items — 修复为 NULL 的 max_duration
 UPDATE idle_items SET max_duration = 7 WHERE max_duration IS NULL;
@@ -176,3 +177,47 @@ ALTER TABLE help_applications ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP;
 -- 26. users — token_version (单会话登录控制)
 -- =============================================================================
 ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;
+
+-- =============================================================================
+-- 27. export_logs — 新增 helps_count（互助记录 Sheet）
+-- =============================================================================
+ALTER TABLE export_logs ADD COLUMN IF NOT EXISTS helps_count INTEGER NOT NULL DEFAULT 0;
+
+-- =============================================================================
+-- 28. borrow_requests — 补充缺失的 damage_type 列
+-- =============================================================================
+ALTER TABLE borrow_requests ADD COLUMN IF NOT EXISTS damage_type VARCHAR(20);
+
+-- =============================================================================
+-- 29. borrow_requests — 归一化 damage_type 存量数据（统一为 normal/severe/broken 三类）
+-- =============================================================================
+-- none → normal：return-detail 旧版"无损坏"及 test-data 的无损坏值
+UPDATE borrow_requests SET damage_type = 'normal' WHERE damage_type IN ('none');
+-- minor → severe：return-detail 旧版"轻微损坏"
+UPDATE borrow_requests SET damage_type = 'severe' WHERE damage_type IN ('minor');
+-- slight → severe：旧版后端 mapDamageType 的"轻微损坏"（test-data 中存在）
+UPDATE borrow_requests SET damage_type = 'severe' WHERE damage_type IN ('slight');
+-- moderate → severe：旧版后端 mapDamageType 的"中度损坏"（test-data 中存在）
+UPDATE borrow_requests SET damage_type = 'severe' WHERE damage_type IN ('moderate');
+
+-- =============================================================================
+-- 30. borrow_requests — 归一化 return_status 存量数据（清理混入的物品状况值）
+-- =============================================================================
+-- perfect → ontime：schema 设计遗留值，语义等同于按时
+UPDATE borrow_requests SET return_status = 'ontime' WHERE return_status IN ('perfect');
+-- damaged / lost → NULL：物品损坏描述值误入 return_status 列，置空
+UPDATE borrow_requests SET return_status = NULL WHERE return_status IN ('damaged', 'lost');
+-- normal → ontime：my-posts 硬编码值，语义是物品正常 + 按时归还
+UPDATE borrow_requests SET return_status = 'ontime' WHERE return_status = 'normal';
+
+-- =============================================================================
+-- 31. 状态值归一化：reserved/borrowing/helping → pending/active
+-- =============================================================================
+-- idle_items: reserved → pending（统一待审批语义）
+UPDATE idle_items SET status = 'pending' WHERE status = 'reserved';
+-- idle_items: borrowing → active（统一进行中语义）
+UPDATE idle_items SET status = 'active' WHERE status = 'borrowing';
+-- help_requests: reserved → pending
+UPDATE help_requests SET status = 'pending' WHERE status = 'reserved';
+-- help_requests: helping → active
+UPDATE help_requests SET status = 'active' WHERE status = 'helping';

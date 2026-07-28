@@ -2,6 +2,11 @@ const api = require('../../utils/api');
 const auth = require('../../utils/auth');
 const app = getApp();
 
+/**
+ * 消息列表页 — 聊天会话列表。
+ *
+ * 功能：展示所有活跃聊天会话、未读消息提示、点击进入对应聊天页。
+ */
 Page({
   data: {
     sessions: []

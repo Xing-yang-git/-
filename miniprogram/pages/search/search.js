@@ -2,6 +2,12 @@ const api = require('../../utils/api');
 const auth = require('../../utils/auth');
 const { POST_TYPE } = require('../../utils/constants');
 
+/**
+ * 搜索页 — 闲置物品/互助求助关键词搜索。
+ *
+ * 功能：关键词输入搜索、搜索历史记录、LEND/WANTED/HELP 类型切换、
+ *        搜索结果列表（租户隔离）、分页加载。
+ */
 Page({
   data: {
     keyword: '',

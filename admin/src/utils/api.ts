@@ -87,4 +87,18 @@ export function del<T = unknown>(url: string): Promise<AxiosResponse<T>> {
   return api.delete(url);
 }
 
+/**
+ * 上传单个文件到后端（multipart/form-data）。
+ * @param url - 上传接口路径
+ * @param file - 浏览器 File 对象
+ * @returns AxiosResponse，响应 data 中包含上传后的文件 URL
+ */
+export function upload(url: string, file: File): Promise<AxiosResponse<{ data: string }>> {
+  const form = new FormData();
+  form.append('file', file);
+  return api.post(url, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+}
+
 export default api;

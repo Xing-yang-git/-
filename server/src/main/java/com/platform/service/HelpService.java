@@ -88,7 +88,7 @@ public class HelpService {
         }
         helpRequest.setImages(req.getImages());
         helpRequest.setStatus(BizStatus.ONLINE);
-        helpRequest.setIsProxy(false);
+        helpRequest.setIsProxy(req.getIsProxy() != null && req.getIsProxy());
         helpRequest.setCreatedAt(LocalDateTime.now());
         helpRequest = helpRequestRepository.save(helpRequest);
 
@@ -207,7 +207,7 @@ public class HelpService {
         application = helpApplicationRepository.save(application);
 
         // 标记求助为"已被申请"，首页列表不再展示（与闲置物品 reserved 模式一致）
-        helpRequest.setStatus(BizStatus.RESERVED);
+        helpRequest.setStatus(BizStatus.PENDING);
         helpRequestRepository.save(helpRequest);
 
         createNotification(helpRequest.getUserId(), "help_application",
@@ -245,7 +245,7 @@ public class HelpService {
 
         // 同步 HelpRequest 状态
         if (req.getApproved()) {
-            helpRequest.setStatus("helping");
+            helpRequest.setStatus(BizStatus.ACTIVE);
             helpRequestRepository.save(helpRequest);
         } else {
             // 拒绝时：若该求助没有其他待审批的申请，恢复为 online（首页重新可见）

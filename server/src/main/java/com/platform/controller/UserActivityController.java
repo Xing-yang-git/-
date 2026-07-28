@@ -9,6 +9,17 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 
+/**
+ * 用户活动/个人中心 REST API — 个人信息、我的发布、审批管理、进行中/已完成记录。
+ *
+ * <p>提供 C端"我的"Tab 所有数据接口：
+ * <ul>
+ *   <li>个人资料（含评价统计）</li>
+ *   <li>我的发布（闲置 + 求助）</li>
+ *   <li>审批管理（我收到的借用/接单申请）</li>
+ *   <li>进行中和已完成的借用/帮助记录</li>
+ * </ul>
+ */
 @RestController
 @RequestMapping("/api/users")
 public class UserActivityController {

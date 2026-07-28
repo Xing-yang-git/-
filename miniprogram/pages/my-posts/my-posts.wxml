@@ -802,10 +802,10 @@
       <text class="approval-section-label">使用后物品状况 <text style="color:var(--red);">*</text></text>
       <view class="segment" style="margin:0;">
         <view class="segment-item {{progressSheetCondition === 'normal' ? 'active' : ''}}" bindtap="onProgressConditionTap" data-value="normal">正常损耗</view>
-        <view class="segment-item {{progressSheetCondition === 'severe' ? 'active' : ''}}" bindtap="onProgressConditionTap" data-value="severe">严重损坏</view>
+        <view class="segment-item {{progressSheetCondition === 'severe' ? 'active' : ''}}" bindtap="onProgressConditionTap" data-value="severe">非正常损坏</view>
         <view class="segment-item {{progressSheetCondition === 'broken' ? 'active' : ''}}" bindtap="onProgressConditionTap" data-value="broken">完全损坏</view>
       </view>
-      <!-- 严重损坏 / 完全损坏温馨提示 -->
+      <!-- 非正常损坏 / 完全损坏温馨提示 -->
       <view class="condition-warn-tip" wx:if="{{progressSheetCondition === 'severe' || progressSheetCondition === 'broken'}}">
         <text>💡 温馨提示：根据损坏程度，您有权向借用物品的住户申请修理费或赔偿费。相关事项请私下与住户协商，平台仅做记录。</text>
       </view>
@@ -864,6 +864,21 @@
         <view class="approval-resident-row">
           <text class="approval-resident-addr approval-resident-addr-link" wx:if="{{completedSheetItem.personUserId}}" catchtap="onTapChatWithUser" data-user-id="{{completedSheetItem.personUserId}}" data-user-name="{{completedSheetItem.personName}}">{{completedSheetItem.personAddress}}</text>
           <text class="approval-resident-addr" wx:else>{{completedSheetItem.personAddress}}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 使用后物品状况（借出方专用：已填写则展示，未填写则提供补填入口） -->
+    <view class="approval-section" wx:if="{{completedSheetItem.type === 'lend'}}">
+      <text class="approval-section-label">使用后物品状况 <text style="color:var(--red);">*</text></text>
+      <view wx:if="{{completedSheetItem.damageType}}" class="completed-damage-display">
+        <text class="completed-damage-text">{{completedSheetItem.damageType === 'normal' ? '正常损耗' : completedSheetItem.damageType === 'severe' ? '非正常损坏' : completedSheetItem.damageType === 'broken' ? '完全损坏' : completedSheetItem.damageType}}</text>
+      </view>
+      <view wx:else>
+        <view class="segment" style="margin:0;">
+          <view class="segment-item {{completedDamageType === 'normal' ? 'active' : ''}}" bindtap="onCompletedDamageTap" data-value="normal">正常损耗</view>
+          <view class="segment-item {{completedDamageType === 'severe' ? 'active' : ''}}" bindtap="onCompletedDamageTap" data-value="severe">非正常损坏</view>
+          <view class="segment-item {{completedDamageType === 'broken' ? 'active' : ''}}" bindtap="onCompletedDamageTap" data-value="broken">完全损坏</view>
         </view>
       </view>
     </view>

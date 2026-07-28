@@ -2,6 +2,12 @@ const api = require('../../utils/api');
 const auth = require('../../utils/auth');
 const { STATUS } = require('../../utils/constants');
 
+/**
+ * 审核状态页 — 用户认证审核结果展示。
+ *
+ * 功能：展示当前用户的认证状态（待审核/已通过/已驳回）、
+ *        驳回原因和封禁原因展示、重新提交申诉入口。
+ */
 Page({
   data: {
     status: STATUS.PENDING,

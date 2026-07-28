@@ -1,9 +1,18 @@
+/**
+ * 图片上传组件 — 多图选择 + 预览 + 删除管理。
+ *
+ * @property {Array}  images — 当前已选图片列表（tempFilePath 数组）
+ * @property {Number} max    — 最大可选图片数量（默认 9）
+ * @event change — 图片列表变更时触发，detail = { images }
+ */
 Component({
   properties: {
+    /** 当前已选图片列表（tempFilePath 数组） */
     images: {
       type: Array,
       value: []
     },
+    /** 最大可选图片数量 */
     max: {
       type: Number,
       value: 9

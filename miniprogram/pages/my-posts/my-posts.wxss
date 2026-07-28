@@ -1598,6 +1598,21 @@
   line-height: 1.6;
 }
 
+/* 已完成弹层：使用后物品状况 */
+.completed-damage-display {
+  margin-top: 4rpx;
+}
+
+.completed-damage-text {
+  font-size: var(--text);
+  color: var(--text);
+}
+
+.completed-damage-pending {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary, #999);
+}
+
 /* ============================================================
    时间选择器行（HELP 编辑专用，参考 publish-idle 样式）
    ============================================================ */

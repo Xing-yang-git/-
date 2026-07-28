@@ -245,7 +245,7 @@ class BorrowServiceTest {
 
         // 断言
         assertThat(result.getStatus()).isEqualTo("approved");
-        assertThat(idleItem.getStatus()).isEqualTo("borrowing");
+        assertThat(idleItem.getStatus()).isEqualTo("active");
         verify(notificationService, atLeastOnce()).create(any(), any(), any(), any(), any());
     }
 

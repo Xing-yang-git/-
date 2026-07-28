@@ -319,14 +319,24 @@ After every review (standard or single-dimension), you MUST generate a pass file
 - [ ] `@Scheduled` tasks: exception handling, idempotency
 - [ ] WebSocket: proper connection lifecycle, auth on handshake
 - [ ] 魔法字符串：业务状态/发布类型字面量必须引用 `com.platform.common.BizStatus` / `PostType` 常量，业务代码出现裸的 `"pending"`/`"LEND"` 等报 Medium（测试代码与注释里的字面量豁免——测试保留字面量可守护常量值不被误改）
+- [ ] 表字段常量：Entity 的 @Column / @JoinColumn / @UniqueConstraint 是否引用常量类而非硬编码字符串？（裸字符串如 `@Column(name = "user_id")` 报 Medium）
+- [ ] 固定值常量：所有有固定取值范围的字段（如 durationUnit、pickupMethod、messageType）是否定义了常量/枚举类且 Entity 默认值和 Service 比较中已引用？
+- [ ] API 路径：Controller 的 @RequestMapping 是否有集中常量管理？分页默认值是否使用统一的常量？
 
 **Annotations:**
+- [ ] Controller 类级 Javadoc：每个 Controller 是否有类级 Javadoc 说明资源类型和主要功能？
+- [ ] API 端点 Javadoc：每个 @GetMapping / @PostMapping / @PutMapping / @DeleteMapping 方法是否有 Javadoc（含 @param / @return）？
+- [ ] Service 类级 Javadoc：每个 Service 类是否有类级 Javadoc 说明业务域和主要职责？
+- [ ] Service public 方法 Javadoc：每个 Service 的 public 方法是否有 Javadoc（@param / @return / @throws）？
+- [ ] Entity 类级 Javadoc：每个 Entity 类是否有 Javadoc 说明对应表和业务含义？
+- [ ] Entity 字段 Javadoc：每个 Entity 字段是否有 Javadoc（非仅重复字段名，必须说明业务含义、取值范围、外键指向）？
+- [ ] DTO fields: comment on non-obvious fields (especially status codes, type enums)
 - [ ] Javadoc on all `public` classes and methods with `@param`, `@return`, `@throws`
 - [ ] Business rule documentation in service layer
 - [ ] Non-obvious SQL queries documented
 - [ ] `schema.sql`: table purpose comment for each table
 - [ ] `application.yml`: environment-dependent values documented
-- [ ] DTO fields: comment on non-obvious fields (especially status codes, type enums)
+- [ ] 注释语言检查：所有 Javadoc 必须使用中文（技术术语保留英文原名），成段英文注释报 High
 
 **Security (augments the security-audit skill):**
 - [ ] Every endpoint behind `SecurityFilterChain` unless intentionally public
@@ -455,9 +465,12 @@ After review, check if findings should trigger other agents or manual actions:
 4. Element Plus override without `:deep()`
 5. Missing error handling on API calls
 
-### Backend Top 5
+### Backend Top 8
 1. No `@Valid` on controller request body parameters
 2. Entity returned directly instead of DTO
 3. Missing ownership check (IDOR)
 4. String concatenation in native queries
 5. No `@Transactional` on write operations spanning multiple repositories
+6. `@Column(name = "...")` 使用硬编码字符串 — 未引用表字段常量类
+7. Controller/Service/Entity 缺少类级或方法级 Javadoc
+8. 固定值字段使用裸字符串默认值 — 未使用对应常量类

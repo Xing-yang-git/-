@@ -576,6 +576,253 @@ public class BorrowResponseDTO {
 }
 ```
 
+### 4.8 表字段名常量规范
+
+> **规则**：每个 JPA Entity 对应的数据库表，必须有一个独立的常量类（命名 `{EntityName}Column`），集中管理该表所有字段名。Entity 的 `@Column(name = ...)` / `@JoinColumn(name = ...)` / `@UniqueConstraint(columnNames = {...})` 注解中禁止使用裸字符串，必须引用对应的常量。
+
+| 规则 | 级别 | 说明 |
+|------|------|------|
+| 每个数据库表必须有一个对应的字段名常量类 | **必须** | 命名规范：`{EntityName}Column`（如 `UsersColumn`、`IdleItemsColumn`） |
+| `@Column(name = ...)` 必须引用常量类中的字段 | **必须** | `@Column(name = UsersColumn.COL_ROOM_ID)` 而非 `@Column(name = "room_id")` |
+| `@JoinColumn(name = ...)` 同样适用此规则 | **必须** | `@JoinColumn(name = UsersColumn.COL_ROOM_ID, insertable = false, updatable = false)` |
+| `@UniqueConstraint(columnNames = {...})` 同样适用此规则 | **必须** | `@UniqueConstraint(columnNames = {UsersColumn.COL_PHONE, UsersColumn.COL_TENANT_ID})` |
+| `@Table(name = ...)` 的 name 属性也使用常量 | **应该** | `@Table(name = UsersColumn.TABLE_NAME)` |
+| 常量字段命名：`COL_` + 字段名大写蛇形 | **必须** | `COL_USER_ID`、`COL_AUTH_STATUS`、`COL_CREATED_AT` |
+| 常量值必须与数据库 schema 的字段名严格一致 | **必须** | schema.sql 中 `room_id` → `COL_ROOM_ID = "room_id"` |
+| 常量类必须有类级 Javadoc，说明对应哪张表 | **必须** | `/** users 表字段名常量，与 db/schema.sql 中的列名保持一致 */` |
+| 常量类位置：`model/entity/column/` 包下 | **必须** | 与 Entity 邻近，便于查找 |
+
+**常量类模板**：
+
+```java
+/**
+ * users 表字段名常量 — 与数据库 schema（db/schema.sql）严格一致。
+ * <p>所有使用 users 表字段名的 JPA 注解（@Column、@JoinColumn、@UniqueConstraint）
+ * 必须引用本类常量，禁止硬编码字符串。</p>
+ */
+public final class UsersColumn {
+    /** 工具类，禁止实例化 */
+    private UsersColumn() {}
+
+    /** 表名 */
+    public static final String TABLE_NAME = "users";
+
+    /** 用户 ID（自增主键） */
+    public static final String COL_ID = "id";
+    /** 房间 ID，外键 → rooms.id */
+    public static final String COL_ROOM_ID = "room_id";
+    /** 所属小区 ID，外键 → tenants.id */
+    public static final String COL_TENANT_ID = "tenant_id";
+    /** 微信 openid */
+    public static final String COL_OPENID = "openid";
+    /** 用户名 */
+    public static final String COL_USERNAME = "username";
+    /** 密码哈希 */
+    public static final String COL_PASSWORD_HASH = "password_hash";
+    /** 用户类型：owner(业主) / tenant(租户) / admin(管理员) */
+    public static final String COL_USER_TYPE = "user_type";
+    /** 真实姓名 */
+    public static final String COL_NAME = "name";
+    /** 手机号 */
+    public static final String COL_PHONE = "phone";
+    /** 手机号是否已验证 */
+    public static final String COL_PHONE_VERIFIED = "phone_verified";
+    /** 头像 URL */
+    public static final String COL_AVATAR_URL = "avatar_url";
+    /** 认证状态：pending(待审核) / approved(已通过) / rejected(已驳回) */
+    public static final String COL_AUTH_STATUS = "auth_status";
+    /** 封禁原因 */
+    public static final String COL_BANNED_REASON = "banned_reason";
+    /** 认证材料图片（JSON 数组） */
+    public static final String COL_DOC_IMAGES = "doc_images";
+    /** 驳回原因 */
+    public static final String COL_REJECT_REASON = "reject_reason";
+    /** Token 版本号（C端单会话登录控制） */
+    public static final String COL_TOKEN_VERSION = "token_version";
+    /** 创建时间 */
+    public static final String COL_CREATED_AT = "created_at";
+    /** 更新时间 */
+    public static final String COL_UPDATED_AT = "updated_at";
+}
+```
+
+**Entity 引用示例**：
+
+```java
+// ✅ 正确：引用常量类
+import com.platform.model.entity.column.UsersColumn;
+
+@Entity
+@Table(name = UsersColumn.TABLE_NAME, uniqueConstraints = {
+    @UniqueConstraint(columnNames = {UsersColumn.COL_PHONE, UsersColumn.COL_TENANT_ID}),
+    @UniqueConstraint(columnNames = {UsersColumn.COL_ROOM_ID, UsersColumn.COL_USER_TYPE})
+})
+public class User {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = UsersColumn.COL_ROOM_ID)
+    private Long roomId;
+
+    @Column(name = UsersColumn.COL_USER_TYPE, nullable = false, length = 20)
+    @Builder.Default
+    private String userType = UserType.OWNER;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = UsersColumn.COL_ROOM_ID, insertable = false, updatable = false)
+    private Room room;
+}
+
+// ❌ 错误：硬编码字段名
+@Column(name = "room_id")              // 应引用 UsersColumn.COL_ROOM_ID
+@JoinColumn(name = "tenant_id")        // 应引用 UsersColumn.COL_TENANT_ID
+@UniqueConstraint(columnNames = {"phone", "tenant_id"})  // 应引用常量
+```
+
+**为什么必须这么做**：
+- 字段名变更时只改常量类一处，所有 Entity 引用自动同步
+- 字段名与 schema.sql 的对应关系一目了然
+- IDE 支持：字段名常量可跳转、可重命名、可查找引用
+- 避免拼写错误（如 `"rom_id"` 这种只在运行时才会暴露的 typo）
+
+### 4.9 固定值字段常量规范
+
+> **规则**：Entity 中取值范围可穷举的字符串字段（如类型、状态、单位），必须创建对应的常量类，集中管理所有合法取值。Entity 的默认值（`@Builder.Default`）、Service 层比较/赋值等所有引用必须使用常量，禁止裸字符串。
+
+| 规则 | 级别 | 说明 |
+|------|------|------|
+| 取值可穷举的字符串字段必须有对应的常量类 | **必须** | 如 `durationUnit`（day/week/month）→ `DurationUnit` 常量类 |
+| Entity 默认值必须引用常量 | **必须** | `@Builder.Default private String durationUnit = DurationUnit.DAY;` 而非 `= "day";` |
+| Service 层比较/赋值必须引用常量 | **必须** | `if (DurationUnit.DAY.equals(req.getDurationUnit()))` 而非 `if ("day".equals(...))` |
+| 常量类定义在 `com.platform.common` 包中 | **必须** | 与 BizStatus、PostType 同级 |
+| 常量类必须有完整的 Javadoc | **必须** | 类 Javadoc 说明字段所属表及用途；常量 Javadoc 说明中文含义 |
+| 常量类的字符串值必须与数据库存储值、前端契约严格一致 | **必须** | 值不可修改；新增取值需前后端同步 |
+| 跨表复用的固定值归类到通用常量类 | **必须** | 如 status 字段多表共用 → BizStatus |
+| 单表专用的固定值独立建常量类 | **应该** | 如 pickupMethod 仅 idle_items 使用 → PickupMethod |
+| 常量类必须同步到 C端 `utils/constants.js` 和 B端 `utils/constants.ts` | **必须** | B端标记 `as const` 确保字面量类型推断 |
+
+**常量类模板**（遵循已有 BizStatus/PostType 模式）：
+
+```java
+/**
+ * 借出时长单位常量 — idle_items.duration_unit 字段的唯一合法取值。
+ * <p>与 C端 miniprogram/utils/constants.js 的 DURATION_UNIT 和
+ * B端 admin/src/utils/constants.ts 的 DURATION_UNIT 保持一致。</p>
+ */
+public final class DurationUnit {
+    /** 工具类，禁止实例化 */
+    private DurationUnit() {}
+
+    /** 按天计算 */
+    public static final String DAY = "day";
+    /** 按周计算 */
+    public static final String WEEK = "week";
+    /** 按月计算 */
+    public static final String MONTH = "month";
+}
+```
+
+### 4.10 Controller/Service/Entity 注释结构规范
+
+> **规则**：Controller、Service、Entity 是项目的核心结构层，每个类、每个 public 方法、每个持久化字段都必须有 Javadoc 注释。注释语言统一使用中文（技术术语保留英文原名）。
+
+| 规则 | 级别 | 说明 |
+|------|------|------|
+| 每个 Controller 类必须有类级 Javadoc | **必须** | `/** 闲置物品管理 REST API — 发布、浏览、搜索、下架、修改、删除 */` |
+| 每个 @GetMapping / @PostMapping / @PutMapping / @DeleteMapping 端点方法必须有 Javadoc | **必须** | 含 @param / @return，说明接口用途、权限要求、返回数据结构 |
+| 每个 Service 类必须有类级 Javadoc | **必须** | `/** 闲置物品业务逻辑 — 发布、搜索、详情、下架、删除 */` |
+| 每个 Service public 方法必须有 Javadoc | **必须** | 含 @param 约束、@return 状态、@throws 场景 |
+| 每个 Entity 类必须有类级 Javadoc | **必须** | `/** 闲置物品实体，对应 idle_items 表 */` |
+| 每个 Entity 字段必须有 Javadoc | **必须** | `/** 发布用户 ID，外键 → users.id */`；取值可穷举的字段必须注明取值范围 |
+| 注释语言统一使用中文 | **必须** | 遵循 CLAUDE.md §7，技术术语保留英文原名 |
+
+```java
+// ✅ 正确：Controller 示例
+/**
+ * 闲置物品管理 REST API。
+ *
+ * <p>提供 C端闲置物品的完整生命周期管理：
+ * <ul>
+ *   <li>发布出借/求借物品</li>
+ *   <li>首页流浏览（按 postType 筛选、分页）</li>
+ *   <li>关键词搜索（租户隔离）</li>
+ *   <li>物品详情</li>
+ *   <li>下架 / 删除 / 修改</li>
+ * </ul>
+ *
+ * <p>管理员可通过代发功能以目标住户身份发布内容（resolveUserId 逻辑）。</p>
+ */
+@RestController
+@RequestMapping("/api/idle-items")
+public class IdleController {
+
+    private final IdleService idleService;
+
+    public IdleController(IdleService idleService) {
+        this.idleService = idleService;
+    }
+
+    /**
+     * 发布闲置物品（出借或求借）。
+     *
+     * @param req  闲置物品发布请求体（标题、分类、图片、借出时长等）
+     * @param auth 当前认证用户
+     * @return 创建成功的闲置物品摘要
+     */
+    @PostMapping
+    public Result<?> publish(@Valid @RequestBody IdleItemRequest req, Authentication auth) {
+        // ...
+    }
+}
+
+// ✅ 正确：Entity 示例
+/**
+ * 闲置物品实体，对应 idle_items 表。
+ *
+ * <p>支持出借（LEND）和求借（WANTED）两种发布类型。
+ * 物品状态流转：online（展示中）→ reserved（已预订）→ returned（已归还）/ offline（已下架）。</p>
+ */
+@Entity
+@Table(name = IdleItemsColumn.TABLE_NAME)
+public class IdleItem {
+    /** 物品 ID（自增主键） */
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    /** 发布用户 ID，外键 → users.id */
+    @Column(name = IdleItemsColumn.COL_USER_ID, nullable = false)
+    private Long userId;
+
+    /** 发布类型：LEND(出借) / WANTED(求借)，引用 {@link PostType} */
+    @Column(name = IdleItemsColumn.COL_POST_TYPE, nullable = false, length = 10)
+    @Builder.Default
+    private String postType = PostType.LEND;
+
+    /** 借出时长单位：day(天) / week(周) / month(月)，引用 {@link DurationUnit} */
+    @Column(name = IdleItemsColumn.COL_DURATION_UNIT, nullable = false, length = 10)
+    @Builder.Default
+    private String durationUnit = DurationUnit.DAY;
+}
+```
+
+### 4.11 API 路径常量规范
+
+| 规则 | 级别 | 说明 |
+|------|------|------|
+| API 路径基路径定义为常量 | **应该** | `public static final String API_IDLE_ITEMS = "/api/idle-items";` |
+| 路径常量集中放在 `common/ApiPaths.java` | **应该** | 便于全局搜索、重构和路径一致性检查 |
+
+### 4.12 其他集中化常量规范
+
+| 常量类型 | 位置 | 级别 | 说明 |
+|----------|------|------|------|
+| 分页默认值 | `common/PageDefaults.java` | **应该** | `DEFAULT_PAGE = 0`, `DEFAULT_SIZE = 10` |
+| JWT Claim 名称 | `security/JwtClaims.java` | **应该** | `CLAIM_USER_ID = "userId"`, `CLAIM_USER_TYPE = "userType"` |
+| 角色名称 | `security/RoleNames.java` | **应该** | `ROLE_ADMIN`, `ROLE_SUPER_ADMIN` |
+| WebSocket 消息类型 | `websocket/WsMessageType.java` | **应该** | `CHAT_MESSAGE = "chat_message"` |
+
 ---
 
 ## 第五部分：审查执行流程
@@ -681,3 +928,9 @@ Step 4.5: Test          ← test-guarantee 技能
 | 后端 | SQL 参数绑定 | **必须** |
 | 后端 | DTO 类每个字段必须有 Javadoc 注释 | **必须** |
 | 后端 | 已定义状态常量时必须引用常量（如 `BizStatus.PENDING`），禁止魔术字符串 | **必须** |
+| 后端 | Entity 的 @Column/@JoinColumn/@UniqueConstraint 必须引用表字段常量类，禁止硬编码字符串 | **必须** |
+| 后端 | 取值可穷举的字段必须定义常量类，Entity 默认值和 Service 比较/赋值必须引用常量 | **必须** |
+| 后端 | Controller 类及每个端点方法必须有 Javadoc | **必须** |
+| 后端 | Service 类及每个 public 方法必须有 Javadoc | **必须** |
+| 后端 | Entity 类及每个字段必须有 Javadoc | **必须** |
+| 后端 | 注释语言统一使用中文 | **必须** |

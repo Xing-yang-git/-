@@ -95,12 +95,9 @@ class UserActivityServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(ratingRepository.getAverageScore(userId)).thenReturn(4.5);
         when(ratingRepository.countByToUserId(userId)).thenReturn(3L);
-        when(idleItemRepository.findByUserId(userId)).thenReturn(Collections.emptyList());
+        when(ratingRepository.findByToUserId(userId)).thenReturn(Collections.emptyList());
         when(borrowRequestRepository.findByBorrowerId(userId)).thenReturn(Collections.emptyList());
-        when(borrowRequestRepository.findByOwnerIdAndStatus(eq(userId), eq("approved"))).thenReturn(Collections.emptyList());
-        when(borrowRequestRepository.findByOwnerIdAndStatus(eq(userId), eq("returned"))).thenReturn(Collections.emptyList());
         when(helpRequestRepository.findByUserId(userId)).thenReturn(Collections.emptyList());
-        when(helpApplicationRepository.countByHelperIdAndStatus(userId, "approved")).thenReturn(0L);
 
         // 执行
         Map<String, Object> result = service.getProfile(userId);
@@ -122,18 +119,15 @@ class UserActivityServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(ratingRepository.getAverageScore(userId)).thenReturn(null);
         when(ratingRepository.countByToUserId(userId)).thenReturn(0L);
-        when(idleItemRepository.findByUserId(userId)).thenReturn(Collections.emptyList());
+        when(ratingRepository.findByToUserId(userId)).thenReturn(Collections.emptyList());
         when(borrowRequestRepository.findByBorrowerId(userId)).thenReturn(Collections.emptyList());
-        when(borrowRequestRepository.findByOwnerIdAndStatus(eq(userId), eq("approved"))).thenReturn(Collections.emptyList());
-        when(borrowRequestRepository.findByOwnerIdAndStatus(eq(userId), eq("returned"))).thenReturn(Collections.emptyList());
         when(helpRequestRepository.findByUserId(userId)).thenReturn(Collections.emptyList());
-        when(helpApplicationRepository.countByHelperIdAndStatus(userId, "approved")).thenReturn(0L);
 
         // 执行
         Map<String, Object> result = service.getProfile(userId);
 
         // 断言
-        assertThat(result.get("score")).isEqualTo(0.0);
+        assertThat(((Number) result.get("score")).doubleValue()).isEqualTo(5.0);
         assertThat(result.get("borrowReturnRate")).isEqualTo(100.0);
     }
 
@@ -216,8 +210,9 @@ class UserActivityServiceTest {
     void should_returnApprovals_when_borrowType() {
         // 准备
         Long lendIdleId = 10L;
-        IdleItem lendItem = IdleItem.builder()
-                .id(lendIdleId).userId(userId).title("出借物品").postType("LEND")
+        /** borrow 类型查 WANTED 帖（我是借入方，有人愿意借出给我） */
+        IdleItem wantedItem = IdleItem.builder()
+                .id(lendIdleId).userId(userId).title("求借物品").postType("WANTED")
                 .createdAt(LocalDateTime.now()).build();
         BorrowRequest br = BorrowRequest.builder()
                 .id(100L).idleId(lendIdleId).borrowerId(borrowerId)
@@ -225,7 +220,7 @@ class UserActivityServiceTest {
                 .startDate(LocalDate.now())
                 .status("pending").createdAt(LocalDateTime.now())
                 .build();
-        br.setIdleItem(lendItem); // 设置关联以避免懒加载
+        br.setIdleItem(wantedItem); // 设置关联以避免懒加载
 
         when(borrowRequestRepository.findByOwnerIdAndStatus(userId, "pending")).thenReturn(List.of(br));
         when(userRepository.findById(borrowerId)).thenReturn(Optional.of(otherUser));
@@ -233,9 +228,9 @@ class UserActivityServiceTest {
         when(borrowRequestRepository.findByBorrowerId(borrowerId)).thenReturn(Collections.emptyList());
         when(borrowRequestRepository.findByOwnerIdAndStatus(eq(borrowerId), eq("approved"))).thenReturn(Collections.emptyList());
         when(borrowRequestRepository.findByOwnerIdAndStatus(eq(borrowerId), eq("returned"))).thenReturn(Collections.emptyList());
-        when(idleItemRepository.findByUserId(borrowerId)).thenReturn(Collections.emptyList());
         when(helpRequestRepository.findByUserId(borrowerId)).thenReturn(Collections.emptyList());
-        when(helpApplicationRepository.countByHelperIdAndStatus(borrowerId, "approved")).thenReturn(0L);
+        when(helpApplicationRepository.findByHelperId(borrowerId)).thenReturn(Collections.emptyList());
+        when(ratingRepository.findByToUserId(borrowerId)).thenReturn(Collections.emptyList());
 
         // 执行
         List<MyPostItemDTO> result = service.getApprovals(userId, "borrow");
@@ -244,25 +239,26 @@ class UserActivityServiceTest {
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getType()).isEqualTo("idle");
         assertThat(result.get(0).getSubType()).isEqualTo("borrow");
-        assertThat(result.get(0).getTitle()).isEqualTo("出借物品");
+        assertThat(result.get(0).getTitle()).isEqualTo("求借物品");
     }
 
-    // ==================== getApprovals — lend (WANTED 反转) ====================
+    // ==================== getApprovals — lend (LEND 帖) ====================
 
     @Test
     @DisplayName("获取审批 - lend 类型返回我发布的 WANTED 帖待审批申请（角色反转）")
     void should_returnApprovals_when_lendType() {
         // 准备
         Long wantedIdleId = 20L;
-        IdleItem wantedItem = IdleItem.builder()
-                .id(wantedIdleId).userId(userId).title("求借物品").postType("WANTED")
+        /** lend 类型查 LEND 帖（我是借出方，有人想借我的东西） */
+        IdleItem lendItem = IdleItem.builder()
+                .id(wantedIdleId).userId(userId).title("出借物品").postType("LEND")
                 .createdAt(LocalDateTime.now()).build();
         BorrowRequest br = BorrowRequest.builder()
                 .id(200L).idleId(wantedIdleId).borrowerId(borrowerId)
                 .durationType("week").durationDays(7)
                 .status("pending").createdAt(LocalDateTime.now())
                 .build();
-        br.setIdleItem(wantedItem);
+        br.setIdleItem(lendItem);
 
         when(borrowRequestRepository.findByOwnerIdAndStatus(userId, "pending")).thenReturn(List.of(br));
         when(userRepository.findById(borrowerId)).thenReturn(Optional.of(otherUser));
@@ -270,14 +266,14 @@ class UserActivityServiceTest {
         when(borrowRequestRepository.findByBorrowerId(borrowerId)).thenReturn(Collections.emptyList());
         when(borrowRequestRepository.findByOwnerIdAndStatus(eq(borrowerId), eq("approved"))).thenReturn(Collections.emptyList());
         when(borrowRequestRepository.findByOwnerIdAndStatus(eq(borrowerId), eq("returned"))).thenReturn(Collections.emptyList());
-        when(idleItemRepository.findByUserId(borrowerId)).thenReturn(Collections.emptyList());
         when(helpRequestRepository.findByUserId(borrowerId)).thenReturn(Collections.emptyList());
-        when(helpApplicationRepository.countByHelperIdAndStatus(borrowerId, "approved")).thenReturn(0L);
+        when(helpApplicationRepository.findByHelperId(borrowerId)).thenReturn(Collections.emptyList());
+        when(ratingRepository.findByToUserId(borrowerId)).thenReturn(Collections.emptyList());
 
         // 执行
         List<MyPostItemDTO> result = service.getApprovals(userId, "lend");
 
-        // 断言：WANTED 帖的 lending 意向
+        // 断言：LEND 帖的 lending 意向
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getSubType()).isEqualTo("lend");
     }
@@ -300,12 +296,9 @@ class UserActivityServiceTest {
         when(userRepository.findById(helperId)).thenReturn(Optional.of(
                 User.builder().id(helperId).name("帮助者").userType("tenant").build()));
         when(ratingRepository.getAverageScore(helperId)).thenReturn(null);
+        when(ratingRepository.findByToUserId(helperId)).thenReturn(Collections.emptyList());
         when(borrowRequestRepository.findByBorrowerId(helperId)).thenReturn(Collections.emptyList());
-        when(borrowRequestRepository.findByOwnerIdAndStatus(eq(helperId), eq("approved"))).thenReturn(Collections.emptyList());
-        when(borrowRequestRepository.findByOwnerIdAndStatus(eq(helperId), eq("returned"))).thenReturn(Collections.emptyList());
-        when(idleItemRepository.findByUserId(helperId)).thenReturn(Collections.emptyList());
         when(helpRequestRepository.findByUserId(helperId)).thenReturn(Collections.emptyList());
-        when(helpApplicationRepository.countByHelperIdAndStatus(helperId, "approved")).thenReturn(0L);
 
         // 执行
         List<MyPostItemDTO> result = service.getApprovals(userId, "help");
@@ -474,7 +467,7 @@ class UserActivityServiceTest {
         // 断言
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getSubType()).isEqualTo("helpPro");
-        assertThat(result.get(0).getRoleLabel()).isEqualTo("帮助住户");
+        assertThat(result.get(0).getRoleLabel()).isEqualTo("求助住户");
     }
 
     // ==================== getInProgress — 错误角色 ====================
@@ -526,7 +519,7 @@ class UserActivityServiceTest {
         when(borrowRequestRepository.findByOwnerIdAndStatus(userId, "returned")).thenReturn(Collections.emptyList());
         when(userRepository.findById(ownerId)).thenReturn(Optional.of(
                 User.builder().id(ownerId).name("借出租户").userType("owner").build()));
-        when(ratingRepository.findByBorrowIdAndFromUserId(100L, userId)).thenReturn(Optional.empty());
+        when(ratingRepository.findFirstByBorrowIdAndFromUserId(100L, userId)).thenReturn(Optional.empty());
 
         // 执行
         List<MyPostItemDTO> result = service.getCompleted(userId, "borrow");
@@ -556,7 +549,7 @@ class UserActivityServiceTest {
         when(helpApplicationRepository.findByHelpIdAndStatus(1L, "completed")).thenReturn(List.of(app));
         when(userRepository.findById(helperId)).thenReturn(Optional.of(
                 User.builder().id(helperId).name("帮手").userType("tenant").build()));
-        when(ratingRepository.findByHelpApplicationIdAndFromUserId(10L, userId)).thenReturn(Optional.empty());
+        when(ratingRepository.findFirstByHelpApplicationIdAndFromUserId(10L, userId)).thenReturn(Optional.empty());
 
         // 执行
         List<MyPostItemDTO> result = service.getCompleted(userId, "helpReq");

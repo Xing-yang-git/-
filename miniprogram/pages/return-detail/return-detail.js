@@ -1,6 +1,13 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
+const { DAMAGE_TYPE, RETURN_STATUS } = require('../../utils/constants');
 
+/**
+ * 归还详情页 — 借用归还确认与损坏评估。
+ *
+ * 功能：归还照片上传、归还状态选择（按时/逾期/未归还）、损坏类型评估、
+ *        归还备注填写、归还确认提交。
+ */
 Page({
   data: {
     borrowId: '',
@@ -8,8 +15,8 @@ Page({
     itemTitle: '',
     borrowerName: '',
     isOnTime: null,
-    returnStatus: 'ontime',
-    damageType: 'none',
+    returnStatus: RETURN_STATUS.ON_TIME,
+    damageType: DAMAGE_TYPE.NORMAL,
     damageNote: '',
     returnNote: '',
     images: []
@@ -58,7 +65,7 @@ Page({
   onDamageTap(e) {
     const val = e.currentTarget.dataset.value;
     this.setData({ damageType: val });
-    if (val === 'none') {
+    if (val === DAMAGE_TYPE.NORMAL) {
       this.setData({ damageNote: '' });
     }
   },

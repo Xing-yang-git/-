@@ -25,6 +25,9 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -43,6 +46,8 @@ class AdminServiceTest {
     @Mock private UnitRepository unitRepository;
     @Mock private RoomRepository roomRepository;
     @Mock private RatingRepository ratingRepository;
+    @Mock private ExportLogRepository exportLogRepository;
+    @Mock private UserActivityService userActivityService;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private NotificationService notificationService;
     @Mock private ChatWebSocketHandler chatWebSocketHandler;
@@ -144,12 +149,13 @@ class AdminServiceTest {
     @DisplayName("获取审核列表 - 按状态过滤返回分页数据")
     void should_returnAudits_when_filteredByStatus() {
         // 准备
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
         Page<User> userPage = new PageImpl<>(List.of(user), PageRequest.of(0, 10), 1);
-        when(userRepository.findByAuthStatus(eq("pending"), any(PageRequest.class)))
+        when(userRepository.findByTenantIdAndAuthStatus(eq(tenantId), eq("pending"), any(PageRequest.class)))
                 .thenReturn(userPage);
 
         // 执行
-        PageDTO<UserDTO> result = adminService.getAudits("pending", 0, 10);
+        PageDTO<UserDTO> result = adminService.getAudits(adminId, "pending", 0, 10);
 
         // 断言
         assertThat(result.getContent()).hasSize(1);
@@ -160,12 +166,13 @@ class AdminServiceTest {
     @DisplayName("获取审核列表 - 空状态时排除 registering 用户")
     void should_returnAllNonRegistering_when_statusEmpty() {
         // 准备
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
         Page<User> userPage = new PageImpl<>(List.of(user), PageRequest.of(0, 10), 1);
-        when(userRepository.findByAuthStatusNot(eq(BizStatus.REGISTERING), any(PageRequest.class)))
+        when(userRepository.findByTenantIdAndAuthStatusNot(eq(tenantId), eq(BizStatus.REGISTERING), any(PageRequest.class)))
                 .thenReturn(userPage);
 
         // 执行
-        PageDTO<UserDTO> result = adminService.getAudits(null, 0, 10);
+        PageDTO<UserDTO> result = adminService.getAudits(adminId, null, 0, 10);
 
         // 断言
         assertThat(result.getContent()).hasSize(1);
@@ -177,13 +184,14 @@ class AdminServiceTest {
     @DisplayName("获取审核计数 - 返回各状态的数量")
     void should_returnAuditCounts_when_called() {
         // 准备（"全部住户"页签排除管理员账号，因此 approved 使用带 userType 排除的计数）
-        when(userRepository.countByAuthStatus("pending")).thenReturn(5L);
-        when(userRepository.countByAuthStatusAndUserTypeNotIn(eq("approved"), anyList())).thenReturn(10L);
-        when(userRepository.countByAuthStatus("rejected")).thenReturn(2L);
-        when(userRepository.countByAuthStatusNot(BizStatus.REGISTERING)).thenReturn(17L);
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
+        when(userRepository.countByTenantIdAndAuthStatus(tenantId, "pending")).thenReturn(5L);
+        when(userRepository.countByTenantIdAndAuthStatusAndUserTypeNotIn(eq(tenantId), eq("approved"), anyList())).thenReturn(10L);
+        when(userRepository.countByTenantIdAndAuthStatus(tenantId, "rejected")).thenReturn(2L);
+        when(userRepository.countByTenantIdAndAuthStatusNot(tenantId, BizStatus.REGISTERING)).thenReturn(17L);
 
         // 执行
-        Map<String, Long> result = adminService.getAuditCounts();
+        Map<String, Long> result = adminService.getAuditCounts(adminId);
 
         // 断言
         assertThat(result).containsEntry("pending", 5L);
@@ -260,17 +268,18 @@ class AdminServiceTest {
     @DisplayName("获取内容计数 - 返回各状态的数量")
     void should_returnContentCounts() {
         // 准备
-        when(idleItemRepository.countByStatus("online")).thenReturn(10L);
-        when(helpRequestRepository.countByStatus("online")).thenReturn(5L);
-        when(idleItemRepository.countByStatus("borrowing")).thenReturn(3L);
-        when(helpRequestRepository.countByStatus("helping")).thenReturn(2L);
-        when(idleItemRepository.countByStatus("completed")).thenReturn(8L);
-        when(helpRequestRepository.countByStatus("completed")).thenReturn(4L);
-        when(idleItemRepository.countByStatus(BizStatus.DELETED)).thenReturn(1L);
-        when(helpRequestRepository.countByStatus(BizStatus.DELETED)).thenReturn(1L);
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
+        when(idleItemRepository.countByTenantIdAndStatus(tenantId, "online")).thenReturn(10L);
+        when(helpRequestRepository.countByTenantIdAndStatus(tenantId, "online")).thenReturn(5L);
+        when(idleItemRepository.countByTenantIdAndStatus(tenantId, "active")).thenReturn(3L);
+        when(helpRequestRepository.countByTenantIdAndStatus(tenantId, "active")).thenReturn(2L);
+        when(idleItemRepository.countByTenantIdAndStatus(tenantId, "completed")).thenReturn(8L);
+        when(helpRequestRepository.countByTenantIdAndStatus(tenantId, "completed")).thenReturn(4L);
+        when(idleItemRepository.countByTenantIdAndStatus(tenantId, BizStatus.DELETED)).thenReturn(1L);
+        when(helpRequestRepository.countByTenantIdAndStatus(tenantId, BizStatus.DELETED)).thenReturn(1L);
 
         // 执行
-        Map<String, Long> result = adminService.getContentCounts();
+        Map<String, Long> result = adminService.getContentCounts(adminId);
 
         // 断言
         assertThat(result).containsEntry("showing", 15L);
@@ -286,11 +295,12 @@ class AdminServiceTest {
     @DisplayName("获取内容详情 - idle类型返回详情")
     void should_returnIdleDetail_when_typeIdle() {
         // 准备
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
         when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(idleItem));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
         // 执行
-        ContentItemDTO result = adminService.getContentDetail(itemId, "idle");
+        ContentItemDTO result = adminService.getContentDetail(adminId, itemId, "idle");
 
         // 断言
         assertThat(result).isNotNull();
@@ -302,11 +312,12 @@ class AdminServiceTest {
     @DisplayName("获取内容详情 - help类型返回详情")
     void should_returnHelpDetail_when_typeHelp() {
         // 准备
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
         // 执行
-        ContentItemDTO result = adminService.getContentDetail(helpId, "help");
+        ContentItemDTO result = adminService.getContentDetail(adminId, helpId, "help");
 
         // 断言
         assertThat(result).isNotNull();
@@ -324,7 +335,7 @@ class AdminServiceTest {
                 .tenantId(tenantId)
                 .title("借用中的物品")
                 .postType("LEND")
-                .status("borrowing")
+                .status("active")
                 .isProxy(false)
                 .createdAt(LocalDateTime.now())
                 .build();
@@ -346,13 +357,14 @@ class AdminServiceTest {
                 .createdAt(LocalDateTime.now())
                 .build();
 
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
         when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(borrowingItem));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(borrowRequestRepository.findByIdleId(itemId)).thenReturn(List.of(borrowRequest));
         when(userRepository.findById(3L)).thenReturn(Optional.of(borrower));
 
         // 执行
-        ContentItemDTO result = adminService.getContentDetail(itemId, "idle");
+        ContentItemDTO result = adminService.getContentDetail(adminId, itemId, "idle");
 
         // 断言：对方信息和时间范围已填充
         assertThat(result).isNotNull();
@@ -398,6 +410,7 @@ class AdminServiceTest {
                 .createdAt(now.minusDays(10))
                 .build();
         completedBorrow.setUpdatedAt(now);
+        completedBorrow.setReturnedAt(now);
 
         Rating pubRating = Rating.builder()
                 .id(1L)
@@ -413,16 +426,17 @@ class AdminServiceTest {
                 .score(4)
                 .build();
 
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
         when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(completedItem));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(borrowRequestRepository.findByIdleId(itemId)).thenReturn(List.of(completedBorrow));
         when(userRepository.findById(3L)).thenReturn(Optional.of(borrower));
         when(ratingRepository.getAverageScore(3L)).thenReturn(4.5);
-        when(ratingRepository.findByBorrowIdAndFromUserId(300L, 3L)).thenReturn(Optional.of(pubRating));
-        when(ratingRepository.findByBorrowIdAndFromUserId(300L, userId)).thenReturn(Optional.of(peerRating));
+        when(ratingRepository.findFirstByBorrowIdAndFromUserId(300L, 3L)).thenReturn(Optional.of(pubRating));
+        when(ratingRepository.findFirstByBorrowIdAndFromUserId(300L, userId)).thenReturn(Optional.of(peerRating));
 
         // 执行
-        ContentItemDTO result = adminService.getContentDetail(itemId, "idle");
+        ContentItemDTO result = adminService.getContentDetail(adminId, itemId, "idle");
 
         // 断言：对方信息
         assertThat(result).isNotNull();
@@ -449,7 +463,7 @@ class AdminServiceTest {
                 .userId(userId)
                 .tenantId(tenantId)
                 .title("帮助中的求助")
-                .status("helping")
+                .status("active")
                 .isProxy(false)
                 .createdAt(LocalDateTime.now())
                 .build();
@@ -469,13 +483,14 @@ class AdminServiceTest {
                 .createdAt(LocalDateTime.now())
                 .build();
 
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpingItem));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(helpApplicationRepository.findByHelpId(helpId)).thenReturn(List.of(activeApp));
         when(userRepository.findById(4L)).thenReturn(Optional.of(helper));
 
         // 执行
-        ContentItemDTO result = adminService.getContentDetail(helpId, "help");
+        ContentItemDTO result = adminService.getContentDetail(adminId, helpId, "help");
 
         // 断言
         assertThat(result).isNotNull();
@@ -533,16 +548,17 @@ class AdminServiceTest {
                 .score(3)
                 .build();
 
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(completedItem));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(helpApplicationRepository.findByHelpId(helpId)).thenReturn(List.of(completedApp));
         when(userRepository.findById(4L)).thenReturn(Optional.of(helper));
         when(ratingRepository.getAverageScore(4L)).thenReturn(4.0);
-        when(ratingRepository.findByHelpApplicationIdAndFromUserId(500L, 4L)).thenReturn(Optional.of(pubRating));
-        when(ratingRepository.findByHelpApplicationIdAndFromUserId(500L, userId)).thenReturn(Optional.of(peerR));
+        when(ratingRepository.findFirstByHelpApplicationIdAndFromUserId(500L, 4L)).thenReturn(Optional.of(pubRating));
+        when(ratingRepository.findFirstByHelpApplicationIdAndFromUserId(500L, userId)).thenReturn(Optional.of(peerR));
 
         // 执行
-        ContentItemDTO result = adminService.getContentDetail(helpId, "help");
+        ContentItemDTO result = adminService.getContentDetail(adminId, helpId, "help");
 
         // 断言
         assertThat(result).isNotNull();
@@ -560,7 +576,9 @@ class AdminServiceTest {
     @DisplayName("获取内容详情 - 不支持的类型抛出异常")
     void should_throwException_when_unsupportedType() {
         // 执行 & 断言
-        assertThatThrownBy(() -> adminService.getContentDetail(itemId, "unknown"))
+        // 需要先 mock 管理员查询，getContentDetail 会校验 tenant 归属
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
+        assertThatThrownBy(() -> adminService.getContentDetail(adminId, itemId, "unknown"))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("不支持的类型，请使用 idle 或 help");
     }
@@ -768,7 +786,7 @@ class AdminServiceTest {
         // 执行 & 断言
         assertThatThrownBy(() -> adminService.getRecords(adminId, "unknown", 0, 10))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessage("不支持的类型，请使用 borrow 或 help");
+                .hasMessage("不支持的类型，请使用 borrow、help 或 all");
     }
 
     // ==================== getOperationLogs ====================
@@ -829,48 +847,71 @@ class AdminServiceTest {
     // ==================== exportData ====================
 
     @Test
-    @DisplayName("导出数据 - idle类型导出闲置物品数据")
-    void should_exportIdleData_when_typeIdle() {
+    @DisplayName("导出数据 - 导出闲置物品为 Excel 字节数组")
+    void should_exportExcelBytes_when_exportPosts() {
         // 准备
+        ExportRequest req = new ExportRequest();
+        req.setOptions(List.of("posts"));
+        req.setFormat("xlsx");
+
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
         when(idleItemRepository.findAll()).thenReturn(List.of(idleItem));
+        when(helpRequestRepository.findAll()).thenReturn(List.of());
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
         // 执行
-        List<Map<String, Object>> result = adminService.exportData(adminId, "idle");
+        byte[] result = adminService.exportData(adminId, req);
 
-        // 断言
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).get("type")).isEqualTo("idle");
-        assertThat(result.get(0).get("title")).isEqualTo("闲置物品");
+        // 断言：Excel 字节数组非空
+        assertThat(result).isNotNull();
+        assertThat(result.length).isGreaterThan(0);
     }
 
     @Test
-    @DisplayName("导出数据 - help类型导出求助数据")
-    void should_exportHelpData_when_typeHelp() {
+    @DisplayName("导出数据 - 多选项导出包含多个 Sheet")
+    void should_exportMultipleSheets_when_multipleOptions() {
         // 准备
+        ExportRequest req = new ExportRequest();
+        req.setOptions(List.of("posts", "borrows"));
+        req.setFormat("xlsx");
+
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
-        when(helpRequestRepository.findAll()).thenReturn(List.of(helpRequest));
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(idleItemRepository.findAll()).thenReturn(List.of());
+        when(helpRequestRepository.findAll()).thenReturn(List.of());
+        // buildBorrowsData 只查已归还的借用记录
+        when(borrowRequestRepository.findByStatus(BizStatus.RETURNED)).thenReturn(List.of());
 
         // 执行
-        List<Map<String, Object>> result = adminService.exportData(adminId, "help");
+        byte[] result = adminService.exportData(adminId, req);
 
         // 断言
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).get("type")).isEqualTo("help");
+        assertThat(result).isNotNull();
+        assertThat(result.length).isGreaterThan(0);
     }
 
     @Test
-    @DisplayName("导出数据 - 未知类型返回空列表")
-    void should_returnEmpty_when_unknownExportType() {
-        // 准备（导出前仍会解析管理员所属小区）
+    @DisplayName("导出数据 - 空选项时前端校验（后端至少有一项数据可用）")
+    void should_returnNonEmptyBytes_when_exportAllOptions() {
+        // 准备
+        ExportRequest req = new ExportRequest();
+        req.setOptions(List.of("residents", "posts", "borrows", "removals", "ratings"));
+        req.setFormat("xlsx");
+
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
+        when(userRepository.findByTenantIdAndAuthStatusAndUserTypeNotIn(
+                anyLong(), anyString(), anyList())).thenReturn(new ArrayList<>());
+        when(idleItemRepository.findAll()).thenReturn(List.of());
+        when(helpRequestRepository.findAll()).thenReturn(List.of());
+        // buildBorrowsData 只查已归还的借用记录
+        when(borrowRequestRepository.findByStatus(BizStatus.RETURNED)).thenReturn(List.of());
+        when(operationLogRepository.findAll()).thenReturn(List.of());
+        when(ratingRepository.findAll()).thenReturn(List.of());
 
         // 执行
-        List<Map<String, Object>> result = adminService.exportData(adminId, "unknown");
+        byte[] result = adminService.exportData(adminId, req);
 
-        // 断言
-        assertThat(result).isEmpty();
+        // 断言：Excel 文件至少包含表头
+        assertThat(result).isNotNull();
+        assertThat(result.length).isGreaterThan(0);
     }
 }

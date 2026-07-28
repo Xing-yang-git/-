@@ -226,6 +226,12 @@
   </el-container>
 </template>
 
+<!--
+  DashboardView.vue — 运营数据看板
+
+  功能：KPI 统计卡片（在线闲置/求助数量、本月发布总数）、近 12 月发布趋势图、最新待办列表。
+  权限：需管理员 / 超级管理员登录。
+-->
 <script setup lang="ts">
 import {
   ref,

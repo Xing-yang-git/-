@@ -56,6 +56,22 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @EntityGraph(attributePaths = {"room", "room.unit", "room.unit.building"})
     Page<User> findByAuthStatusAndUserTypeNotIn(String authStatus, List<String> userTypes, Pageable pageable);
 
+    // ── 带 tenant 过滤的审核查询（修复跨小区数据泄露） ──
+    @EntityGraph(attributePaths = {"room", "room.unit", "room.unit.building"})
+    Page<User> findByTenantIdAndAuthStatus(Long tenantId, String authStatus, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"room", "room.unit", "room.unit.building"})
+    Page<User> findByTenantIdAndAuthStatusNot(Long tenantId, String authStatus, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"room", "room.unit", "room.unit.building"})
+    Page<User> findByTenantIdAndAuthStatusAndUserTypeNotIn(Long tenantId, String authStatus, List<String> userTypes, Pageable pageable);
+
+    long countByTenantIdAndAuthStatus(Long tenantId, String authStatus);
+
+    long countByTenantIdAndAuthStatusNot(Long tenantId, String authStatus);
+
+    long countByTenantIdAndAuthStatusAndUserTypeNotIn(Long tenantId, String authStatus, List<String> userTypes);
+
     long countByAuthStatus(String authStatus);
 
     long countByAuthStatusNot(String authStatus);
@@ -66,12 +82,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     @Query("SELECT u FROM User u JOIN u.room r JOIN r.unit un JOIN un.building b " +
            "WHERE u.authStatus = 'approved' " +
+           "AND b.tenantId = :tenantId " +
            "AND (:building IS NULL OR b.name LIKE %:building%) " +
            "AND (:unit IS NULL OR un.name LIKE %:unit%) " +
            "AND (:room IS NULL OR r.roomNumber LIKE %:room%) " +
            "AND (:userType IS NULL OR u.userType = :userType) " +
            "AND (:keyword IS NULL OR u.name LIKE %:keyword% OR u.phone LIKE %:keyword%)")
-    Page<User> findResidents(@Param("building") String building,
+    Page<User> findResidents(@Param("tenantId") Long tenantId,
+                             @Param("building") String building,
                              @Param("unit") String unit,
                              @Param("room") String room,
                              @Param("userType") String userType,
@@ -79,4 +97,15 @@ public interface UserRepository extends JpaRepository<User, Long> {
                              Pageable pageable);
 
     List<User> findByTenantIdAndUserTypeIn(Long tenantId, List<String> userTypes);
+
+    /** 按用户类型列表查询全部小区（super_admin 查看管理员列表时使用） */
+    List<User> findByUserTypeIn(List<String> userTypes);
+
+    /** 按小区ID和认证状态获取已认证的非管理员住户列表（用于导出），懒加载房间关联 */
+    @EntityGraph(attributePaths = {"room", "room.unit", "room.unit.building"})
+    List<User> findByTenantIdAndAuthStatusAndUserTypeNotIn(Long tenantId, String authStatus, List<String> userTypes);
+
+    /** 全局获取已认证的非管理员住户列表（super_admin 导出用，不限小区） */
+    @EntityGraph(attributePaths = {"room", "room.unit", "room.unit.building"})
+    List<User> findByAuthStatusAndUserTypeNotIn(String authStatus, List<String> userTypes);
 }

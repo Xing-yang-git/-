@@ -121,7 +121,7 @@ public class AuthService {
         User user = userRepository.findByUsername(req.getUsername())
                 .orElseThrow(() -> new RuntimeException("账号或密码错误"));
 
-        if (!"admin".equals(user.getUserType()) && !"super_admin".equals(user.getUserType())) {
+        if (!"admin".equals(user.getUserType()) && !"senior_admin".equals(user.getUserType()) && !"super_admin".equals(user.getUserType())) {
             throw new RuntimeException("账号或密码错误");
         }
 
@@ -172,11 +172,15 @@ public class AuthService {
         Room room = resolveRoom(req.getTenantId(), req.getBuilding(), req.getUnit(), req.getRoom());
         validateUniqueness(req, userId, room);
 
-        User user = getOrCreateUser(userId);
+        User user = getOrCreateUser(userId, req);
         fillUserProfile(user, req, room);
         user = userRepository.save(user);
 
-        String token = issueUserToken(user);
+        // 注册时不调用 issueUserToken：它会使其他设备的旧 token 失效并关闭全部 WS 连接（code 4001），
+        // 客户端收到 4001 后会触发 forceRelogin（"账号已在其他设备登录"）并跳转登录页。
+        // 注册不是"换设备登录"，不应踢掉当前设备的 WS；直接签发 token，tokenVersion 保持不变即可。
+        String token = jwtTokenProvider.generateToken(
+                user.getId().toString(), user.getUserType(), user.getTokenVersion());
         Map<String, Object> result = new HashMap<>();
         result.put("token", token);
         result.put("user", toDTO(user));
@@ -210,11 +214,20 @@ public class AuthService {
 
     /**
      * 获取已有用户或创建新用户。
+     * 关键防护：当已有用户已设置手机号且与请求手机号不一致时，
+     * 说明同设备上残留了上一个用户的 token，必须新建用户，
+     * 否则会覆写旧用户数据导致其记录丢失。
      */
-    private User getOrCreateUser(Long userId) {
+    private User getOrCreateUser(Long userId, RegisterRequest req) {
         if (userId != null) {
-            return userRepository.findById(userId)
+            User existing = userRepository.findById(userId)
                     .orElseThrow(() -> new RuntimeException("用户不存在"));
+            // 已有用户无手机号（wxLogin 预创建）或手机号匹配 → 同一用户补充注册
+            if (existing.getPhone() == null || existing.getPhone().isEmpty()
+                    || existing.getPhone().equals(req.getPhone())) {
+                return existing;
+            }
+            // 手机号不匹配 → 残留旧 token，新建用户
         }
         User user = new User();
         user.setCreatedAt(LocalDateTime.now());
@@ -269,7 +282,7 @@ public class AuthService {
      */
     /**
      * 将前端用户类型编码映射为数据库 CHECK 约束值。
-     * 数据库约束：user_type IN ('业主','租客','物业','admin','super_admin')
+     * 数据库约束：user_type IN ('业主','租客','物业','admin','senior_admin','super_admin')
      */
     private String mapUserType(String raw) {
         if (raw == null) return null;

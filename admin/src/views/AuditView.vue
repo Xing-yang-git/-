@@ -528,6 +528,13 @@
   </el-container>
 </template>
 
+<!--
+  AuditView.vue — 住户认证审核管理
+
+  功能：按状态标签页筛选（全部/待审核/已通过/已驳回）、批量审核通过/驳回、查看住户详情。
+  状态流转：pending → approved / rejected。
+  权限：需管理员 / 超级管理员登录。
+-->
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';

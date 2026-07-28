@@ -2,6 +2,12 @@ const api = require('../../utils/api');
 const auth = require('../../utils/auth');
 const { POST_TYPE } = require('../../utils/constants');
 
+/**
+ * 个人中心页 — 用户信息展示 + 功能入口。
+ *
+ * 功能：用户头像/姓名/房号展示、评价统计、我的发布/审批/进行中/已完成入口、
+ *        消息通知入口、设置入口、退出登录。
+ */
 Page({
   data: {
     statusBarHeight: 44,

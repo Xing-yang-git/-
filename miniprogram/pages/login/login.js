@@ -1,6 +1,12 @@
 const api = require('../../utils/api');
 const { STATUS } = require('../../utils/constants');
 
+/**
+ * 手机号登录页 — 手机号 + 密码方式登录。
+ *
+ * 功能：小区选择、手机号密码输入、同意协议复选框、登录请求。
+ * 登录成功后跳转首页或注册页（未注册用户）。
+ */
 Page({
   data: {
     agreed: false,
@@ -134,7 +140,8 @@ Page({
   },
 
   onGoRegister() {
-    wx.navigateTo({ url: '/pages/register/register' });
+    // 全新注册：标记来源以便注册页清除残留旧 token
+    wx.navigateTo({ url: '/pages/register/register?from=signup' });
   },
 
   /**
@@ -145,7 +152,7 @@ Page({
    */
   routeByStatus(status) {
     if (status === STATUS.REGISTERING) {
-      wx.redirectTo({ url: '/pages/register/register' });
+      wx.redirectTo({ url: '/pages/register/register?from=needRegister' });
     } else if (status === STATUS.APPROVED) {
       wx.switchTab({ url: '/pages/home/home' });
     }
@@ -163,7 +170,7 @@ Page({
 
       const userStatus = data.user ? data.user.authStatus : (data.authStatus || data.status);
       if (data.needRegister) {
-        wx.redirectTo({ url: '/pages/register/register' });
+        wx.redirectTo({ url: '/pages/register/register?from=needRegister' });
       } else if (userStatus === STATUS.PENDING || userStatus === STATUS.REJECTED || userStatus === STATUS.BANNED) {
         // 登录成功后，未通过审核的用户跳转到审核状态页查看账号状态
         // 与 routeByStatus 的区别：routeByStatus 对此类状态不做跳转（防止用户从审核页

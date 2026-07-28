@@ -440,14 +440,19 @@
    ============================================================ */
 .record-sheet-overlay {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background: rgba(0, 0, 0, 0.3);
   z-index: 1000;
 }
 
 .record-sheet {
   position: fixed;
-  bottom: 0; left: 0; right: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
   height: 80vh;
   display: flex;
   flex-direction: column;
@@ -553,6 +558,7 @@
 .approval-rating-label {
   font-size: var(--text-xs);
   color: var(--text-secondary);
+  margin-right: 6rpx;
 }
 
 .approval-rating-value {
@@ -584,7 +590,7 @@
   font-weight: 500;
 }
 
-/* 互助感谢文本（透明背景） */
+/* 互助感想文本（透明背景） */
 .record-feedback-text {
   display: block;
   margin-top: 16rpx;

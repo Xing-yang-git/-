@@ -87,7 +87,7 @@ public class UserActivityService {
 
         // 评分
         Double avgScore = ratingRepository.getAverageScore(userId);
-        profile.put("score", avgScore != null ? Math.round(avgScore * 10.0) / 10.0 : 0.0);
+        profile.put("score", avgScore != null ? Math.round(avgScore * 10.0) / 10.0 : 5.0);
         long ratingCount = ratingRepository.countByToUserId(userId);
         profile.put("ratingCount", (int) ratingCount);
 
@@ -411,11 +411,14 @@ public class UserActivityService {
         for (BorrowRequest br : pool) {
             if (!seen.add(br.getId())) continue;
             if (!role.equals(resolveBorrowRole(br, userId))) continue;
+            // 跳过已下架的物品
+            IdleItem idleItem = resolveIdleItem(br);
+            if (idleItem != null && BizStatus.DELETED.equals(idleItem.getStatus())) continue;
             MyPostItemDTO dto = borrowRequestToDTO(br);
             dto.setType("idle");
             dto.setSubType(role);
             dto.setRoleLabel(role.equals("borrow") ? "借出住户" : "借走住户");
-            dto.setCompletedAt(br.getUpdatedAt());
+            dto.setCompletedAt(br.getReturnedAt());
             populateBorrowPeer(dto, br, userId);
             loadBorrowRatings(dto, br, userId);
             // 借用归还明细（"我的"页记录弹框）
@@ -433,6 +436,8 @@ public class UserActivityService {
         List<MyPostItemDTO> result = new ArrayList<>();
         List<HelpRequest> myHelpRequests = helpRequestRepository.findByUserId(userId);
         for (HelpRequest hr : myHelpRequests) {
+            // 跳过已被管理员下架的求助
+            if (BizStatus.DELETED.equals(hr.getStatus())) continue;
             List<HelpApplication> completedApps = helpApplicationRepository
                     .findByHelpIdAndStatus(hr.getId(), BizStatus.COMPLETED);
             for (HelpApplication app : completedApps) {
@@ -473,6 +478,8 @@ public class UserActivityService {
                 hr = helpRequestRepository.findById(app.getHelpId()).orElse(null);
             }
             if (hr == null) continue;
+            // 跳过已被管理员下架的求助
+            if (BizStatus.DELETED.equals(hr.getStatus())) continue;
             MyPostItemDTO dto = helpRequestToDTO(hr);
             dto.setId(app.getId());
             dto.setType("help");
@@ -631,22 +638,24 @@ public class UserActivityService {
     private String mapIdleDisplayStatus(String status) {
         if (status == null) return "";
         return switch (status) {
-            case BizStatus.ONLINE -> "在线";
-            case BizStatus.OFFLINE -> "已下架";
-            case "borrowing" -> "进行中";
+            case BizStatus.ONLINE    -> "在线";
+            case BizStatus.OFFLINE   -> "已下架";
+            case BizStatus.PENDING   -> "待审批";
+            case BizStatus.ACTIVE    -> "进行中";
             case BizStatus.COMPLETED -> "已完成";
-            default -> status;
+            default                  -> status;
         };
     }
 
     private String mapHelpDisplayStatus(String status) {
         if (status == null) return "";
         return switch (status) {
-            case BizStatus.ONLINE -> "在线";
-            case BizStatus.OFFLINE -> "已下架";
-            case "helping" -> "进行中";
+            case BizStatus.ONLINE    -> "在线";
+            case BizStatus.OFFLINE   -> "已下架";
+            case BizStatus.PENDING   -> "待审批";
+            case BizStatus.ACTIVE    -> "进行中";
             case BizStatus.COMPLETED -> "已完成";
-            default -> status;
+            default                  -> status;
         };
     }
 
@@ -803,7 +812,7 @@ public class UserActivityService {
      * <p>计数口径（2026-07-18 约定）：交易达到终态（借用=returned，帮助=completed）
      * <b>且已被对方评价</b>（ratings.to_user_id = 本人）才计入次数——发布、待审批、
      * 进行中的记录一律不计，防止"发布即涨数据"。
-     * 按时归还率不受评价门槛影响，仍按全部已归还的借入记录计算。
+     * 按时归还率与借入/借出一致，仅统计已评价的归还记录。
      */
     /**
      * 互助次数统计 — 全站统一口径。
@@ -848,6 +857,7 @@ public class UserActivityService {
 
     /**
      * 统计用户的借入/借出次数及归还率数据。
+     * 借入/借出/归还/按时归还均以已被对方评价为口径，保证四项数据一致可比。
      */
     private BorrowLendStats countBorrowLendStats(Long userId, Set<Long> ratedBorrowIds) {
         List<BorrowRequest> pool = new ArrayList<>();
@@ -860,13 +870,11 @@ public class UserActivityService {
         for (BorrowRequest br : pool) {
             if (!seen.add(br.getId())) continue;
             if (!BizStatus.RETURNED.equals(br.getStatus())) continue;
+            if (!ratedBorrowIds.contains(br.getId())) continue;  // 仅统计已评价的记录，与借入/借出口径一致
             boolean isBorrowRole = "borrow".equals(resolveBorrowRole(br, userId));
             if (isBorrowRole) {
                 returned++;
                 if (Boolean.TRUE.equals(br.getIsOnTime())) onTime++;
-            }
-            if (!ratedBorrowIds.contains(br.getId())) continue;
-            if (isBorrowRole) {
                 borrow++;
             } else {
                 lend++;
@@ -881,7 +889,7 @@ public class UserActivityService {
 
     private void loadBorrowRatings(MyPostItemDTO dto, BorrowRequest br, Long currentUserId) {
         // 我对对方的评价
-        Optional<Rating> myRating = ratingRepository.findByBorrowIdAndFromUserId(br.getId(), currentUserId);
+        Optional<Rating> myRating = ratingRepository.findFirstByBorrowIdAndFromUserId(br.getId(), currentUserId);
         myRating.ifPresent(r -> {
             dto.setMyRating(r.getScore().doubleValue());
             dto.setMyFeedback(r.getFeedback());
@@ -898,7 +906,7 @@ public class UserActivityService {
                 ? idleOwnerId
                 : br.getBorrowerId();
         if (otherUserId != null) {
-            Optional<Rating> theirRating = ratingRepository.findByBorrowIdAndFromUserId(br.getId(), otherUserId);
+            Optional<Rating> theirRating = ratingRepository.findFirstByBorrowIdAndFromUserId(br.getId(), otherUserId);
             theirRating.ifPresent(r -> {
                 dto.setTheirRating(r.getScore().doubleValue());
                 dto.setTheirFeedback(r.getFeedback());
@@ -907,7 +915,7 @@ public class UserActivityService {
     }
     private void loadHelpRatings(MyPostItemDTO dto, HelpApplication app, Long currentUserId) {
         // 我对对方的评价
-        Optional<Rating> myRating = ratingRepository.findByHelpApplicationIdAndFromUserId(app.getId(), currentUserId);
+        Optional<Rating> myRating = ratingRepository.findFirstByHelpApplicationIdAndFromUserId(app.getId(), currentUserId);
         myRating.ifPresent(r -> {
             dto.setMyRating(r.getScore().doubleValue());
             dto.setMyFeedback(r.getFeedback());
@@ -922,7 +930,7 @@ public class UserActivityService {
                 ? (hr != null ? hr.getUserId() : null)
                 : app.getHelperId();
         if (otherUserId != null) {
-            Optional<Rating> theirRating = ratingRepository.findByHelpApplicationIdAndFromUserId(app.getId(), otherUserId);
+            Optional<Rating> theirRating = ratingRepository.findFirstByHelpApplicationIdAndFromUserId(app.getId(), otherUserId);
             theirRating.ifPresent(r -> {
                 dto.setTheirRating(r.getScore().doubleValue());
                 dto.setTheirFeedback(r.getFeedback());

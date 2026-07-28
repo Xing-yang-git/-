@@ -38,6 +38,16 @@ App({
   },
 
   onShow() {
+    // 注册页与登录页不需要 WebSocket：注册页进入相册选图切后台再返回时，
+    // 残留旧 token 可能触发 WS 被服务器拒绝（code 4001）→ forceRelogin → 退回登录页
+    const pages = getCurrentPages();
+    if (pages.length > 0) {
+      const currentRoute = pages[pages.length - 1].route;
+      if (currentRoute === 'pages/register/register' || currentRoute === 'pages/login/login') {
+        return;
+      }
+    }
+
     // 应用从后台切回前台时，确保 WS 已连接，并刷新「管理」tab 待审批红点与「消息」tab 通知红点
     if (this.globalData.token) {
       this.ensureWebSocket();

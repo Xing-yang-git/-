@@ -1,7 +1,13 @@
 const api = require("../../utils/api");
 const auth = require("../../utils/auth");
-const { STATUS, POST_TYPE } = require("../../utils/constants");
+const { STATUS, POST_TYPE, RETURN_STATUS } = require("../../utils/constants");
 
+/**
+ * 我的帖子页 — 我发布的 / 审批管理 / 进行中 / 已完成 四 Tab 视图。
+ *
+ * 功能：主 Tab 切换（publish / approval / inProgress / completed）、
+ *        子 Tab（闲置/求助）筛选、审批操作（同意/拒绝）、完成确认、删除帖子、下拉刷新。
+ */
 Page({
   data: {
     // 全局加载/错误状态
@@ -64,6 +70,7 @@ Page({
     showCompletedSheet: false,
     completedSheetItem: null,
     completedRating: 0, // 补充评价：本方尚未评分时在已完成页评价对方
+    completedDamageType: "normal",  // 补充物品状况：借出方未填写时在此选择（默认正常损耗）
     completedFeedback: "",
     // 待评价提示：各角色已完成列表中是否存在本方尚未评分的记录
     pendingRating: {
@@ -198,13 +205,14 @@ Page({
         };
         for (const role of searchRoles) {
           const list = this.data[keyMap[role]] || [];
-          const item = list.find((i) => i.id === relatedId);
+          const item = list.find((i) => String(i.id) === String(relatedId));
           if (item) {
             this.setData({
               completedSubTab: role,
               showCompletedSheet: true,
               completedSheetItem: { ...item },
               completedRating: 0,
+              completedDamageType: "normal",
               completedFeedback: "",
             });
             return;
@@ -257,7 +265,7 @@ Page({
         };
         for (const at of searchTypes) {
           const list = this.data[keyMap[at]] || [];
-          const item = list.find((i) => i.id === relatedId);
+          const item = list.find((i) => String(i.id) === String(relatedId));
           if (item) {
             this.setData({
               approvalSubTab: at,
@@ -761,6 +769,8 @@ Page({
         item.theirRating != null ? Number(item.theirRating).toFixed(1) : null,
       theirFeedback: this.sanitizeFeedback(item.theirFeedback),
       note: item.note || "",
+      damageType: item.damageType || "",   // 归还后物品状况（空表示待确认）
+      isOnTime: item.isOnTime,
     };
   },
 
@@ -1235,7 +1245,7 @@ Page({
     };
     const key = keyMap[type] || "borrowApprovals";
     const list = this.data[key];
-    const item = list.find((i) => i.id === id);
+    const item = list.find((i) => String(i.id) === String(id));
     if (item) {
       this.setData({
         showApprovalSheet: true,
@@ -1406,7 +1416,7 @@ Page({
     const key = keyMap[type];
     if (!key) return;
     const list = this.data[key];
-    const item = list.find((i) => i.id === id);
+    const item = list.find((i) => String(i.id) === String(id));
     if (item) {
       this.setData({
         showProgressSheet: true,
@@ -1497,7 +1507,7 @@ Page({
         );
       } else {
         const returnBody = {
-          returnStatus: "normal",
+          returnStatus: RETURN_STATUS.ON_TIME,
           isOnTime: !isOverdue,
         };
         if (type === "lend") {
@@ -1598,7 +1608,7 @@ Page({
     const key = keyMap[type];
     if (!key) return;
     const list = this.data[key];
-    const item = list.find((i) => i.id === id);
+    const item = list.find((i) => String(i.id) === String(id));
     if (item) {
       this.setData({
         showCompletedSheet: true,
@@ -1618,6 +1628,11 @@ Page({
     });
   },
 
+  // 已完成页补充物品状况（借出方在已完成记录中补填）
+  onCompletedDamageTap(e) {
+    this.setData({ completedDamageType: e.currentTarget.dataset.value });
+  },
+
   // 已完成页补充评价（供未在归还时评分的一方评价对方）
   onCompletedRatingTap(e) {
     this.setData({ completedRating: e.currentTarget.dataset.star });
@@ -1635,8 +1650,16 @@ Page({
       return;
     }
     const isHelp = item.type === "helpReq" || item.type === "helpPro";
+    const isLendMissingDamage = item.type === "lend" && !item.damageType;
+
     wx.showLoading({ title: "提交中...", mask: true });
     try {
+      // 借出方尚未填写物品状况：先补填 damageType
+      if (isLendMissingDamage) {
+        await api.put("/api/borrow-requests/" + item.id + "/damage", {
+          damageType: this.data.completedDamageType,
+        });
+      }
       const ratingBody2 = {
         targetId: item.id,
         ratingType: isHelp ? "help" : "borrow",
@@ -1655,11 +1678,12 @@ Page({
         helpPro: "completedHelpPros",
       };
       const fresh = (this.data[keyMap[item.type]] || []).find(
-        (i) => i.id === item.id,
+        (i) => String(i.id) === String(item.id),
       );
       this.setData({
         completedSheetItem: fresh ? { ...fresh } : this.data.completedSheetItem,
         completedRating: 0,
+        completedDamageType: "normal",
         completedFeedback: "",
       });
       // 通知服务通知页：该 relatedId 已评价，卡片应改为「已评价」
@@ -1688,7 +1712,7 @@ Page({
   onReturnBorrow(e) {
     const id = e.currentTarget.dataset.id;
     const type = "borrow";
-    const item = this.data.inProgressBorrows.find((i) => i.id === id);
+    const item = this.data.inProgressBorrows.find((i) => String(i.id) === String(id));
     if (item) {
       this.setData({
         showProgressSheet: true,
@@ -1705,7 +1729,7 @@ Page({
   onReturnLend(e) {
     const id = e.currentTarget.dataset.id;
     const type = "lend";
-    const item = this.data.inProgressLends.find((i) => i.id === id);
+    const item = this.data.inProgressLends.find((i) => String(i.id) === String(id));
     if (item) {
       this.setData({
         showProgressSheet: true,
@@ -1722,7 +1746,7 @@ Page({
   onEndHelpReq(e) {
     const id = e.currentTarget.dataset.id;
     const type = "helpReq";
-    const item = this.data.inProgressHelpReqs.find((i) => i.id === id);
+    const item = this.data.inProgressHelpReqs.find((i) => String(i.id) === String(id));
     if (item) {
       this.setData({
         showProgressSheet: true,
@@ -1739,7 +1763,7 @@ Page({
   onEndHelpPro(e) {
     const id = e.currentTarget.dataset.id;
     const type = "helpPro";
-    const item = this.data.inProgressHelpPros.find((i) => i.id === id);
+    const item = this.data.inProgressHelpPros.find((i) => String(i.id) === String(id));
     if (item) {
       this.setData({
         showProgressSheet: true,

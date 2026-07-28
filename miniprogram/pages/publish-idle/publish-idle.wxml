@@ -17,7 +17,7 @@
 
     <!-- 图片 -->
     <view class="section">
-      <view class="input-label">物品图片 <text class="required">*</text>（至少 1 张，最多 9 张）</view>
+      <view class="input-label">物品图片（选填，最多 9 张）</view>
       <view class="img-upload-grid">
         <block wx:for="{{images}}" wx:key="*this">
           <view class="img-upload-item">
@@ -35,7 +35,7 @@
     <view class="section">
       <view class="input-group">
         <view class="input-label">物品标题 <text class="required">*</text></view>
-        <input class="input" placeholder="例：博世冲击钻套装 GBH 2-20" value="{{title}}" bindinput="onInput" data-field="title" />
+        <input class="input" placeholder="例：博世冲击钻套装 GBH 2-20" value="{{title}}" bindinput="onInput" data-field="title" maxlength="100" />
       </view>
 
       <view class="input-group">
@@ -84,7 +84,7 @@
 
       <view class="input-group" style="margin-bottom:0;">
         <view class="input-label">物品详细描述</view>
-        <textarea class="textarea" placeholder="描述物品现状、使用痕迹、附件清单、借用注意事项等" value="{{description}}" bindinput="onInput" data-field="description" />
+        <textarea class="textarea" placeholder="描述物品现状、使用痕迹、附件清单、借用注意事项等" value="{{description}}" bindinput="onInput" data-field="description" maxlength="200" />
       </view>
     </view>
 
@@ -168,7 +168,7 @@
     <view class="section">
       <view class="input-group">
         <view class="input-label">物品名称 <text class="required">*</text></view>
-        <input class="input" placeholder="例：博世冲击钻套装 GBH 2-20" value="{{title}}" bindinput="onInput" data-field="title" />
+        <input class="input" placeholder="例：博世冲击钻套装 GBH 2-20" value="{{title}}" bindinput="onInput" data-field="title" maxlength="100" />
       </view>
 
       <view class="input-group">
@@ -212,7 +212,7 @@
 
       <view class="input-group" style="margin-bottom:0;">
         <view class="input-label">用途说明 <text class="required">*</text></view>
-        <textarea class="textarea" placeholder="请描述您需要借用此物品的原因和用途，让出借人更好地了解您的需求" value="{{description}}" bindinput="onInput" data-field="description" />
+        <textarea class="textarea" placeholder="请描述您需要借用此物品的原因和用途，让出借人更好地了解您的需求" value="{{description}}" bindinput="onInput" data-field="description" maxlength="200" />
       </view>
     </view>
 
@@ -261,7 +261,7 @@
     <view class="section">
       <view class="input-group" style="margin-bottom:0;">
         <view class="input-label">求助标题 <text class="required">*</text></view>
-        <input class="input" placeholder="简要描述你需要的帮助" value="{{title}}" bindinput="onInput" data-field="title" />
+        <input class="input" placeholder="简要描述你需要的帮助" value="{{title}}" bindinput="onInput" data-field="title" maxlength="100" />
       </view>
     </view>
 
@@ -309,7 +309,7 @@
     <view class="section">
       <view class="input-group">
         <view class="input-label">详细描述 <text class="required">*</text></view>
-        <textarea class="textarea" placeholder="描述具体情况、需要什么帮助、大概需要多长时间等" value="{{description}}" bindinput="onInput" data-field="description" />
+        <textarea class="textarea" placeholder="描述具体情况、需要什么帮助、大概需要多长时间等" value="{{description}}" bindinput="onInput" data-field="description" maxlength="200" />
       </view>
 
       <view class="input-label" style="margin-top:24rpx;">紧急程度 <text class="required">*</text></view>
@@ -322,7 +322,7 @@
     <!-- 时间范围（选填） -->
     <view class="section">
       <view class="label-with-switch">
-        <view class="input-label" style="margin:0;">时间范围（选填）</view>
+        <view class="input-label" style="margin:0;">预计时间范围（选填）</view>
         <switch class="time-switch" checked="{{enableTimeRange}}" bindchange="onToggleTimeRange" color="#0071e3" />
       </view>
       <block wx:if="{{enableTimeRange}}">

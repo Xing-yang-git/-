@@ -54,7 +54,7 @@
               style="width: 110px"
             >
               <el-option label="全部" value="" />
-              <el-option label="物品互借" value="idle" />
+              <el-option label="物品互借" value="borrow" />
               <el-option label="技能互助" value="help" />
             </el-select>
             <el-select
@@ -120,10 +120,10 @@
                     <span
                       :class="[
                         'tag',
-                        row.type === 'idle' ? 'tag-blue' : 'tag-orange',
+                        row.type === 'borrow' ? 'tag-blue' : 'tag-orange',
                       ]"
                     >
-                      {{ row.type === "idle" ? "互借" : "互助" }}
+                      {{ row.type === "borrow" ? "互借" : "互助" }}
                     </span>
                   </template>
                 </el-table-column>
@@ -173,10 +173,10 @@
                 <span
                   :class="[
                     'tag',
-                    detailItem.type === 'idle' ? 'tag-blue' : 'tag-orange',
+                    detailItem.type === 'borrow' ? 'tag-blue' : 'tag-orange',
                   ]"
                 >
-                  {{ detailItem.type === "idle" ? "互借" : "互助" }}
+                  {{ detailItem.type === "borrow" ? "互借" : "互助" }}
                 </span>
               </span>
             </div>
@@ -195,7 +195,7 @@
               </div>
             </template>
             <!-- 互借：借出时长 -->
-            <template v-if="detailItem.type === 'idle'">
+            <template v-if="detailItem.type === 'borrow'">
               <div class="detail-row">
                 <span class="dl">借出时长</span
                 ><span class="dv">{{ detailItem.lendDuration || "--" }}</span>
@@ -211,17 +211,17 @@
                 <p class="text-sm text-secondary" style="margin-bottom: 8px">
                   互助双方
                 </p>
-                <template v-if="detailItem.type === 'idle'">
+                <template v-if="detailItem.type === 'borrow'">
                   <div class="detail-row">
                     <span class="dl">借出方</span>
                     <span class="dv"
                       >{{ detailItem.publisher }}
                       <span
-                        v-if="detailItem.pubRating"
+                        v-if="detailItem.pubRatingScore"
                         class="rating-tag"
                         style="margin-left: 6px"
                       >
-                        <span class="stars">{{ detailItem.pubRating }}</span>
+                        <span class="stars">{{ toStars(detailItem.pubRatingScore) }}</span>
                         <span class="rlabel">获评</span>
                       </span>
                     </span>
@@ -237,11 +237,11 @@
                     <span class="dv"
                       >{{ detailItem.peer }}
                       <span
-                        v-if="detailItem.peerRating"
+                        v-if="detailItem.peerRatingScore"
                         class="rating-tag"
                         style="margin-left: 6px"
                       >
-                        <span class="stars">{{ detailItem.peerRating }}</span>
+                        <span class="stars">{{ toStars(detailItem.peerRatingScore) }}</span>
                         <span class="rlabel">获评</span>
                       </span>
                     </span>
@@ -259,11 +259,11 @@
                     <span class="dv"
                       >{{ detailItem.publisher }}
                       <span
-                        v-if="detailItem.pubRating"
+                        v-if="detailItem.pubRatingScore"
                         class="rating-tag"
                         style="margin-left: 6px"
                       >
-                        <span class="stars">{{ detailItem.pubRating }}</span>
+                        <span class="stars">{{ toStars(detailItem.pubRatingScore) }}</span>
                         <span class="rlabel">获评</span>
                       </span>
                     </span>
@@ -279,11 +279,11 @@
                     <span class="dv"
                       >{{ detailItem.peer }}
                       <span
-                        v-if="detailItem.peerRating"
+                        v-if="detailItem.peerRatingScore"
                         class="rating-tag"
                         style="margin-left: 6px"
                       >
-                        <span class="stars">{{ detailItem.peerRating }}</span>
+                        <span class="stars">{{ toStars(detailItem.peerRatingScore) }}</span>
                         <span class="rlabel">获评</span>
                       </span>
                     </span>
@@ -314,7 +314,7 @@
             </div>
 
             <!-- 互借：物品状况记录 -->
-            <template v-if="detailItem.type === 'idle' && detailItem.condBefore">
+            <template v-if="detailItem.type === 'borrow' && detailItem.condBefore">
               <div class="dv-divider"></div>
               <p class="text-sm text-secondary" style="margin-bottom: 8px">
                 物品状况记录
@@ -365,8 +365,14 @@
   </el-container>
 </template>
 
+<!--
+  RecordsView.vue — 操作日志与导出历史
+
+  功能：查看管理员操作日志列表（用户审核/内容下架/代发/管理员增删）、查看导出历史记录。
+  权限：需管理员 / 超级管理员登录。
+-->
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowDown, ArrowLeft, ArrowRight } from "@element-plus/icons-vue";
@@ -374,6 +380,7 @@ import { ArrowDown, ArrowLeft, ArrowRight } from "@element-plus/icons-vue";
 import { useAuthStore } from "../stores/auth";
 import { useCommunityStore } from "../stores/community";
 import AppSidebar from "../components/AppSidebar.vue";
+import { getRecords, type RecordItemDTO } from "../api/admin";
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -381,133 +388,55 @@ const communityStore = useCommunityStore();
 
 onMounted(() => {
   communityStore.fetchCommunityData();
+  fetchRecords();
 });
 
 /** 搜索关键词（按发布者/接手者/内容匹配） */
 const search = ref("");
 /** 时间范围筛选 */
 const filterDateRange = ref<string[] | null>(null);
-/** 类型筛选：'idle' | 'help' */
+/** 类型筛选：'borrow' | 'help' */
 const filterType = ref("");
 /** 楼栋筛选 */
 const filterBuilding = ref("");
 /** 单元筛选 */
 const filterUnit = ref("");
 
-/** 互助记录列表（静态 demo 数据） */
-const records = reactive([
-  {
-    publisher: "3栋2单元1502号(业主)",
-    pubRating: "★★★★★",
-    pubComment: "物品保管得很好",
-    peer: "5栋1单元802号(租客)",
-    peerRating: "★★★★☆",
-    peerComment: "东西很好用，谢谢",
-    content: "博世冲击钻套装",
-    type: "idle",
-    timeStart: "2026-06-22 09:00",
-    timeEnd: "2026-06-25 14:30",
-    lendDuration: "3天",
-    condBefore: "正常使用痕迹",
-    condAfter: "正常损耗",
-    returnStatus: "按时归还",
-    room: "3栋",
-    createdAt: "2026-06-20 15:30",
-    applyAt: "2026-06-21 10:00",
-    approveAt: "2026-06-21 14:00",
-    completeAt: "2026-06-25 14:30",
-  },
-  {
-    publisher: "5栋1单元802号(租客)",
-    pubRating: "★★★★★",
-    pubComment: "维修师傅很专业",
-    peer: "7栋1单元1201号(业主)",
-    peerRating: "★★★★★",
-    peerComment: "",
-    content: "水管漏水维修",
-    type: "help",
-    timeStart: "2026-06-22 10:00",
-    timeEnd: "2026-06-22 11:00",
-    room: "5栋",
-    createdAt: "2026-06-20 08:00",
-    applyAt: "2026-06-21 16:00",
-    approveAt: "2026-06-22 08:30",
-    completeAt: "2026-06-22 11:00",
-  },
-  {
-    publisher: "3栋2单元1502号(业主)",
-    pubRating: "★★★★☆",
-    pubComment: "书很新，读得很愉快",
-    peer: "2栋1单元301号(租客)",
-    peerRating: "★★★★☆",
-    peerComment: "",
-    content: "《三体》全套3册",
-    type: "idle",
-    timeStart: "2026-06-15 08:00",
-    timeEnd: "2026-06-20 16:00",
-    lendDuration: "5天",
-    condBefore: "几乎全新",
-    condAfter: "正常损耗",
-    returnStatus: "按时归还",
-    room: "3栋",
-    createdAt: "2026-06-13 10:00",
-    applyAt: "2026-06-14 09:00",
-    approveAt: "2026-06-14 16:00",
-    completeAt: "2026-06-20 16:00",
-  },
-  {
-    publisher: "7栋1单元1201号(业主)",
-    pubRating: "★★★★★",
-    pubComment: "",
-    peer: "3栋2单元1502号(业主)",
-    peerRating: "★★★★★",
-    peerComment: "辛苦了，非常感谢",
-    content: "陪老人就诊",
-    type: "help",
-    timeStart: "2026-06-28 08:30",
-    timeEnd: "2026-06-28 12:00",
-    room: "7栋",
-    createdAt: "2026-06-25 14:00",
-    applyAt: "2026-06-27 09:00",
-    approveAt: "2026-06-27 18:00",
-    completeAt: "2026-06-28 12:00",
-  },
-  {
-    publisher: "7栋1单元1201号(业主)",
-    pubRating: "★★★☆☆",
-    pubComment: "归还时有轻微划痕",
-    peer: "6栋2单元1102号(业主)",
-    peerRating: "★★★☆☆",
-    peerComment: "",
-    content: "捷安特折叠自行车",
-    type: "idle",
-    timeStart: "2026-06-10 09:00",
-    timeEnd: "2026-06-15 17:00",
-    lendDuration: "5天",
-    condBefore: "正常使用痕迹",
-    condAfter: "可修复损坏",
-    returnStatus: "超时归还",
-    room: "7栋",
-    createdAt: "2026-06-08 10:00",
-    applyAt: "2026-06-09 08:00",
-    approveAt: "2026-06-09 15:00",
-    completeAt: "2026-06-15 17:00",
-  },
-]);
+/** 从后端加载的真实互助记录数据 */
+const tableData = ref<RecordItemDTO[]>([]);
+/** 加载状态 */
+const loading = ref(false);
+
+/** 获取互助记录（合并借还+帮助两种类型） */
+async function fetchRecords(): Promise<void> {
+  loading.value = true;
+  try {
+    const res = await getRecords({ type: "all", page: 0, size: 500 });
+    const pageData = res.data?.data;
+    if (pageData?.content) {
+      tableData.value = pageData.content as RecordItemDTO[];
+    }
+  } catch {
+    ElMessage.error("加载互助记录失败");
+    tableData.value = [];
+  } finally {
+    loading.value = false;
+  }
+}
 
 /** 按筛选条件过滤后的记录列表 */
 const filteredRecords = computed(() => {
-  return records.filter((item) => {
+  return tableData.value.filter((item) => {
     if (filterType.value && item.type !== filterType.value) return false;
-    if (filterBuilding.value && !item.room.startsWith(filterBuilding.value))
+    if (filterBuilding.value && !(item.room || "").startsWith(filterBuilding.value))
       return false;
-    if (filterUnit.value && !matchUnit(item.room, filterUnit.value))
+    if (filterUnit.value && !matchUnit(item.room || "", filterUnit.value))
       return false;
     // 时间区间筛选：按记录开始日期（精确到日）落在所选起止范围内
     const range = filterDateRange.value;
     if (range && range.length === 2) {
       const [start, end] = range;
-      const d = (item.timeStart || "").slice(0, 10);
+      const d = (item.timeStart || "").toString().slice(0, 10);
       if (d < start || d > end) return false;
     }
     if (search.value) {
@@ -541,6 +470,12 @@ const filterUnitOptions = computed<{ id: number; name: string }[]>(() => {
   const buildingId = communityStore.getBuildingId(filterBuilding.value);
   return buildingId ? communityStore.getUnits(buildingId) : [];
 });
+
+/** 重置筛选条件并重新加载数据 */
+function applyFilters(): void {
+  search.value = search.value.replace(/\s+/g, "");
+  currentPage.value = 1;
+}
 
 /**
  * 单元筛选匹配：直接字符串包含判断。
@@ -582,26 +517,32 @@ function detailGo(delta: number): void {
   detailPos.value = next;
 }
 
-// 互助进度时间线
+// 互助进度时间线（5 节点：发布 → 申请 → 同意 → 归还·评价 → 评价）
 const recordTimelineNodes = computed(() => {
   const it = detailItem.value;
   if (!it) return [];
-  const isIdle = it.type === "idle";
-  return [
-    { label: "发布时间", time: it.createdAt || "", color: "#909399" },
-    {
-      label: isIdle ? "借入申请" : "帮忙申请",
-      time: it.applyAt || "",
-      color: "#409eff",
-    },
-    {
-      label: isIdle ? "同意借出" : "同意帮忙",
-      time: it.approveAt || "",
-      color: "#e6a23c",
-    },
-    { label: "已完成", time: it.completeAt || "", color: "#67c23a" },
+  const isBorrow = it.type === "borrow";
+  const nodes: { label: string; time: string; color: string }[] = [
+    { label: "发布时间", time: it.publishedAt || "—", color: "#909399" },
+    { label: isBorrow ? "借入申请" : "申请主动帮忙", time: it.applyAt || "—", color: "#409eff" },
+    { label: isBorrow ? "同意借出" : "同意帮助", time: it.approveAt || "—", color: "#e6a23c" },
   ];
+  // 归还·评价（第一个评价）
+  if (it.rating1Label) {
+    nodes.push({ label: `归还·${it.rating1Label}`, time: it.rating1Time || "—", color: "#67c23a" });
+  }
+  // 对方评价（第二个评价）
+  if (it.rating2Label) {
+    nodes.push({ label: it.rating2Label, time: it.rating2Time || "—", color: "#f56c6c" });
+  }
+  return nodes;
 });
+
+/** 将评分数字 (1-5) 转换为星级字符串 (★★★★★) */
+function toStars(score: number | null | undefined): string {
+  if (score == null || score < 1 || score > 5) return "";
+  return "★★★★★".slice(0, score) + "☆☆☆☆☆".slice(0, 5 - score);
+}
 
 /** 顶部下拉菜单命令处理 */
 function handleCommand(cmd: string): void {

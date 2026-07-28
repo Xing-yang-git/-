@@ -62,6 +62,12 @@ public class ContentItemDTO {
     private String violatorName;
     private LocalDateTime violatedAt;
 
+    // 审批信息（用于待审批 tab）
+    /** 审批人姓名（管理员审核后填充） */
+    private String approverName;
+    /** 申请人姓名（发布者，与 publisherName 相同，语义化别名） */
+    private String applicantName;
+
     // 楼栋（用于筛选）
     private String building;
 }

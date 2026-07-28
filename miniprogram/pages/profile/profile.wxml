@@ -147,8 +147,8 @@
           <text class="approval-resident-addr approval-resident-addr-link" wx:if="{{recordSheetParties.left.personId}}" catchtap="onTapChatWithUser" data-user-id="{{recordSheetParties.left.personId}}" data-user-name="{{recordSheetParties.left.name}}">{{recordSheetParties.left.name}}</text>
           <text class="approval-resident-addr" wx:else>{{recordSheetParties.left.name}}</text>
           <view class="approval-rating-inline">
-            <text class="approval-rating-label">获评</text>
             <view class="approval-rating-score-row" wx:if="{{recordSheetParties.left.ratingText}}">
+              <text class="approval-rating-label">获评</text>
               <text class="approval-rating-value">{{recordSheetParties.left.ratingText}}</text>
               <text class="approval-rating-unit">/ 5.0</text>
             </view>
@@ -167,8 +167,8 @@
           <text class="approval-resident-addr approval-resident-addr-link" wx:if="{{recordSheetParties.right.personId}}" catchtap="onTapChatWithUser" data-user-id="{{recordSheetParties.right.personId}}" data-user-name="{{recordSheetParties.right.name}}">{{recordSheetParties.right.name}}</text>
           <text class="approval-resident-addr" wx:else>{{recordSheetParties.right.name}}</text>
           <view class="approval-rating-inline">
-            <text class="approval-rating-label">获评</text>
             <view class="approval-rating-score-row" wx:if="{{recordSheetParties.right.ratingText}}">
+              <text class="approval-rating-label">获评</text>
               <text class="approval-rating-value">{{recordSheetParties.right.ratingText}}</text>
               <text class="approval-rating-unit">/ 5.0</text>
             </view>
@@ -188,7 +188,7 @@
     <!-- 物品状况（借出后） -->
     <view class="approval-section">
       <text class="approval-section-label">物品状况（借出后）</text>
-      <text class="approval-note-text">{{recordSheetItem.damageType === 'normal' ? '正常损耗' : (recordSheetItem.damageType === 'severe' ? '严重损坏' : (recordSheetItem.damageType === 'broken' ? '完全损坏' : (recordSheetItem.damageType || '—')))}}</text>
+      <text class="approval-note-text">{{recordSheetItem.damageType === 'normal' ? '正常损耗' : (recordSheetItem.damageType === 'severe' ? '非正常损坏' : (recordSheetItem.damageType === 'broken' ? '完全损坏' : (recordSheetItem.damageType || '—')))}}</text>
     </view>
 
     <!-- 归还情况 -->
@@ -226,8 +226,8 @@
           <text class="approval-resident-addr approval-resident-addr-link" wx:if="{{recordSheetParties.left.personId}}" catchtap="onTapChatWithUser" data-user-id="{{recordSheetParties.left.personId}}" data-user-name="{{recordSheetParties.left.name}}">{{recordSheetParties.left.name}}</text>
           <text class="approval-resident-addr" wx:else>{{recordSheetParties.left.name}}</text>
           <view class="approval-rating-inline">
-            <text class="approval-rating-label">获评</text>
             <view class="approval-rating-score-row" wx:if="{{recordSheetParties.left.ratingText}}">
+              <text class="approval-rating-label">获评</text>
               <text class="approval-rating-value">{{recordSheetParties.left.ratingText}}</text>
               <text class="approval-rating-unit">/ 5.0</text>
             </view>
@@ -246,8 +246,8 @@
           <text class="approval-resident-addr approval-resident-addr-link" wx:if="{{recordSheetParties.right.personId}}" catchtap="onTapChatWithUser" data-user-id="{{recordSheetParties.right.personId}}" data-user-name="{{recordSheetParties.right.name}}">{{recordSheetParties.right.name}}</text>
           <text class="approval-resident-addr" wx:else>{{recordSheetParties.right.name}}</text>
           <view class="approval-rating-inline">
-            <text class="approval-rating-label">获评</text>
             <view class="approval-rating-score-row" wx:if="{{recordSheetParties.right.ratingText}}">
+              <text class="approval-rating-label">获评</text>
               <text class="approval-rating-value">{{recordSheetParties.right.ratingText}}</text>
               <text class="approval-rating-unit">/ 5.0</text>
             </view>

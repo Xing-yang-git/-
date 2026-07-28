@@ -29,5 +29,6 @@ public class UserDTO {
     private List<String> docImages;
     private String rejectReason;
     private String bannedReason;
+    private String auditorName;
     private LocalDateTime createdAt;
 }

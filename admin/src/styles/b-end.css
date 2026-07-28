@@ -11,7 +11,7 @@
   --accent: #0071e3;
   --accent-hover: #0077ed;
   --accent-active: #0066cc;
-  --bg: #f5f5f7;
+  --bg: rgba(120, 120, 128, 0.16);
   --surface: #ffffff;
   --sidebar-width: 240px;
   --topbar-height: 56px;
@@ -325,8 +325,9 @@ textarea {
 }
 
 .segment-btn.active {
-  background: rgba(0, 113, 227, 0.06);
-  color: var(--accent);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
 }
 
 /* ─── 状态徽标 ─── */

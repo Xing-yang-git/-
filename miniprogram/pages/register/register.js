@@ -1,6 +1,12 @@
 const api = require('../../utils/api');
 const { STATUS } = require('../../utils/constants');
 
+/**
+ * 用户注册页 — 多步骤注册流程（微信授权 → 小区选择 → 身份信息 → 完成）。
+ *
+ * 功能：小区/楼栋/单元/房间级联选择、身份类型选择（业主/租户）、
+ *        姓名和手机号填写、证件照片上传、提交审核。
+ */
 Page({
   data: {
     currentStep: 0,
@@ -25,7 +31,24 @@ Page({
     docHint: '请上传清晰完整的房产证照片（支持拍照或相册选取）'
   },
 
-  onLoad() {
+  onLoad(options) {
+    // 全新注册（非 needRegister 流程）时清除残留旧 token，
+    // 防止同设备上一位用户的 token 导致后端覆写其数据。
+    // needRegister 流程（来自 wxLogin 预创建）需保留 token 以更新已有用户。
+    if (!options || options.from !== 'needRegister') {
+      wx.removeStorageSync('token');
+      wx.removeStorageSync('userInfo');
+      const app = getApp();
+      if (app) {
+        app.globalData.token = '';
+        app.globalData.userInfo = null;
+        if (app._socketTask) {
+          try { app._socketTask.close({}); } catch (e) {}
+          app._socketTask = null;
+          app.globalData.socketOpen = false;
+        }
+      }
+    }
     this.loadTenants();
   },
 

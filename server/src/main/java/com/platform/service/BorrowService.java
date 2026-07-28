@@ -76,7 +76,7 @@ public class BorrowService {
         borrowRequest = borrowRequestRepository.save(borrowRequest);
 
         // 标记物品为"已被预定"，使详情页按钮显示"已申请"而非"我要借出"
-        idleItem.setStatus(BizStatus.RESERVED);
+        idleItem.setStatus(BizStatus.PENDING);
         idleItemRepository.save(idleItem);
 
         boolean wanted = PostType.WANTED.equals(idleItem.getPostType());
@@ -116,6 +116,9 @@ public class BorrowService {
 
         boolean approved = req.getApproved();
         borrowRequest.setStatus(approved ? BizStatus.APPROVED : BizStatus.REJECTED);
+        if (approved) {
+            borrowRequest.setApprovedAt(LocalDateTime.now());
+        }
         borrowRequest = borrowRequestRepository.save(borrowRequest);
 
         syncIdleItemAfterApproveReject(idleItem, borrowRequest, approved);
@@ -129,7 +132,7 @@ public class BorrowService {
      */
     private void syncIdleItemAfterApproveReject(IdleItem idleItem, BorrowRequest borrowRequest, boolean approved) {
         if (approved) {
-            idleItem.setStatus("borrowing");
+            idleItem.setStatus(BizStatus.ACTIVE);
             borrowRequest.setStartDate(LocalDate.now());
             idleItemRepository.save(idleItem);
         } else {
@@ -217,6 +220,7 @@ public class BorrowService {
         borrowRequest.setIsOnTime(req.getIsOnTime());
         borrowRequest.setReturnPhotos(req.getReturnPhotos());
         borrowRequest.setStatus(BizStatus.RETURNED);
+        borrowRequest.setReturnedAt(LocalDateTime.now());
         borrowRequest = borrowRequestRepository.save(borrowRequest);
 
         if (idleItem != null) {
@@ -234,6 +238,28 @@ public class BorrowService {
         }
 
         return toDTO(borrowRequest);
+    }
+
+    /**
+     * 补充归还后物品状况（damageType）。
+     * 仅物品所有者可在已完成归还的记录上补填，防止借入方归还时跳过了物主确认。
+     */
+    public void updateDamage(Long userId, Long borrowId, String damageType) {
+        BorrowRequest br = borrowRequestRepository.findById(borrowId)
+                .orElseThrow(() -> new RuntimeException("借入记录不存在"));
+        IdleItem idleItem = idleItemRepository.findById(br.getIdleId()).orElse(null);
+        Long ownerId = idleItem != null ? idleItem.getUserId() : null;
+        if (ownerId == null || !ownerId.equals(userId)) {
+            throw new RuntimeException("只有物品所有者可以填写物品状况");
+        }
+        if (!BizStatus.RETURNED.equals(br.getStatus())) {
+            throw new RuntimeException("仅已完成归还的记录可补充物品状况");
+        }
+        if (damageType == null || damageType.isEmpty()) {
+            throw new RuntimeException("请选择物品状况");
+        }
+        br.setDamageType(damageType);
+        borrowRequestRepository.save(br);
     }
 
     private BorrowResponseDTO toDTO(BorrowRequest br) {

@@ -3,12 +3,17 @@ package com.platform.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.platform.common.BizStatus;
+import com.platform.common.DamageType;
 import com.platform.common.PostType;
+import com.platform.common.ReturnStatus;
 import com.platform.common.UserFormatter;
+import com.platform.common.UserType;
 import com.platform.model.dto.AuditRequest;
 import com.platform.model.dto.ContentItemDTO;
 import com.platform.model.dto.ContentOfflineRequest;
 import com.platform.model.dto.DashboardDTO;
+import com.platform.model.dto.ExportLogDTO;
+import com.platform.model.dto.ExportRequest;
 import com.platform.model.dto.HelpRequestDTO;
 import com.platform.model.dto.HelpResponseDTO;
 import com.platform.model.dto.IdleItemDTO;
@@ -19,6 +24,7 @@ import com.platform.model.dto.ResidentDTO;
 import com.platform.model.dto.UserDTO;
 import com.platform.model.entity.BorrowRequest;
 import com.platform.model.entity.Building;
+import com.platform.model.entity.ExportLog;
 import com.platform.model.entity.HelpApplication;
 import com.platform.model.entity.HelpRequest;
 import com.platform.model.entity.IdleItem;
@@ -31,6 +37,7 @@ import com.platform.model.entity.Unit;
 import com.platform.model.entity.User;
 import com.platform.repository.BorrowRequestRepository;
 import com.platform.repository.BuildingRepository;
+import com.platform.repository.ExportLogRepository;
 import com.platform.repository.HelpApplicationRepository;
 import com.platform.repository.HelpRequestRepository;
 import com.platform.repository.IdleItemRepository;
@@ -41,6 +48,9 @@ import com.platform.repository.TenantRepository;
 import com.platform.repository.UnitRepository;
 import com.platform.repository.UserRepository;
 import com.platform.websocket.ChatWebSocketHandler;
+import com.alibaba.excel.EasyExcel;
+import com.alibaba.excel.ExcelWriter;
+import com.alibaba.excel.write.metadata.WriteSheet;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -50,6 +60,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.ByteArrayOutputStream;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -58,6 +70,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.time.format.DateTimeFormatter;
 
 @Service
 @Transactional
@@ -78,6 +91,8 @@ public class AdminService {
     private final UnitRepository unitRepository;
     private final RoomRepository roomRepository;
     private final RatingRepository ratingRepository;
+    private final ExportLogRepository exportLogRepository;
+    private final UserActivityService userActivityService;
     private final PasswordEncoder passwordEncoder;
     private final ChatWebSocketHandler chatWebSocketHandler;
 
@@ -93,6 +108,8 @@ public class AdminService {
                         UnitRepository unitRepository,
                         RoomRepository roomRepository,
                         RatingRepository ratingRepository,
+                        ExportLogRepository exportLogRepository,
+                        UserActivityService userActivityService,
                         PasswordEncoder passwordEncoder,
                         ChatWebSocketHandler chatWebSocketHandler) {
         this.idleItemRepository = idleItemRepository;
@@ -107,6 +124,8 @@ public class AdminService {
         this.unitRepository = unitRepository;
         this.roomRepository = roomRepository;
         this.ratingRepository = ratingRepository;
+        this.exportLogRepository = exportLogRepository;
+        this.userActivityService = userActivityService;
         this.passwordEncoder = passwordEncoder;
         this.chatWebSocketHandler = chatWebSocketHandler;
     }
@@ -117,6 +136,7 @@ public class AdminService {
      * 获取管理员所属小区的仪表盘统计数据，包括在线数量、本月发布、完成率、活跃用户等。
      */
     public DashboardDTO getDashboard(Long adminId) {
+        requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime monthStart = now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
@@ -125,7 +145,7 @@ public class AdminService {
 
         // 加载闲置物品数据
         List<IdleItem> allIdle = idleItemRepository.findAll().stream()
-                .filter(i -> tenantId.equals(i.getTenantId()))
+                .filter(i -> tenantMatches(tenantId, i.getTenantId()))
                 .collect(Collectors.toList());
         long onlineLendCount = allIdle.stream()
                 .filter(i -> BizStatus.ONLINE.equals(i.getStatus()) && PostType.LEND.equals(i.getPostType()))
@@ -136,7 +156,7 @@ public class AdminService {
 
         // 加载求助数据
         List<HelpRequest> allHelp = helpRequestRepository.findAll().stream()
-                .filter(h -> tenantId.equals(h.getTenantId()))
+                .filter(h -> tenantMatches(tenantId, h.getTenantId()))
                 .collect(Collectors.toList());
         long onlineHelpCount = allHelp.stream()
                 .filter(h -> BizStatus.ONLINE.equals(h.getStatus()))
@@ -163,12 +183,13 @@ public class AdminService {
                 ? (double) monthlyCompletedBorrows / monthlyTotalBorrows : 0.0;
 
         long monthlyActiveUsers = userRepository.findAll().stream()
-                .filter(u -> tenantId.equals(u.getTenantId()))
+                .filter(u -> tenantMatches(tenantId, u.getTenantId()))
                 .filter(u -> isWithinMonth(u.getCreatedAt(), monthStart, monthEnd))
                 .count();
 
         long damageCount = allBorrows.stream()
-                .filter(b -> b.getDamageType() != null && !"none".equals(b.getDamageType()))
+                .filter(b -> b.getDamageType() != null
+                        && !DamageType.NORMAL.equals(b.getDamageType()))
                 .count();
 
         // 构建统计数据
@@ -199,7 +220,7 @@ public class AdminService {
         return borrowRequestRepository.findAll().stream()
                 .filter(b -> {
                     IdleItem idle = idleItemRepository.findById(b.getIdleId()).orElse(null);
-                    return idle != null && tenantId.equals(idle.getTenantId());
+                    return idle != null && tenantMatches(tenantId, idle.getTenantId());
                 })
                 .collect(Collectors.toList());
     }
@@ -253,27 +274,47 @@ public class AdminService {
      * @param page    页码（从 0 开始）
      * @param size    每页条数
      */
-    private static final List<String> ADMIN_USER_TYPES = Arrays.asList("admin", "super_admin");
+    private static final List<String> ADMIN_USER_TYPES = Arrays.asList(UserType.ADMIN, UserType.SENIOR_ADMIN, UserType.SUPER_ADMIN);
 
-    public PageDTO<UserDTO> getAudits(String status, int page, int size) {
+    public PageDTO<UserDTO> getAudits(Long adminId, String status, int page, int size) {
+        requireNotSuperAdmin(findAdmin(adminId));
+        Long tenantId = getAdminTenantId(adminId);
         PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<User> userPage;
 
         if (status != null && !status.isEmpty()) {
             if (BizStatus.APPROVED.equals(status)) {
                 // "全部住户"页签：仅显示真实住户，排除管理员账号
-                userPage = userRepository.findByAuthStatusAndUserTypeNotIn(BizStatus.APPROVED, ADMIN_USER_TYPES, pageRequest);
+                userPage = tenantId != null
+                        ? userRepository.findByTenantIdAndAuthStatusAndUserTypeNotIn(tenantId, BizStatus.APPROVED, ADMIN_USER_TYPES, pageRequest)
+                        : userRepository.findByAuthStatusAndUserTypeNotIn(BizStatus.APPROVED, ADMIN_USER_TYPES, pageRequest);
             } else {
-                userPage = userRepository.findByAuthStatus(status, pageRequest);
+                userPage = tenantId != null
+                        ? userRepository.findByTenantIdAndAuthStatus(tenantId, status, pageRequest)
+                        : userRepository.findByAuthStatus(status, pageRequest);
             }
         } else {
             // "all"页签：排除仍处于 "registering" 状态（尚未完成注册）的用户
-            userPage = userRepository.findByAuthStatusNot("registering", pageRequest);
+            userPage = tenantId != null
+                    ? userRepository.findByTenantIdAndAuthStatusNot(tenantId, BizStatus.REGISTERING, pageRequest)
+                    : userRepository.findByAuthStatusNot(BizStatus.REGISTERING, pageRequest);
         }
 
         List<UserDTO> dtos = userPage.getContent().stream()
                 .map(this::toUserDTO)
                 .collect(Collectors.toList());
+
+        // 批量填充审核人信息：查询 OperationLog 获取每个用户的审核操作人
+        List<Long> userIds = dtos.stream().map(UserDTO::getId).collect(Collectors.toList());
+        if (!userIds.isEmpty()) {
+            Map<Long, String> auditorMap = operationLogRepository.findApprovalsByUserIds(userIds).stream()
+                    .collect(Collectors.toMap(
+                            OperationLog::getTargetId,
+                            ol -> ol.getAdmin() != null ? ol.getAdmin().getName() : "",
+                            (existing, replacement) -> replacement  // 多条日志时保留最新（DESC排序保证第一条最新）
+                    ));
+            dtos.forEach(dto -> dto.setAuditorName(auditorMap.getOrDefault(dto.getId(), "")));
+        }
 
         return PageDTO.<UserDTO>builder()
                 .content(dtos)
@@ -287,16 +328,27 @@ public class AdminService {
     /**
      * 获取各审核页签的数量统计。
      */
-    public Map<String, Long> getAuditCounts() {
+    public Map<String, Long> getAuditCounts(Long adminId) {
+        requireNotSuperAdmin(findAdmin(adminId));
+        Long tenantId = getAdminTenantId(adminId);
         Map<String, Long> counts = new HashMap<>();
-        counts.put(BizStatus.PENDING, userRepository.countByAuthStatus(BizStatus.PENDING));
-        counts.put(BizStatus.APPROVED, userRepository.countByAuthStatusAndUserTypeNotIn(BizStatus.APPROVED, ADMIN_USER_TYPES));
-        counts.put(BizStatus.REJECTED, userRepository.countByAuthStatus(BizStatus.REJECTED));
-        counts.put("all", userRepository.countByAuthStatusNot("registering"));
+        counts.put(BizStatus.PENDING, tenantId != null
+                ? userRepository.countByTenantIdAndAuthStatus(tenantId, BizStatus.PENDING)
+                : userRepository.countByAuthStatus(BizStatus.PENDING));
+        counts.put(BizStatus.APPROVED, tenantId != null
+                ? userRepository.countByTenantIdAndAuthStatusAndUserTypeNotIn(tenantId, BizStatus.APPROVED, ADMIN_USER_TYPES)
+                : userRepository.countByAuthStatusAndUserTypeNotIn(BizStatus.APPROVED, ADMIN_USER_TYPES));
+        counts.put(BizStatus.REJECTED, tenantId != null
+                ? userRepository.countByTenantIdAndAuthStatus(tenantId, BizStatus.REJECTED)
+                : userRepository.countByAuthStatus(BizStatus.REJECTED));
+        counts.put("all", tenantId != null
+                ? userRepository.countByTenantIdAndAuthStatusNot(tenantId, BizStatus.REGISTERING)
+                : userRepository.countByAuthStatusNot(BizStatus.REGISTERING));
         return counts;
     }
 
     public Map<String, Object> auditUser(Long adminId, Long userId, AuditRequest req) {
+        requireNotSuperAdmin(findAdmin(adminId));
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("用户不存在"));
 
@@ -354,6 +406,7 @@ public class AdminService {
      */
     public PageDTO<ContentItemDTO> getContentList(Long adminId, String statusTab, String type, String building,
                                                    String unit, String search, int page, int size) {
+        requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
 
         // 解析楼栋筛选条件（无匹配用户时直接返回空页）
@@ -364,6 +417,21 @@ public class AdminService {
 
         // 将状态页签映射为数据库状态值列表
         String effectiveTab = (statusTab != null && !statusTab.isEmpty()) ? statusTab : "all";
+
+        // 待审批 tab 特殊处理：数据来源为 borrow_requests / help_applications（pending 状态），
+        // 而非 idle_items / help_requests 表，与 C端「管理页→审批」数据源一致
+        if ("pending".equals(effectiveTab)) {
+            List<ContentItemDTO> allItems = new ArrayList<>();
+            if (type == null || "idle".equals(type)) {
+                allItems.addAll(fetchPendingBorrowItems(tenantId, buildingUserIds, search));
+            }
+            if (type == null || "help".equals(type)) {
+                allItems.addAll(fetchPendingHelpItems(tenantId, buildingUserIds, search));
+            }
+            sortContentByCreatedAtDesc(allItems);
+            return paginateInMemory(allItems, page, size);
+        }
+
         List<String> idleStatuses = mapStatusTabToIdleStatuses(effectiveTab);
         List<String> helpStatuses = mapStatusTabToHelpStatuses(effectiveTab);
 
@@ -429,14 +497,22 @@ public class AdminService {
      * @param type "idle" 或 "help"
      * @return 内容详情 DTO
      */
-    public ContentItemDTO getContentDetail(Long id, String type) {
+    public ContentItemDTO getContentDetail(Long adminId, Long id, String type) {
+        requireNotSuperAdmin(findAdmin(adminId));
+        Long tenantId = getAdminTenantId(adminId);
         if ("idle".equals(type)) {
             IdleItem item = idleItemRepository.findById(id)
                     .orElseThrow(() -> new RuntimeException("物品不存在"));
+            if (!tenantMatches(tenantId, item.getTenantId())) {
+                throw new RuntimeException("无权查看该物品");
+            }
             return toContentItemDTO(item);
         } else if ("help".equals(type)) {
             HelpRequest item = helpRequestRepository.findById(id)
                     .orElseThrow(() -> new RuntimeException("求助不存在"));
+            if (!tenantMatches(tenantId, item.getTenantId())) {
+                throw new RuntimeException("无权查看该求助");
+            }
             return toContentItemDTO(item);
         } else {
             throw new RuntimeException("不支持的类型，请使用 idle 或 help");
@@ -448,28 +524,54 @@ public class AdminService {
      *
      * @return 页签名到数量的映射
      */
-    public Map<String, Long> getContentCounts() {
+    public Map<String, Long> getContentCounts(Long adminId) {
+        requireNotSuperAdmin(findAdmin(adminId));
+        Long tenantId = getAdminTenantId(adminId);
         Map<String, Long> counts = new HashMap<>();
 
-        long idleShowing = idleItemRepository.countByStatus(BizStatus.ONLINE);
-        long helpShowing = helpRequestRepository.countByStatus(BizStatus.ONLINE);
+        long idleShowing = tenantId != null
+                ? idleItemRepository.countByTenantIdAndStatus(tenantId, BizStatus.ONLINE)
+                : idleItemRepository.countByStatus(BizStatus.ONLINE);
+        long helpShowing = tenantId != null
+                ? helpRequestRepository.countByTenantIdAndStatus(tenantId, BizStatus.ONLINE)
+                : helpRequestRepository.countByStatus(BizStatus.ONLINE);
         counts.put("showing", idleShowing + helpShowing);
 
-        long idleProgressing = idleItemRepository.countByStatus("borrowing");
-        long helpProgressing = helpRequestRepository.countByStatus("helping");
+        long borrowPending = tenantId != null
+                ? borrowRequestRepository.countByStatusAndTenantId(BizStatus.PENDING, tenantId)
+                : borrowRequestRepository.countByStatus(BizStatus.PENDING);
+        long helpAppPending = tenantId != null
+                ? helpApplicationRepository.countByStatusAndTenantId(BizStatus.PENDING, tenantId)
+                : helpApplicationRepository.countByStatus(BizStatus.PENDING);
+        counts.put("pending", borrowPending + helpAppPending);
+
+        long idleProgressing = tenantId != null
+                ? idleItemRepository.countByTenantIdAndStatus(tenantId, BizStatus.ACTIVE)
+                : idleItemRepository.countByStatus(BizStatus.ACTIVE);
+        long helpProgressing = tenantId != null
+                ? helpRequestRepository.countByTenantIdAndStatus(tenantId, BizStatus.ACTIVE)
+                : helpRequestRepository.countByStatus(BizStatus.ACTIVE);
         counts.put("progressing", idleProgressing + helpProgressing);
 
-        long idleCompleted = idleItemRepository.countByStatus(BizStatus.COMPLETED);
-        long helpCompleted = helpRequestRepository.countByStatus(BizStatus.COMPLETED);
+        long idleCompleted = tenantId != null
+                ? idleItemRepository.countByTenantIdAndStatus(tenantId, BizStatus.COMPLETED)
+                : idleItemRepository.countByStatus(BizStatus.COMPLETED);
+        long helpCompleted = tenantId != null
+                ? helpRequestRepository.countByTenantIdAndStatus(tenantId, BizStatus.COMPLETED)
+                : helpRequestRepository.countByStatus(BizStatus.COMPLETED);
         counts.put("completed", idleCompleted + helpCompleted);
 
-        long idleViolation = idleItemRepository.countByStatus("deleted");
-        long helpViolation = helpRequestRepository.countByStatus("deleted");
+        long idleViolation = tenantId != null
+                ? idleItemRepository.countByTenantIdAndStatus(tenantId, BizStatus.DELETED)
+                : idleItemRepository.countByStatus(BizStatus.DELETED);
+        long helpViolation = tenantId != null
+                ? helpRequestRepository.countByTenantIdAndStatus(tenantId, BizStatus.DELETED)
+                : helpRequestRepository.countByStatus(BizStatus.DELETED);
         counts.put("violation", idleViolation + helpViolation);
 
         long idleAll = idleShowing + idleProgressing + idleCompleted + idleViolation;
         long helpAll = helpShowing + helpProgressing + helpCompleted + helpViolation;
-        counts.put("all", idleAll + helpAll);
+        counts.put("all", idleAll + helpAll + borrowPending + helpAppPending);
 
         return counts;
     }
@@ -486,6 +588,7 @@ public class AdminService {
      * 下架（删除）内容并记录违规信息。
      */
     public Map<String, Object> removeContent(Long adminId, Long contentId, ContentOfflineRequest req) {
+        requireNotSuperAdmin(findAdmin(adminId));
         String violationType = buildViolationType(req);
         String violationReason = buildViolationReason(req, violationType);
 
@@ -520,42 +623,94 @@ public class AdminService {
     }
 
     /**
-     * 下架闲置物品：标记违规状态、发送通知、记录操作日志。
+     * 下架闲置物品：标记违规状态、发送通知、记录操作日志，
+     * 并自动拒绝该物品下所有待审批的借入申请，确保待审批列表同步清空。
      */
     private void removeIdleContent(Long contentId, Long adminId, String violationType, String violationReason) {
         IdleItem item = idleItemRepository.findById(contentId)
                 .orElseThrow(() -> new RuntimeException("物品不存在"));
-        item.setStatus("deleted");
-        item.setDelistReason("violation");
+        item.setStatus(BizStatus.DELETED);
+        item.setDelistReason("违规下架");
         item.setViolationType(violationType);
         item.setViolationReason(violationReason);
         item.setViolatedBy(adminId);
         item.setViolatedAt(LocalDateTime.now());
         idleItemRepository.save(item);
 
+        // 拒绝该物品下所有待审批的借入申请，使其从待审批列表中消失
+        List<BorrowRequest> pendingBorrows = borrowRequestRepository.findByIdleId(contentId).stream()
+                .filter(br -> BizStatus.PENDING.equals(br.getStatus()))
+                .collect(Collectors.toList());
+        for (BorrowRequest br : pendingBorrows) {
+            br.setStatus(BizStatus.REJECTED);
+            borrowRequestRepository.save(br);
+            createNotification(br.getBorrowerId(), "audit_result",
+                    "借入申请已拒绝",
+                    "您的借入申请「" + item.getTitle() + "」因物品被下架而自动拒绝，原因：" + violationReason,
+                    br.getId());
+        }
+
+        // 强制结束该物品下所有进行中的借用，使其从进行中列表中消失
+        List<BorrowRequest> activeBorrows = borrowRequestRepository.findByIdleId(contentId).stream()
+                .filter(br -> BizStatus.APPROVED.equals(br.getStatus()))
+                .collect(Collectors.toList());
+        for (BorrowRequest br : activeBorrows) {
+            br.setStatus(BizStatus.RETURNED);
+            br.setReturnedAt(LocalDateTime.now());
+            borrowRequestRepository.save(br);
+            createNotification(br.getBorrowerId(), "violation",
+                    "物品已被下架",
+                    "您借用的「" + item.getTitle() + "」已被管理员下架，借用已强制结束",
+                    br.getId());
+        }
+
         createNotification(item.getUserId(), "violation",
-                "物品被管理员删除", "您的物品「" + item.getTitle() + "」因违规被删除",
+                "物品被管理员删除", "您的物品「" + item.getTitle() + "」因违规被删除，原因：" + violationReason,
                 item.getId());
 
         saveOperationLog(adminId, item.getTenantId(), "remove_content", "idle", contentId, violationReason);
     }
 
     /**
-     * 下架求助信息：标记违规状态、发送通知、记录操作日志。
+     * 下架求助信息：标记违规状态、发送通知、记录操作日志，
+     * 并自动拒绝该求助下所有待审批的帮助申请，确保待审批列表同步清空。
      */
     private void removeHelpContent(Long contentId, Long adminId, String violationType, String violationReason) {
         HelpRequest item = helpRequestRepository.findById(contentId)
                 .orElseThrow(() -> new RuntimeException("求助信息不存在"));
-        item.setStatus("deleted");
-        item.setDelistReason("violation");
+        item.setStatus(BizStatus.DELETED);
+        item.setDelistReason("违规下架");
         item.setViolationType(violationType);
         item.setViolationReason(violationReason);
         item.setViolatedBy(adminId);
         item.setViolatedAt(LocalDateTime.now());
         helpRequestRepository.save(item);
 
+        // 拒绝该求助下所有待审批的帮助申请，使其从待审批列表中消失
+        List<HelpApplication> pendingApps = helpApplicationRepository.findByHelpIdAndStatus(contentId, BizStatus.PENDING);
+        for (HelpApplication app : pendingApps) {
+            app.setStatus(BizStatus.REJECTED);
+            helpApplicationRepository.save(app);
+            createNotification(app.getHelperId(), "audit_result",
+                    "帮助申请已拒绝",
+                    "您对「" + item.getTitle() + "」的帮助申请因求助被下架而自动拒绝，原因：" + violationReason,
+                    app.getId());
+        }
+
+        // 强制结束该求助下所有进行中的帮助，使其从进行中列表中消失
+        List<HelpApplication> activeApps = helpApplicationRepository.findByHelpIdAndStatus(contentId, BizStatus.APPROVED);
+        for (HelpApplication app : activeApps) {
+            app.setStatus(BizStatus.COMPLETED);
+            app.setCompletedAt(LocalDateTime.now());
+            helpApplicationRepository.save(app);
+            createNotification(app.getHelperId(), "violation",
+                    "求助已被下架",
+                    "您正在帮助的「" + item.getTitle() + "」已被管理员下架，帮助已强制结束",
+                    app.getId());
+        }
+
         createNotification(item.getUserId(), "violation",
-                "求助被管理员删除", "您的求助「" + item.getTitle() + "」因违规被删除",
+                "求助被管理员删除", "您的求助「" + item.getTitle() + "」因违规被删除，原因：" + violationReason,
                 item.getId());
 
         saveOperationLog(adminId, item.getTenantId(), "remove_content", "help", contentId, violationReason);
@@ -580,6 +735,7 @@ public class AdminService {
     // ==================== 代发布 ====================
 
     public IdleItemDTO proxyPublishIdle(Long adminId, IdleItemRequest req) {
+        requireNotSuperAdmin(findAdmin(adminId));
         // tenant_id 为 NOT NULL 列，代发数据必须归属管理员所在租户，否则 save 直接抛约束异常
         Long tenantId = getAdminTenantId(adminId);
         IdleItem item = new IdleItem();
@@ -624,6 +780,7 @@ public class AdminService {
      * 管理员代发求助。
      */
     public HelpResponseDTO proxyPublishHelp(Long adminId, HelpRequestDTO req) {
+        requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
         HelpRequest helpRequest = new HelpRequest();
         helpRequest.setUserId(req.getUserId() != null ? req.getUserId() : adminId);
@@ -683,11 +840,18 @@ public class AdminService {
      * 获取交易记录（已归还的借用 / 已完成的帮助），按 createdAt 降序分页。
      */
     public PageDTO<Map<String, Object>> getRecords(Long adminId, String type, int page, int size) {
+        requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
         List<Map<String, Object>> allRecords = switch (type) {
             case "borrow" -> loadBorrowRecords(tenantId);
             case "help" -> loadHelpRecords(tenantId);
-            default -> throw new RuntimeException("不支持的类型，请使用 borrow 或 help");
+            case "all" -> {
+                List<Map<String, Object>> merged = new ArrayList<>();
+                merged.addAll(loadBorrowRecords(tenantId));
+                merged.addAll(loadHelpRecords(tenantId));
+                yield merged;
+            }
+            default -> throw new RuntimeException("不支持的类型，请使用 borrow、help 或 all");
         };
 
         sortByCreatedAtDesc(allRecords);
@@ -695,15 +859,22 @@ public class AdminService {
     }
 
     /**
-     * 加载该租户下已归还的借用记录。
+     * 加载该租户下已归还的借用记录（含评分、时长、物品状况等详情）。
      */
     private List<Map<String, Object>> loadBorrowRecords(Long tenantId) {
         List<BorrowRequest> borrows = borrowRequestRepository.findByStatus(BizStatus.RETURNED).stream()
                 .filter(br -> {
                     IdleItem idle = idleItemRepository.findById(br.getIdleId()).orElse(null);
-                    return idle != null && tenantId.equals(idle.getTenantId());
+                    return idle != null && tenantMatches(tenantId, idle.getTenantId());
                 })
                 .collect(Collectors.toList());
+
+        // 批量查询评价
+        List<Long> borrowIds = borrows.stream().map(BorrowRequest::getId).collect(Collectors.toList());
+        Map<Long, List<Rating>> ratingsByBorrowId = borrowIds.isEmpty() ? Map.of()
+                : ratingRepository.findByBorrowIdIn(borrowIds).stream()
+                        .collect(Collectors.groupingBy(Rating::getBorrowId));
+
         List<Map<String, Object>> records = new ArrayList<>();
         for (BorrowRequest br : borrows) {
             IdleItem idleItem = idleItemRepository.findById(br.getIdleId()).orElse(null);
@@ -711,42 +882,214 @@ public class AdminService {
             Long ownerId = idleItem != null ? idleItem.getUserId() : null;
             User owner = ownerId != null ? userRepository.findById(ownerId).orElse(null) : null;
 
+            // 评价按时间排序：先评价的在前
+            List<Rating> ratings = ratingsByBorrowId.getOrDefault(br.getId(), List.of()).stream()
+                    .sorted(Comparator.comparing(Rating::getCreatedAt))
+                    .collect(Collectors.toList());
+
+            // 借出方收到的评价 = toUserId == ownerId
+            Rating ownerRating = ratings.stream().filter(r -> r.getToUserId().equals(ownerId)).findFirst().orElse(null);
+            // 借入方收到的评价 = toUserId == borrowerId
+            Rating borrowerRating = ratings.stream().filter(r -> r.getToUserId().equals(br.getBorrowerId())).findFirst().orElse(null);
+
             Map<String, Object> map = new HashMap<>();
             map.put("id", br.getId());
             map.put("type", "borrow");
             map.put("title", idleItem != null ? idleItem.getTitle() : "未知物品");
-            map.put("borrowerName", borrower != null ? borrower.getName() : "未知用户");
-            map.put("ownerName", owner != null ? owner.getName() : "未知用户");
+            map.put("publisher", UserFormatter.formatPersonName(owner));
+            map.put("peer", UserFormatter.formatPersonName(borrower));
+            map.put("content", idleItem != null ? idleItem.getTitle() : "未知物品");
+            map.put("room", UserFormatter.formatRoom(owner));
+            map.put("timeStart", fmt(br.getCreatedAt()));
+            map.put("timeEnd", br.getReturnedAt() != null ? fmt(br.getReturnedAt()) : null);
+            map.put("createdAt", fmt(br.getCreatedAt()));
             map.put("status", br.getStatus());
+
+            // 时间线：发布时间、申请时间、同意时间、归还·评价×2
+            buildBorrowTimeline(map, idleItem, br, ratings, ownerId);
+
+            // 物品状况
+            map.put("condBefore", condLabel(idleItem != null ? idleItem.getCondition() : null));
+            map.put("condAfter", damageLabel(br.getDamageType(), br.getDamageNote()));
+            map.put("returnStatus", returnLabel(br.getReturnStatus()));
+
+            map.put("lendDuration", buildDuration(br));
             map.put("damageType", br.getDamageType());
-            map.put("createdAt", br.getCreatedAt());
+
+            // 评分（感想是评分人自己的感受，不是被评人的）：
+            // ownerRating    = 借入方→借出方的评价，feedback 是借入方的感想
+            // borrowerRating = 借出方→借入方的评价，feedback 是借出方的感想
+            map.put("pubRatingScore", ownerRating != null ? ownerRating.getScore() : null);
+            map.put("pubComment", borrowerRating != null ? borrowerRating.getFeedback() : null);
+            map.put("peerRatingScore", borrowerRating != null ? borrowerRating.getScore() : null);
+            map.put("peerComment", ownerRating != null ? ownerRating.getFeedback() : null);
             records.add(map);
         }
         return records;
     }
 
+    /** 构建借用记录的 5 节点时间线 */
+    private void buildBorrowTimeline(Map<String, Object> map, IdleItem idleItem, BorrowRequest br,
+                                      List<Rating> sortedRatings, Long ownerId) {
+        map.put("publishedAt", fmt(idleItem != null ? idleItem.getCreatedAt() : null));
+        map.put("applyAt", fmt(br.getCreatedAt()));
+        map.put("approveAt", fmt(br.getApprovedAt()));
+
+        if (!sortedRatings.isEmpty()) {
+            Rating first = sortedRatings.get(0);
+            map.put("rating1Label", first.getFromUserId().equals(br.getBorrowerId()) ? "借入方评价" : "借出方评价");
+            map.put("rating1Time", fmt(first.getCreatedAt()));
+        }
+        if (sortedRatings.size() >= 2) {
+            Rating second = sortedRatings.get(1);
+            map.put("rating2Label", second.getFromUserId().equals(br.getBorrowerId()) ? "借入方评价" : "借出方评价");
+            map.put("rating2Time", fmt(second.getCreatedAt()));
+        }
+    }
+
+    /** 格式化 LocalDateTime 为 "yyyy-MM-dd HH:mm" 字符串 */
+    private static String fmt(LocalDateTime dt) {
+        return dt != null ? dt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")) : null;
+    }
+
+    /** 构建帮助记录的 5 节点时间线 */
+    private void buildHelpTimeline(Map<String, Object> map, HelpRequest helpRequest,
+                                    HelpApplication app, List<Rating> sortedRatings) {
+        map.put("publishedAt", fmt(helpRequest != null ? helpRequest.getCreatedAt() : null));
+        map.put("applyAt", fmt(app.getCreatedAt()));
+        // 帮助申请无独立审批时间字段，用更新时间近似（penging→accepted 时会刷新）
+        map.put("approveAt", fmt(app.getUpdatedAt()));
+
+        if (!sortedRatings.isEmpty()) {
+            Rating first = sortedRatings.get(0);
+            map.put("rating1Label", first.getFromUserId().equals(app.getHelperId()) ? "相助方评价" : "求助方评价");
+            map.put("rating1Time", fmt(first.getCreatedAt()));
+        }
+        if (sortedRatings.size() >= 2) {
+            Rating second = sortedRatings.get(1);
+            map.put("rating2Label", second.getFromUserId().equals(app.getHelperId()) ? "相助方评价" : "求助方评价");
+            map.put("rating2Time", fmt(second.getCreatedAt()));
+        }
+    }
+
+    /** 构建借用时长描述文字（如 "3天"、"1周"） */
+    private String buildDuration(BorrowRequest br) {
+        if (br.getDurationType() == null || br.getDurationDays() == null) return null;
+        return br.getDurationDays() + mapDurationUnit(br.getDurationType());
+    }
+
+    private String mapDurationUnit(String type) {
+        return switch (type) {
+            case "hour" -> "小时";
+            case "day" -> "天";
+            case "week" -> "周";
+            case "month" -> "月";
+            default -> "未知";
+        };
+    }
+
+    /** 物品成色映射为中文（对齐 C端 condition 枚举） */
+    private String condLabel(String condition) {
+        if (condition == null) return null;
+        return switch (condition) {
+            case "like-new" -> "几乎全新";
+            case "normal"  -> "正常使用痕迹";
+            case "worn"    -> "有明显磨损";
+            default        -> condition;
+        };
+    }
+
+    /** 损坏类型映射为中文（对齐 C端三类体系 + 拼接备注） */
+    private String damageLabel(String damageType, String damageNote) {
+        String type = (damageType != null && !damageType.isEmpty())
+                ? mapDamageType(damageType)
+                : "待确认";
+        if (damageNote != null && !damageNote.isEmpty()) return type + "：" + damageNote;
+        return type;
+    }
+
+    /** 损坏类型映射为中文（统一三类：正常损耗/非正常损坏/完全损坏），兼容所有历史值 */
+    private String mapDamageType(String dt) {
+        if (dt == null || dt.isEmpty()) return "待确认";
+        return switch (dt) {
+            // 统一后的三类主值
+            case DamageType.NORMAL   -> "正常损耗";
+            case DamageType.ABNORMAL -> "非正常损坏";
+            case DamageType.BROKEN   -> "完全损坏";
+            // 兼容旧值（存量数据迁移已覆盖，此处兜底确保不显示原始字符串）
+            case "none"              -> "正常损耗";
+            case "minor", "slight"   -> "非正常损坏";
+            case "moderate"          -> "非正常损坏";
+            default                  -> dt;
+        };
+    }
+
+    /** 归还情况映射为中文（对齐 C端：ontime/delayed/not_returned） */
+    private String returnLabel(String returnStatus) {
+        if (returnStatus == null) return null;
+        return switch (returnStatus) {
+            case ReturnStatus.ON_TIME      -> "按时归还";
+            case ReturnStatus.DELAYED      -> "逾期归还";
+            case ReturnStatus.NOT_RETURNED -> "未归还";
+            default                        -> "";
+        };
+    }
+
     /**
-     * 加载该租户下已完成的帮助记录。
+     * 加载该租户下已完成的帮助记录（含评分、时间线等详情）。
      */
     private List<Map<String, Object>> loadHelpRecords(Long tenantId) {
         List<HelpApplication> applications = helpApplicationRepository.findByStatus(BizStatus.COMPLETED).stream()
                 .filter(app -> {
                     HelpRequest hr = helpRequestRepository.findById(app.getHelpId()).orElse(null);
-                    return hr != null && tenantId.equals(hr.getTenantId());
+                    return hr != null && tenantMatches(tenantId, hr.getTenantId());
                 })
                 .collect(Collectors.toList());
+
+        // 批量查询所有帮助申请的评价
+        List<Long> appIds = applications.stream().map(HelpApplication::getId).collect(Collectors.toList());
+        Map<Long, List<Rating>> ratingsByAppId = appIds.isEmpty() ? Map.of()
+                : ratingRepository.findByHelpApplicationIdIn(appIds).stream()
+                        .collect(Collectors.groupingBy(Rating::getHelpApplicationId));
+
         List<Map<String, Object>> records = new ArrayList<>();
         for (HelpApplication app : applications) {
             HelpRequest helpRequest = helpRequestRepository.findById(app.getHelpId()).orElse(null);
             User helper = userRepository.findById(app.getHelperId()).orElse(null);
+            Long requesterId = helpRequest != null ? helpRequest.getUserId() : null;
+            User requester = requesterId != null ? userRepository.findById(requesterId).orElse(null) : null;
+
+            // 评价按时间排序
+            List<Rating> ratings = ratingsByAppId.getOrDefault(app.getId(), List.of()).stream()
+                    .sorted(Comparator.comparing(Rating::getCreatedAt))
+                    .collect(Collectors.toList());
+            Rating requesterRating = ratings.stream().filter(r -> r.getToUserId().equals(requesterId)).findFirst().orElse(null);
+            Rating helperRating = ratings.stream().filter(r -> r.getToUserId().equals(app.getHelperId())).findFirst().orElse(null);
 
             Map<String, Object> map = new HashMap<>();
             map.put("id", app.getId());
             map.put("type", "help");
             map.put("title", helpRequest != null ? helpRequest.getTitle() : "未知求助");
-            map.put("helperName", helper != null ? helper.getName() : "未知用户");
+            map.put("publisher", UserFormatter.formatPersonName(requester));
+            map.put("peer", UserFormatter.formatPersonName(helper));
+            map.put("content", helpRequest != null ? helpRequest.getTitle() : "未知求助");
+            map.put("room", UserFormatter.formatRoom(requester));
+            map.put("timeStart", fmt(app.getCreatedAt()));
+            map.put("timeEnd", app.getCompletedAt() != null
+                    ? fmt(app.getCompletedAt()) : fmt(app.getUpdatedAt()));
+            map.put("createdAt", fmt(app.getCreatedAt()));
             map.put("status", app.getStatus());
-            map.put("createdAt", app.getCreatedAt());
+
+            // 时间线：发布时间、申请时间、同意时间、结束·评价×2
+            buildHelpTimeline(map, helpRequest, app, ratings);
+
+            // 评分（感想是评分人自己的感受，不是被评人的）：
+            // requesterRating = 相助方→求助方的评价，feedback 是相助方的感想
+            // helperRating     = 求助方→相助方的评价，feedback 是求助方的感想
+            map.put("pubRatingScore", requesterRating != null ? requesterRating.getScore() : null);
+            map.put("pubComment", helperRating != null ? helperRating.getFeedback() : null);
+            map.put("peerRatingScore", helperRating != null ? helperRating.getScore() : null);
+            map.put("peerComment", requesterRating != null ? requesterRating.getFeedback() : null);
             records.add(map);
         }
         return records;
@@ -754,11 +1097,12 @@ public class AdminService {
 
     /**
      * 按 createdAt 降序排列记录列表（null 值排最后）。
+     * createdAt 已格式化为 "yyyy-MM-dd HH:mm" 字符串，可直接字典序比较。
      */
     private void sortByCreatedAtDesc(List<Map<String, Object>> records) {
         records.sort((a, b) -> {
-            LocalDateTime ta = (LocalDateTime) a.get("createdAt");
-            LocalDateTime tb = (LocalDateTime) b.get("createdAt");
+            String ta = (String) a.get("createdAt");
+            String tb = (String) b.get("createdAt");
             if (ta == null && tb == null) return 0;
             if (ta == null) return 1;
             if (tb == null) return -1;
@@ -790,11 +1134,11 @@ public class AdminService {
 
     public PageDTO<OperationLogDTO> getOperationLogs(Long adminId, int page, int size) {
         User admin = findAdmin(adminId);
-        requireSuperAdmin(admin);
+        requireSeniorAdmin(admin);
         Long tenantId = getAdminTenantId(adminId);
         // 收集该租户下所有用户 ID，用于过滤日志
         List<Long> tenantUserIds = userRepository.findAll().stream()
-                .filter(u -> tenantId.equals(u.getTenantId()))
+                .filter(u -> tenantMatches(tenantId, u.getTenantId()))
                 .map(User::getId)
                 .collect(Collectors.toList());
         // 先按租户过滤全量日志、再内存分页——若先分页后过滤，计数会包含其他租户
@@ -823,92 +1167,969 @@ public class AdminService {
                 .build();
     }
 
-    // ==================== 数据导出 ====================
+    // ==================== 操作日志导出 ====================
 
     /**
-     * 按类型导出数据（idle/help/borrow），仅导出管理员所属租户的数据。
+     * 导出操作日志为 Excel 文件。
+     * 按时间倒序排列，包含时间、操作人、动作、目标类型、详情五列。
      */
-    public List<Map<String, Object>> exportData(Long adminId, String type) {
+    public byte[] exportOperationLogs(Long adminId) {
+        User caller = findAdmin(adminId);
+        requireSeniorAdmin(caller);
         Long tenantId = getAdminTenantId(adminId);
-        return switch (type) {
-            case "idle" -> exportIdleData(tenantId);
-            case "help" -> exportHelpData(tenantId);
-            case "borrow" -> exportBorrowData(tenantId);
-            default -> new ArrayList<>();
+
+        // 收集该租户下所有用户 ID
+        List<Long> tenantUserIds = userRepository.findAll().stream()
+                .filter(u -> tenantMatches(tenantId, u.getTenantId()))
+                .map(User::getId)
+                .collect(Collectors.toList());
+
+        // 获取操作日志并转换为行数据
+        List<OperationLog> allLogs = operationLogRepository.findAll().stream()
+                .filter(l -> tenantUserIds.contains(l.getAdminId()))
+                .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
+                .collect(Collectors.toList());
+
+        List<List<Object>> rows = new ArrayList<>();
+        for (OperationLog l : allLogs) {
+            User opAdmin = userRepository.findById(l.getAdminId()).orElse(null);
+            List<Object> row = new ArrayList<>();
+            row.add(fmt(l.getCreatedAt()));
+            row.add(opAdmin != null ? opAdmin.getName() : "");
+            row.add(mapAction(l.getAction()));
+            row.add(mapTargetType(l.getTargetType()));
+            row.add(l.getDetail() != null ? l.getDetail() : "");
+            rows.add(row);
+        }
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ExcelWriter writer = EasyExcel.write(baos).build();
+        WriteSheet sheet = EasyExcel.writerSheet("操作日志")
+                .head(Arrays.asList(
+                        Arrays.asList("时间"),
+                        Arrays.asList("操作人"),
+                        Arrays.asList("操作动作"),
+                        Arrays.asList("目标类型"),
+                        Arrays.asList("详情")
+                )).build();
+        writer.write(rows, sheet);
+        writer.finish();
+
+        return baos.toByteArray();
+    }
+
+    // ==================== 数据导出 ====================
+
+
+    /**
+     * 执行数据导出，根据勾选项目生成多 Sheet Excel 文件并返回字节数组。
+     * 仅勾选的项目会出现在对应的 Sheet 中。
+     *
+     * @param adminId 当前管理员ID
+     * @param req     导出请求体（勾选项目、日期范围）
+     * @return Excel 文件的字节数组
+     */
+    public byte[] exportData(Long adminId, ExportRequest req) {
+        User caller = findAdmin(adminId);
+        requireSeniorAdmin(caller);
+        Long tenantId = getAdminTenantId(adminId);
+        LocalDate startDate = parseDate(req.getDateStart());
+        LocalDate endDate = req.getDateEnd() != null
+                ? parseDate(req.getDateEnd()).plusDays(1)  // 闭区间：包含当天全部数据
+                : null;
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ExcelWriter writer = EasyExcel.write(baos).build();
+
+        // 六个导出项对应的记录数，顺序：residents/posts/borrows/helps/removals/ratings
+        int[] counts = new int[6];
+        int sheetIdx = 0;
+
+        try {
+            if (contains(req.getOptions(), "residents")) {
+                List<List<Object>> data = buildResidentsData(tenantId, startDate, endDate);
+                WriteSheet sheet = EasyExcel.writerSheet(sheetIdx++, "住户清单")
+                        .head(residentsHead()).build();
+                writer.write(data, sheet);
+                counts[0] = data.size();
+            }
+
+            if (contains(req.getOptions(), "posts")) {
+                List<List<Object>> data = buildPostsData(tenantId, startDate, endDate);
+                WriteSheet sheet = EasyExcel.writerSheet(sheetIdx++, "发布记录")
+                        .head(postsHead()).build();
+                writer.write(data, sheet);
+                counts[1] = data.size();
+            }
+
+            if (contains(req.getOptions(), "borrows")) {
+                List<List<Object>> data = buildBorrowsData(tenantId, startDate, endDate);
+                WriteSheet sheet = EasyExcel.writerSheet(sheetIdx++, "互借记录")
+                        .head(borrowsHead()).build();
+                writer.write(data, sheet);
+                counts[2] = data.size();
+
+                List<List<Object>> helpData = buildHelpsData(tenantId, startDate, endDate);
+                WriteSheet helpSheet = EasyExcel.writerSheet(sheetIdx++, "互助记录")
+                        .head(helpsHead()).build();
+                writer.write(helpData, helpSheet);
+                counts[3] = helpData.size();
+            }
+
+            if (contains(req.getOptions(), "removals")) {
+                List<List<Object>> data = buildRemovalsData(tenantId, startDate, endDate);
+                WriteSheet sheet = EasyExcel.writerSheet(sheetIdx++, "内容下架记录")
+                        .head(removalsHead()).build();
+                writer.write(data, sheet);
+                counts[4] = data.size();
+            }
+
+            if (contains(req.getOptions(), "ratings")) {
+                List<List<Object>> data = buildRatingsData(tenantId, startDate, endDate);
+                WriteSheet sheet = EasyExcel.writerSheet(sheetIdx++, "评分数据")
+                        .head(ratingsHead()).build();
+                writer.write(data, sheet);
+                counts[5] = data.size();
+            }
+        } finally {
+            writer.finish();
+        }
+
+        byte[] bytes = baos.toByteArray();
+
+        // 记录导出日志 — 文件名格式：{小区名}_{导出日期}.xlsx
+        // super_admin 的 tenantId 为 null，文件名为 "community_日期.xlsx"
+        Tenant tenant = tenantId != null ? tenantRepository.findById(tenantId).orElse(null) : null;
+        String tenantName = tenant != null ? tenant.getName() : "community";
+        String exportDate = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String fileName = tenantName + "_" + exportDate + ".xlsx";
+        saveExportLog(adminId, tenantId, req, counts, fileName);
+
+        return bytes;
+    }
+
+    // ──────────────────────────────────────────────
+    // 住户清单 Sheet
+    // ──────────────────────────────────────────────
+
+    /** 住户清单 Sheet 表头 */
+    private List<List<String>> residentsHead() {
+        return Arrays.asList(
+                Arrays.asList("住户"),
+                Arrays.asList("姓名"),
+                Arrays.asList("手机号"),
+                Arrays.asList("用户类型"),
+                Arrays.asList("认证状态"),
+                Arrays.asList("完整地址"),
+                Arrays.asList("注册时间"),
+                Arrays.asList("借入次数"),
+                Arrays.asList("借出次数"),
+                Arrays.asList("求助次数"),
+                Arrays.asList("帮助他人次数"),
+                Arrays.asList("按时归还率"),
+                Arrays.asList("个人综合评分")
+        );
+    }
+
+    /**
+     * 构建住户清单数据：已认证的非管理员住户 + 互助统计 + 综合评分。
+     * 按注册时间倒序排列（最新在最上面）。
+     */
+    private List<List<Object>> buildResidentsData(Long tenantId, LocalDate startDate, LocalDate endDate) {
+        List<List<Object>> data = new ArrayList<>();
+        List<User> users = tenantId != null
+                ? userRepository.findByTenantIdAndAuthStatusAndUserTypeNotIn(tenantId, BizStatus.APPROVED, ADMIN_USER_TYPES)
+                : userRepository.findByAuthStatusAndUserTypeNotIn(BizStatus.APPROVED, ADMIN_USER_TYPES);
+
+        // 按注册时间倒序
+        users.sort((a, b) -> {
+            if (a.getCreatedAt() == null) return 1;
+            if (b.getCreatedAt() == null) return -1;
+            return b.getCreatedAt().compareTo(a.getCreatedAt());
+        });
+
+        for (User user : users) {
+            if (!inRange(user.getCreatedAt(), startDate, endDate)) continue;
+
+            UserActivityService.InteractionStats stats =
+                    userActivityService.interactionStats(user.getId());
+            double returnRate = stats.returnedCount() > 0
+                    ? Math.round((double) stats.onTimeCount() / stats.returnedCount() * 1000.0) / 10.0
+                    : 100.0;
+
+            // 个人综合评分
+            Double avgScore = ratingRepository.getAverageScore(user.getId());
+            String scoreText = avgScore != null
+                    ? String.format("%.1f", avgScore) + "分"
+                    : "5.0分";
+
+            List<Object> row = new ArrayList<>();
+            row.add(UserFormatter.formatRoom(user));
+            row.add(user.getName());
+            row.add(user.getPhone());
+            row.add(UserFormatter.getUserTypeLabel(user.getUserType()));
+            row.add(BizStatus.APPROVED.equals(user.getAuthStatus()) ? "已认证" : "未认证");
+            row.add(UserFormatter.formatRoom(user));
+            row.add(fmt(user.getCreatedAt()));
+            row.add(stats.borrowCount());
+            row.add(stats.lendCount());
+            row.add(stats.helpReqCount());
+            row.add(stats.helpProCount());
+            row.add(returnRate + "%");
+            row.add(scoreText);
+            data.add(row);
+        }
+        return data;
+    }
+
+    // ──────────────────────────────────────────────
+    // 发布记录 Sheet（闲置 LEND/WANTED + 技能求助 合并）
+    // ──────────────────────────────────────────────
+
+    /** 发布记录 Sheet 表头 */
+    private List<List<String>> postsHead() {
+        return Arrays.asList(
+                Arrays.asList("发布类型"),
+                Arrays.asList("标题"),
+                Arrays.asList("分类"),
+                Arrays.asList("发布住户"),
+                Arrays.asList("发布人姓名"),
+                Arrays.asList("状态"),
+                Arrays.asList("下架原因"),
+                Arrays.asList("发布时间"),
+                Arrays.asList("备注")
+        );
+    }
+
+    /**
+     * 构建发布记录数据：合并闲置物品（LEND+WANTED）和技能求助为统一字段集。
+     */
+    private List<List<Object>> buildPostsData(Long tenantId, LocalDate startDate, LocalDate endDate) {
+        List<List<Object>> data = new ArrayList<>();
+
+        // 闲置物品（LEND + WANTED）
+        List<IdleItem> idleItems = idleItemRepository.findAll().stream()
+                .filter(i -> tenantMatches(tenantId, i.getTenantId()))
+                .collect(Collectors.toList());
+        for (IdleItem item : idleItems) {
+            if (!inRange(item.getCreatedAt(), startDate, endDate)) continue;
+            User user = userRepository.findById(item.getUserId()).orElse(null);
+
+            String postType = PostType.LEND.equals(item.getPostType()) ? "闲置借出" : "需求借入";
+
+            List<Object> row = new ArrayList<>();
+            row.add(postType);
+            row.add(item.getTitle() != null && !item.getTitle().isEmpty() ? item.getTitle() : "（无标题）");
+            row.add(item.getCategory() != null && !item.getCategory().isEmpty() ? item.getCategory() : "（无分类）");
+            row.add(user != null ? UserFormatter.formatRoom(user) : "");
+            row.add(user != null ? user.getName() : "");
+            row.add(mapIdleStatus(item.getStatus()));
+            row.add(mapDelistReason(item.getDelistReason()));
+            row.add(fmt(item.getCreatedAt()));
+            row.add(item.getDescription() != null ? item.getDescription() : "");
+            data.add(row);
+        }
+
+        // 技能求助
+        List<HelpRequest> helps = helpRequestRepository.findAll().stream()
+                .filter(h -> tenantMatches(tenantId, h.getTenantId()))
+                .collect(Collectors.toList());
+        for (HelpRequest item : helps) {
+            if (!inRange(item.getCreatedAt(), startDate, endDate)) continue;
+            User user = userRepository.findById(item.getUserId()).orElse(null);
+
+            List<Object> row = new ArrayList<>();
+            row.add("技能求助");
+            row.add(item.getTitle() != null && !item.getTitle().isEmpty() ? item.getTitle() : "（无标题）");
+            row.add(item.getCategory() != null && !item.getCategory().isEmpty() ? item.getCategory() : "（无分类）");
+            row.add(user != null ? UserFormatter.formatRoom(user) : "");
+            row.add(user != null ? user.getName() : "");
+            row.add(mapHelpStatus(item.getStatus()));
+            row.add(mapDelistReason(item.getDelistReason()));
+            row.add(fmt(item.getCreatedAt()));
+            row.add(item.getDescription() != null ? item.getDescription() : "");
+            data.add(row);
+        }
+
+        // 按发布时间倒序排列（最新在最上面）
+        data.sort((a, b) -> {
+            String ta = (String) a.get(7);  // 发布时间在第 8 列（索引 7）
+            String tb = (String) b.get(7);
+            if (ta == null && tb == null) return 0;
+            if (ta == null) return 1;
+            if (tb == null) return -1;
+            return tb.compareTo(ta);
+        });
+
+        return data;
+    }
+
+    // ──────────────────────────────────────────────
+    // 互借记录 Sheet（仅已归还的借用交易，含双方评分）
+    // ──────────────────────────────────────────────
+
+    /** 互借记录 Sheet 表头 */
+    private List<List<String>> borrowsHead() {
+        return Arrays.asList(
+                Arrays.asList("借入住户"),
+                Arrays.asList("借入人姓名"),
+                Arrays.asList("获得评分"),
+                Arrays.asList("互助感想"),
+                Arrays.asList("借出住户"),
+                Arrays.asList("借出人姓名"),
+                Arrays.asList("获得评分"),
+                Arrays.asList("互助感想"),
+                Arrays.asList("发布标题"),
+                Arrays.asList("详情说明"),
+                Arrays.asList("借入时长"),
+                Arrays.asList("状态"),
+                Arrays.asList("借出前物品状况"),
+                Arrays.asList("是否按时归还"),
+                Arrays.asList("归还后物品状况"),
+                Arrays.asList("发布时间"),
+                Arrays.asList("完成时间")
+        );
+    }
+
+    /**
+     * 构建互借记录数据：仅已归还的借用交易，含双方评分和物品详情。
+     * 按发布时间倒序排列（最新在最上面）。
+     */
+    private List<List<Object>> buildBorrowsData(Long tenantId, LocalDate startDate, LocalDate endDate) {
+        List<List<Object>> data = new ArrayList<>();
+        // 仅查询已归还的借用记录（确保损坏类型和归还状态非空）
+        List<BorrowRequest> borrows = borrowRequestRepository.findByStatus(BizStatus.RETURNED).stream()
+                .filter(br -> {
+                    IdleItem idle = idleItemRepository.findById(br.getIdleId()).orElse(null);
+                    return idle != null && tenantMatches(tenantId, idle.getTenantId());
+                })
+                .collect(Collectors.toList());
+
+        // 批量查询评价
+        List<Long> borrowIds = borrows.stream().map(BorrowRequest::getId).collect(Collectors.toList());
+        Map<Long, List<Rating>> ratingsByBorrowId = borrowIds.isEmpty() ? Map.of()
+                : ratingRepository.findByBorrowIdIn(borrowIds).stream()
+                        .collect(Collectors.groupingBy(Rating::getBorrowId));
+
+        for (BorrowRequest br : borrows) {
+            IdleItem idleItem = idleItemRepository.findById(br.getIdleId()).orElse(null);
+            if (idleItem == null) continue;
+            // 排除已下架的物品
+            if (BizStatus.DELETED.equals(idleItem.getStatus())) continue;
+            // 按物品的发布时间过滤（对齐列标签"发布时间"）
+            if (!inRange(idleItem.getCreatedAt(), startDate, endDate)) continue;
+
+            User borrower = userRepository.findById(br.getBorrowerId()).orElse(null);
+            Long ownerId = idleItem.getUserId();
+            User lender = ownerId != null ? userRepository.findById(ownerId).orElse(null) : null;
+
+            // 评价按时间排序：先评价的在前
+            List<Rating> ratings = ratingsByBorrowId.getOrDefault(br.getId(), List.of()).stream()
+                    .sorted(Comparator.comparing(Rating::getCreatedAt))
+                    .collect(Collectors.toList());
+            // 借入方收到的评价（借出方对借入方的评价）= toUserId == borrowerId
+            Rating borrowerRating = ratings.stream()
+                    .filter(r -> r.getToUserId().equals(br.getBorrowerId()))
+                    .findFirst().orElse(null);
+            // 借出方收到的评价（借入方对借出方的评价）= toUserId == ownerId
+            Rating lenderRating = ratings.stream()
+                    .filter(r -> r.getToUserId().equals(ownerId))
+                    .findFirst().orElse(null);
+
+            String duration = br.getDurationDays() != null ? br.getDurationDays().toString() : "";
+            if (br.getDurationType() != null) {
+                duration += mapDurationUnit(br.getDurationType());
+            }
+
+            // 发布时间取物品的原始发布时间，完成时间取归还操作的显式记录时间
+            String publishTime = fmt(idleItem.getCreatedAt());
+            String completeTime = fmt(br.getReturnedAt());
+
+            List<Object> row = new ArrayList<>();
+            // 感想是评分人自己的感受，而不是被评人的：
+            // borrowerRating = 借出方→借入方的评价，其 feedback 是借出方的感想
+            // lenderRating   = 借入方→借出方的评价，其 feedback 是借入方的感想
+            row.add(borrower != null ? UserFormatter.formatRoom(borrower) : "");            // 借入住户
+            row.add(borrower != null ? borrower.getName() : "");                             // 借入人姓名
+            row.add(borrowerRating != null ? borrowerRating.getScore() + "分" : "对方未评价");  // 获得评分（借入方收到的评分）
+            row.add(lenderRating != null && lenderRating.getFeedback() != null
+                    ? lenderRating.getFeedback() : "");                                       // 互助感想（借入方自己的感想）
+            row.add(lender != null ? UserFormatter.formatRoom(lender) : "");                 // 借出住户
+            row.add(lender != null ? lender.getName() : "");                                  // 借出人姓名
+            row.add(lenderRating != null ? lenderRating.getScore() + "分" : "对方未评价");      // 获得评分（借出方收到的评分）
+            row.add(borrowerRating != null && borrowerRating.getFeedback() != null
+                    ? borrowerRating.getFeedback() : "");                                     // 互助感想（借出方自己的感想）
+            row.add(idleItem.getTitle());                                                     // 发布标题
+            row.add(idleItem.getDescription() != null
+                    ? idleItem.getDescription() : "");                                        // 详情说明
+            row.add(duration);                                                                // 借入时长
+            row.add(mapBorrowStatus(br.getStatus()));                                         // 状态
+            row.add(condLabel(idleItem.getCondition()));                                      // 借出前物品状况（idle_items.condition）
+            row.add(mapReturnStatus(br.getReturnStatus()));                                   // 是否按时归还（return_status：ontime→按时归还/delayed→逾期归还）
+            row.add(mapDamageType(br.getDamageType()));                                       // 归还后物品状况（damage_type：正常损耗/非正常损坏/完全损坏）
+            row.add(publishTime);                                                             // 发布时间
+            row.add(completeTime);                                                            // 完成时间
+            data.add(row);
+        }
+
+        // 按发布时间倒序排列（最新在最上面），发布时间在列索引 15
+        data.sort((a, b) -> {
+            String ta = (String) a.get(15);
+            String tb = (String) b.get(15);
+            if (ta == null && tb == null) return 0;
+            if (ta == null) return 1;
+            if (tb == null) return -1;
+            return tb.compareTo(ta);
+        });
+
+        return data;
+    }
+
+    // ──────────────────────────────────────────────
+    // 互助记录 Sheet（技能求助交易，仅已完成的帮助申请）
+    // ──────────────────────────────────────────────
+
+    /** 互助记录 Sheet 表头 */
+    private List<List<String>> helpsHead() {
+        return Arrays.asList(
+                Arrays.asList("求助标题"),
+                Arrays.asList("求助住户"),
+                Arrays.asList("求助人姓名"),
+                Arrays.asList("获得评分"),
+                Arrays.asList("互助感想"),
+                Arrays.asList("相助住户"),
+                Arrays.asList("相助人姓名"),
+                Arrays.asList("获得评分"),
+                Arrays.asList("互助感想"),
+                Arrays.asList("发布时间"),
+                Arrays.asList("完成时间")
+        );
+    }
+
+    /**
+     * 构建互助记录数据：已完成的技能求助交易，包含双方评分和感谢语。
+     * 按完成时间倒序排列（最新在最上面）。
+     */
+    private List<List<Object>> buildHelpsData(Long tenantId, LocalDate startDate, LocalDate endDate) {
+        List<List<Object>> data = new ArrayList<>();
+
+        // 查询本小区所有已完成的帮助申请
+        List<HelpApplication> applications = helpApplicationRepository.findByStatus(BizStatus.COMPLETED).stream()
+                .filter(app -> {
+                    HelpRequest hr = helpRequestRepository.findById(app.getHelpId()).orElse(null);
+                    return hr != null && tenantMatches(tenantId, hr.getTenantId());
+                })
+                .collect(Collectors.toList());
+
+        // 批量查询评价
+        List<Long> appIds = applications.stream().map(HelpApplication::getId).collect(Collectors.toList());
+        Map<Long, List<Rating>> ratingsByAppId = appIds.isEmpty() ? Map.of()
+                : ratingRepository.findByHelpApplicationIdIn(appIds).stream()
+                        .collect(Collectors.groupingBy(Rating::getHelpApplicationId));
+
+        for (HelpApplication app : applications) {
+            HelpRequest helpRequest = helpRequestRepository.findById(app.getHelpId()).orElse(null);
+            if (helpRequest == null) continue;
+            // 排除已下架的求助
+            if (BizStatus.DELETED.equals(helpRequest.getStatus())) continue;
+            // 按求助的发布时间过滤（对齐列标签"发布时间"）
+            if (!inRange(helpRequest.getCreatedAt(), startDate, endDate)) continue;
+
+            User requester = userRepository.findById(helpRequest.getUserId()).orElse(null);
+            User helper = userRepository.findById(app.getHelperId()).orElse(null);
+
+            // 评价按时间排序
+            List<Rating> ratings = ratingsByAppId.getOrDefault(app.getId(), List.of()).stream()
+                    .sorted(Comparator.comparing(Rating::getCreatedAt))
+                    .collect(Collectors.toList());
+
+            // 求助方收到的评价（相助方对求助方的评价）
+            Rating requesterRating = ratings.stream()
+                    .filter(r -> r.getToUserId().equals(helpRequest.getUserId()))
+                    .findFirst().orElse(null);
+            // 相助方收到的评价（求助方对相助方的评价）
+            Rating helperRating = ratings.stream()
+                    .filter(r -> r.getToUserId().equals(app.getHelperId()))
+                    .findFirst().orElse(null);
+
+            // 感想是评分人自己的感受：
+            // requesterRating = 相助方→求助方的评价，其 feedback 是相助方的感想
+            // helperRating     = 求助方→相助方的评价，其 feedback 是求助方的感想
+            List<Object> row = new ArrayList<>();
+            row.add(helpRequest.getTitle() != null && !helpRequest.getTitle().isEmpty()
+                    ? helpRequest.getTitle() : "（无标题）");
+            row.add(requester != null ? UserFormatter.formatRoom(requester) : "（用户已删除）");
+            row.add(requester != null ? requester.getName() : "（用户已删除）");
+            row.add(requesterRating != null ? requesterRating.getScore() + "分" : "对方未评分");
+            row.add(helperRating != null && helperRating.getFeedback() != null
+                    ? helperRating.getFeedback() : "");                                         // 互助感想（求助人自己的感想）
+            row.add(helper != null ? UserFormatter.formatRoom(helper) : "（用户已删除）");
+            row.add(helper != null ? helper.getName() : "（用户已删除）");
+            row.add(helperRating != null ? helperRating.getScore() + "分" : "对方未评分");
+            row.add(requesterRating != null && requesterRating.getFeedback() != null
+                    ? requesterRating.getFeedback() : "");                                      // 互助感想（相助人自己的感想）
+            row.add(fmt(helpRequest.getCreatedAt()));
+            row.add(app.getCompletedAt() != null
+                    ? fmt(app.getCompletedAt()) : fmt(app.getUpdatedAt()));
+            data.add(row);
+        }
+
+        // 按发布时间倒序（最新在最上面）
+        data.sort((a, b) -> {
+            String ta = (String) a.get(9);  // 发布时间在第 10 列（索引 9）
+            String tb = (String) b.get(9);
+            if (ta == null && tb == null) return 0;
+            if (ta == null) return 1;
+            if (tb == null) return -1;
+            return tb.compareTo(ta);
+        });
+
+        return data;
+    }
+
+    // ──────────────────────────────────────────────
+    // 内容下架记录 Sheet
+    // ──────────────────────────────────────────────
+
+    /** 内容下架记录 Sheet 表头 */
+    private List<List<String>> removalsHead() {
+        return Arrays.asList(
+                Arrays.asList("操作时间"),
+                Arrays.asList("管理员"),
+                Arrays.asList("操作动作"),
+                Arrays.asList("目标类型"),
+                Arrays.asList("发布住户"),
+                Arrays.asList("发布人姓名"),
+                Arrays.asList("发布标题"),
+                Arrays.asList("详情说明"),
+                Arrays.asList("下架原因")
+        );
+    }
+
+    /**
+     * 构建内容下架记录数据：从 operation_logs 中筛选 action='remove_content' 的记录。
+     */
+    private List<List<Object>> buildRemovalsData(Long tenantId, LocalDate startDate, LocalDate endDate) {
+        List<List<Object>> data = new ArrayList<>();
+        List<OperationLog> logs = operationLogRepository.findAll().stream()
+                .filter(l -> tenantMatches(tenantId, l.getTenantId()) && "remove_content".equals(l.getAction()))
+                .collect(Collectors.toList());
+
+        for (OperationLog log : logs) {
+            if (!inRange(log.getCreatedAt(), startDate, endDate)) continue;
+            User admin = userRepository.findById(log.getAdminId()).orElse(null);
+
+            // 查找被下架内容的发布者信息和标题
+            String publisherRoom = "";
+            String publisherName = "";
+            String contentTitle = "";
+            User publisher = findRemovedContentPublisher(log.getTargetType(), log.getTargetId());
+            if (publisher != null) {
+                publisherRoom = UserFormatter.formatRoom(publisher);
+                publisherName = publisher.getName();
+            }
+            contentTitle = findRemovedContentTitle(log.getTargetType(), log.getTargetId());
+            String contentDescription = findRemovedContentDescription(log.getTargetType(), log.getTargetId());
+
+            List<Object> row = new ArrayList<>();
+            row.add(fmt(log.getCreatedAt()));
+            row.add(admin != null ? admin.getName() : "");
+            row.add(mapAction(log.getAction()));
+            row.add(mapTargetType(log.getTargetType()));
+            row.add(publisherRoom);
+            row.add(publisherName);
+            row.add(contentTitle);
+            row.add(contentDescription);
+            row.add(log.getDetail() != null ? log.getDetail() : "");
+            data.add(row);
+        }
+
+        // 按操作时间倒序排列（最新在最上面）
+        data.sort((a, b) -> {
+            String ta = (String) a.get(0);  // 操作时间在第 1 列（索引 0）
+            String tb = (String) b.get(0);
+            if (ta == null && tb == null) return 0;
+            if (ta == null) return 1;
+            if (tb == null) return -1;
+            return tb.compareTo(ta);
+        });
+
+        return data;
+    }
+
+    /**
+     * 根据下架操作日志中的 targetType 和 targetId 查找被下架内容的发布者。
+     *
+     * @param targetType 操作目标类型（idle / help）
+     * @param targetId   操作目标 ID
+     * @return 发布者用户实体，找不到时返回 null
+     */
+    private User findRemovedContentPublisher(String targetType, Long targetId) {
+        if (targetId == null) return null;
+        try {
+            Long publisherId = null;
+            if ("idle".equals(targetType)) {
+                IdleItem item = idleItemRepository.findById(targetId).orElse(null);
+                if (item != null) publisherId = item.getUserId();
+            } else if ("help".equals(targetType)) {
+                HelpRequest hr = helpRequestRepository.findById(targetId).orElse(null);
+                if (hr != null) publisherId = hr.getUserId();
+            }
+            if (publisherId != null) {
+                return userRepository.findById(publisherId).orElse(null);
+            }
+        } catch (Exception e) {
+            log.debug("查找下架内容发布者失败 targetType={} targetId={}", targetType, targetId, e);
+        }
+        return null;
+    }
+
+    /**
+     * 根据下架操作日志中的 targetType 和 targetId 查找被下架内容的标题。
+     *
+     * @param targetType 操作目标类型（idle / help）
+     * @param targetId   操作目标 ID
+     * @return 内容标题，找不到时返回空字符串
+     */
+    private String findRemovedContentTitle(String targetType, Long targetId) {
+        if (targetId == null) return "";
+        try {
+            if ("idle".equals(targetType)) {
+                IdleItem item = idleItemRepository.findById(targetId).orElse(null);
+                if (item != null && item.getTitle() != null) return item.getTitle();
+            } else if ("help".equals(targetType)) {
+                HelpRequest hr = helpRequestRepository.findById(targetId).orElse(null);
+                if (hr != null && hr.getTitle() != null) return hr.getTitle();
+            }
+        } catch (Exception e) {
+            log.debug("查找下架内容标题失败 targetType={} targetId={}", targetType, targetId, e);
+        }
+        return "";
+    }
+
+    /**
+     * 根据下架操作日志中的 targetType 和 targetId 查找被下架内容的详情说明。
+     *
+     * @param targetType 操作目标类型（idle / help）
+     * @param targetId   操作目标 ID
+     * @return 内容详情说明，找不到时返回空字符串
+     */
+    private String findRemovedContentDescription(String targetType, Long targetId) {
+        if (targetId == null) return "";
+        try {
+            if ("idle".equals(targetType)) {
+                IdleItem item = idleItemRepository.findById(targetId).orElse(null);
+                if (item != null && item.getDescription() != null) return item.getDescription();
+            } else if ("help".equals(targetType)) {
+                HelpRequest hr = helpRequestRepository.findById(targetId).orElse(null);
+                if (hr != null && hr.getDescription() != null) return hr.getDescription();
+            }
+        } catch (Exception e) {
+            log.debug("查找下架内容详情说明失败 targetType={} targetId={}", targetType, targetId, e);
+        }
+        return "";
+    }
+
+    // ──────────────────────────────────────────────
+    // 评分数据 Sheet
+    // ──────────────────────────────────────────────
+
+    /** 评分数据 Sheet 表头 */
+    private List<List<String>> ratingsHead() {
+        return Arrays.asList(
+                Arrays.asList("评分住户"),
+                Arrays.asList("评分人姓名"),
+                Arrays.asList("被评住户"),
+                Arrays.asList("被评人姓名"),
+                Arrays.asList("综合评分"),
+                Arrays.asList("互助感想"),
+                Arrays.asList("评分时间")
+        );
+    }
+
+    /**
+     * 构建评分数据。
+     */
+    private List<List<Object>> buildRatingsData(Long tenantId, LocalDate startDate, LocalDate endDate) {
+        List<List<Object>> data = new ArrayList<>();
+        List<Rating> ratings = ratingRepository.findAll().stream()
+                .filter(r -> {
+                    if (r.getBorrowId() != null) {
+                        BorrowRequest br = borrowRequestRepository.findById(r.getBorrowId()).orElse(null);
+                        if (br != null) {
+                            IdleItem idle = idleItemRepository.findById(br.getIdleId()).orElse(null);
+                            return idle != null && tenantMatches(tenantId, idle.getTenantId());
+                        }
+                    }
+                    if (r.getHelpApplicationId() != null) {
+                        HelpApplication app = helpApplicationRepository.findById(r.getHelpApplicationId()).orElse(null);
+                        if (app != null) {
+                            HelpRequest hr = helpRequestRepository.findById(app.getHelpId()).orElse(null);
+                            return hr != null && tenantMatches(tenantId, hr.getTenantId());
+                        }
+                    }
+                    return false;
+                })
+                .collect(Collectors.toList());
+
+        for (Rating r : ratings) {
+            if (!inRange(r.getCreatedAt(), startDate, endDate)) continue;
+            User fromUser = userRepository.findById(r.getFromUserId()).orElse(null);
+            User toUser = userRepository.findById(r.getToUserId()).orElse(null);
+
+            List<Object> row = new ArrayList<>();
+            row.add(fromUser != null ? UserFormatter.formatRoom(fromUser) : "");
+            row.add(fromUser != null ? fromUser.getName() : "");
+            row.add(toUser != null ? UserFormatter.formatRoom(toUser) : "");
+            row.add(toUser != null ? toUser.getName() : "");
+            row.add(r.getScore() + "分");
+            row.add(r.getFeedback() != null ? r.getFeedback() : "");
+            row.add(fmt(r.getCreatedAt()));
+            data.add(row);
+        }
+
+        // 按评分时间倒序排列（最新在最上面）
+        data.sort((a, b) -> {
+            String ta = (String) a.get(6);  // 评分时间在第 7 列（索引 6）
+            String tb = (String) b.get(6);
+            if (ta == null && tb == null) return 0;
+            if (ta == null) return 1;
+            if (tb == null) return -1;
+            return tb.compareTo(ta);
+        });
+
+        return data;
+    }
+
+    // ──────────────────────────────────────────────
+    // 导出日志
+    // ──────────────────────────────────────────────
+
+    /**
+     * 记录本次导出操作到 export_logs 表。
+     */
+    private void saveExportLog(Long adminId, Long tenantId, ExportRequest req,
+                               int[] counts, String fileName) {
+        ExportLog log = ExportLog.builder()
+                .adminId(adminId)
+                .tenantId(tenantId)
+                .exportFormat(req.getFormat() != null ? req.getFormat() : "xlsx")
+                .selectedOptions(String.join(",", req.getOptions()))
+                .dateRangeStart(req.getDateStart())
+                .dateRangeEnd(req.getDateEnd())
+                .residentsCount(counts[0])
+                .postsCount(counts[1])
+                .borrowsCount(counts[2])
+                .helpsCount(counts[3])
+                .removalsCount(counts[4])
+                .ratingsCount(counts[5])
+                .fileName(fileName)
+                .build();
+        exportLogRepository.save(log);
+    }
+
+    /**
+     * 查询导出日志（按时间倒序，内存分页）。
+     *
+     * @param adminId 当前管理员ID
+     * @param page    页码（从 0 开始）
+     * @param size    每页条数
+     * @return 分页的 ExportLogDTO 列表
+     */
+    public PageDTO<ExportLogDTO> getExportLogs(Long adminId, int page, int size) {
+        User caller = findAdmin(adminId);
+        requireSeniorAdmin(caller);
+        Long tenantId = getAdminTenantId(adminId);
+        // super_admin 查看全部导出记录，senior_admin 仅查看本小区
+        List<ExportLog> allLogs = tenantId != null
+                ? exportLogRepository.findByTenantIdOrderByCreatedAtDesc(tenantId)
+                : exportLogRepository.findAll().stream()
+                        .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
+                        .collect(Collectors.toList());
+
+        // 导出选项的中文映射
+        Map<String, String> optionLabels = Map.of(
+            "residents", "住户",
+            "posts", "发布",
+            "borrows", "互借",
+            "helps", "互助",
+            "removals", "下架",
+            "ratings", "评分"
+        );
+
+        List<ExportLogDTO> dtos = new ArrayList<>();
+        for (ExportLog log : allLogs) {
+            User admin = userRepository.findById(log.getAdminId()).orElse(null);
+            // senior_admin 不展示 super_admin 的导出记录
+            if (tenantId != null && admin != null && UserType.SUPER_ADMIN.equals(admin.getUserType())) {
+                continue;
+            }
+            // 将英文选项键转为中文标签
+            String rawOptions = log.getSelectedOptions();
+            String optionsChinese = rawOptions;
+            if (rawOptions != null && !rawOptions.isEmpty()) {
+                String[] keys = rawOptions.split(",");
+                optionsChinese = java.util.Arrays.stream(keys)
+                        .map(k -> optionLabels.getOrDefault(k.trim(), k.trim()))
+                        .collect(Collectors.joining("、"));
+            }
+            StringBuilder sb = new StringBuilder();
+            if (log.getResidentsCount() > 0) sb.append("住户:").append(log.getResidentsCount()).append(" ");
+            if (log.getPostsCount() > 0) sb.append("发布:").append(log.getPostsCount()).append(" ");
+            if (log.getBorrowsCount() > 0) sb.append("互借:").append(log.getBorrowsCount()).append(" ");
+            if (log.getHelpsCount() != null && log.getHelpsCount() > 0) sb.append("互助:").append(log.getHelpsCount()).append(" ");
+            if (log.getRemovalsCount() > 0) sb.append("下架:").append(log.getRemovalsCount()).append(" ");
+            if (log.getRatingsCount() > 0) sb.append("评分:").append(log.getRatingsCount());
+            dtos.add(ExportLogDTO.builder()
+                    .id(log.getId())
+                    .adminName(admin != null ? admin.getName() : "未知")
+                    .createdAt(log.getCreatedAt())
+                    .exportFormat(log.getExportFormat())
+                    .selectedOptions(optionsChinese)
+                    .countSummary(sb.toString().trim())
+                    .fileName(log.getFileName())
+                    .build());
+        }
+
+        // 内存分页，与 getOperationLogs 模式一致
+        int total = dtos.size();
+        int from = page * size;
+        int to = Math.min(from + size, total);
+        List<ExportLogDTO> pageContent = from < total ? dtos.subList(from, to) : List.of();
+        return PageDTO.<ExportLogDTO>builder()
+                .content(pageContent)
+                .totalElements((long) total)
+                .totalPages((int) Math.ceil((double) total / size))
+                .currentPage(page)
+                .size(size)
+                .build();
+    }
+
+    // ──────────────────────────────────────────────
+    // 导出辅助方法
+    // ──────────────────────────────────────────────
+
+    /** 判断选项列表中是否包含指定项目 */
+    private boolean contains(List<String> options, String key) {
+        return options != null && options.contains(key);
+    }
+
+    /** 解析日期字符串为 LocalDate，无效或为空时返回 null */
+    private LocalDate parseDate(String dateStr) {
+        if (dateStr == null || dateStr.isBlank()) return null;
+        try {
+            return LocalDate.parse(dateStr);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** 判断时间戳是否在起止日期范围内（闭区间） */
+    private boolean inRange(LocalDateTime time, LocalDate start, LocalDate end) {
+        if (time == null) return true;
+        if (start != null && time.toLocalDate().isBefore(start)) return false;
+        if (end != null && !time.toLocalDate().isBefore(end)) return false;  // end 已 +1 天
+        return true;
+    }
+
+
+    /** 闲置物品状态的中文映射 */
+    /** 闲置物品状态的中文映射（统一五类：在线中/待审批/进行中/已完成/已下架） */
+    private String mapIdleStatus(String status) {
+        if (status == null) return "";
+        return switch (status) {
+            case BizStatus.ONLINE              -> "在线中";
+            case BizStatus.PENDING             -> "待审批";
+            case BizStatus.ACTIVE              -> "进行中";
+            case BizStatus.COMPLETED           -> "已完成";
+            case BizStatus.OFFLINE, BizStatus.DELETED  -> "已下架";
+            // 兼容存量数据中的旧值（迁移后不再出现，兜底）
+            case "reserved", "borrowing"       -> "进行中";
+            default                            -> "";
         };
     }
 
-    /**
-     * 导出闲置物品数据。
-     */
-    private List<Map<String, Object>> exportIdleData(Long tenantId) {
-        List<Map<String, Object>> data = new ArrayList<>();
-        List<IdleItem> items = idleItemRepository.findAll().stream()
-                .filter(i -> tenantId.equals(i.getTenantId()))
-                .collect(Collectors.toList());
-        for (IdleItem item : items) {
-            User user = userRepository.findById(item.getUserId()).orElse(null);
-            Map<String, Object> map = new HashMap<>();
-            map.put("id", item.getId().toString());
-            map.put("type", "idle");
-            map.put("title", item.getTitle());
-            map.put("userName", user != null ? user.getName() : "");
-            map.put("postType", item.getPostType());
-            map.put("category", item.getCategory());
-            map.put("status", item.getStatus());
-            map.put("createdAt", item.getCreatedAt() != null ? item.getCreatedAt().toString() : "");
-            data.add(map);
-        }
-        return data;
+    /** 技能求助状态的中文映射（统一五类：在线中/待审批/进行中/已完成/已下架） */
+    private String mapHelpStatus(String status) {
+        if (status == null) return "";
+        return switch (status) {
+            case BizStatus.ONLINE              -> "在线中";
+            case BizStatus.PENDING             -> "待审批";
+            case BizStatus.ACTIVE              -> "进行中";
+            case BizStatus.COMPLETED           -> "已完成";
+            case BizStatus.OFFLINE, BizStatus.DELETED  -> "已下架";
+            // 兼容存量数据中的旧值（迁移后不再出现，兜底）
+            case "reserved", "helping"         -> "进行中";
+            default                            -> "";
+        };
     }
 
-    /**
-     * 导出求助数据。
-     */
-    private List<Map<String, Object>> exportHelpData(Long tenantId) {
-        List<Map<String, Object>> data = new ArrayList<>();
-        List<HelpRequest> items = helpRequestRepository.findAll().stream()
-                .filter(h -> tenantId.equals(h.getTenantId()))
-                .collect(Collectors.toList());
-        for (HelpRequest item : items) {
-            User user = userRepository.findById(item.getUserId()).orElse(null);
-            Map<String, Object> map = new HashMap<>();
-            map.put("id", item.getId().toString());
-            map.put("type", "help");
-            map.put("title", item.getTitle());
-            map.put("userName", user != null ? user.getName() : "");
-            map.put("category", item.getCategory());
-            map.put("isUrgent", item.getIsUrgent());
-            map.put("status", item.getStatus());
-            map.put("createdAt", item.getCreatedAt() != null ? item.getCreatedAt().toString() : "");
-            data.add(map);
-        }
-        return data;
+    /** 借用记录状态的中文映射 */
+    private String mapBorrowStatus(String status) {
+        if (status == null) return "";
+        return switch (status) {
+            case BizStatus.PENDING -> "待确认";
+            case BizStatus.APPROVED -> "已同意";
+            case BizStatus.ACTIVE -> "进行中";
+            case BizStatus.RETURNED -> "已归还";
+            case BizStatus.REJECTED -> "已拒绝";
+            default -> "";
+        };
     }
 
-    /**
-     * 导出借用记录数据。
-     */
-    private List<Map<String, Object>> exportBorrowData(Long tenantId) {
-        List<Map<String, Object>> data = new ArrayList<>();
-        List<BorrowRequest> borrows = borrowRequestRepository.findAll().stream()
-                .filter(br -> {
-                    IdleItem idle = idleItemRepository.findById(br.getIdleId()).orElse(null);
-                    return idle != null && tenantId.equals(idle.getTenantId());
-                })
-                .collect(Collectors.toList());
-        for (BorrowRequest br : borrows) {
-            IdleItem idleItem = idleItemRepository.findById(br.getIdleId()).orElse(null);
-            Map<String, Object> map = new HashMap<>();
-            map.put("id", br.getId().toString());
-            map.put("type", "borrow");
-            map.put("idleTitle", idleItem != null ? idleItem.getTitle() : "");
-            map.put("status", br.getStatus());
-            map.put("damageType", br.getDamageType());
-            map.put("createdAt", br.getCreatedAt() != null ? br.getCreatedAt().toString() : "");
-            data.add(map);
-        }
-        return data;
+
+    /** 归还状态的中文映射（对齐 C端：ontime/delayed/not_returned），兼容历史遗留值 */
+    private String mapReturnStatus(String returnStatus) {
+        if (returnStatus == null) return "";
+        return switch (returnStatus) {
+            // 实际 C端值（return-detail 页面发送）
+            case ReturnStatus.ON_TIME      -> "按时归还";
+            case ReturnStatus.DELAYED      -> "逾期归还";
+            case ReturnStatus.NOT_RETURNED -> "未归还";
+            // 兼容 my-posts 硬编码值（存量迁移已转为 ontime，此处兜底）
+            case "normal"                  -> "正常归还";
+            // 兼容 schema 设计遗留值（存量迁移已处理，此处兜底）
+            case "perfect"                 -> "完好";
+            case "damaged"                 -> "有损坏";
+            case "lost"                    -> "丢失";
+            default                        -> returnStatus;
+        };
+    }
+
+    /** 下架原因的中文映射（兼容历史数据中遗留的英文值） */
+    private String mapDelistReason(String reason) {
+        if (reason == null) return "";
+        return switch (reason) {
+            case "violation" -> "违规下架";
+            case "违规下架" -> "违规下架";
+            default -> reason;
+        };
+    }
+
+    /** 操作动作的中文映射 */
+    private String mapAction(String action) {
+        if (action == null) return "";
+        return switch (action) {
+            case "approve_user" -> "审核通过";
+            case "reject_user" -> "审核拒绝";
+            case "remove_content" -> "内容下架";
+            case "proxy_publish_idle" -> "代发闲置";
+            case "proxy_publish_help" -> "代发求助";
+            case "create_admin" -> "创建管理员";
+            case "delete_admin" -> "删除管理员";
+            default -> "";
+        };
+    }
+
+    /** 操作对象类型的中文映射 */
+    private String mapTargetType(String targetType) {
+        if (targetType == null) return "";
+        return switch (targetType) {
+            case "idle" -> "闲置物品";
+            case "help" -> "技能求助";
+            case "user" -> "住户";
+            default -> "";
+        };
     }
 
     // ==================== 楼栋 ====================
@@ -918,7 +2139,7 @@ public class AdminService {
      */
     public List<Map<String, Object>> getBuildings(Long adminId) {
         Long tenantId = getAdminTenantId(adminId);
-        List<Building> buildings = buildingRepository.findByTenantId(tenantId);
+        List<Building> buildings = (tenantId != null ? buildingRepository.findByTenantId(tenantId) : buildingRepository.findAll());
         return buildings.stream().map(b -> {
             Map<String, Object> map = new HashMap<>();
             map.put("id", b.getId());
@@ -933,13 +2154,27 @@ public class AdminService {
      * 获取管理员所属小区的嵌套小区数据（小区 + 楼栋 + 单元）。
      * 供前端在登录后缓存使用。
      */
+    /**
+     * 获取所有小区列表，供 super_admin 创建管理员时选择目标小区。
+     */
+    public List<Map<String, Object>> getAllTenants() {
+        return tenantRepository.findAll().stream()
+                .map(t -> {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("id", t.getId());
+                    map.put("name", t.getName());
+                    return map;
+                })
+                .collect(Collectors.toList());
+    }
+
     public Map<String, Object> getCommunityData(Long adminId) {
         Long tenantId = getAdminTenantId(adminId);
 
         Tenant tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new RuntimeException("小区不存在"));
 
-        List<Building> buildings = buildingRepository.findByTenantId(tenantId);
+        List<Building> buildings = (tenantId != null ? buildingRepository.findByTenantId(tenantId) : buildingRepository.findAll());
         // 按楼栋编号排序
         buildings.sort(Comparator.comparingInt(b -> extractNumber(b.getName())));
 
@@ -1003,11 +2238,19 @@ public class AdminService {
      */
     public List<Map<String, Object>> getAdmins(Long adminId) {
         User admin = findAdmin(adminId);
-        requireSuperAdmin(admin);
+        requireSeniorAdmin(admin);
         Long tenantId = getAdminTenantId(adminId);
 
-        List<User> admins = userRepository.findByTenantIdAndUserTypeIn(
-                tenantId, Arrays.asList("super_admin", "admin"));
+        // super_admin（tenantId=null）查全部小区的管理员，senior_admin 仅查本小区
+        List<User> admins = tenantId != null
+                ? userRepository.findByTenantIdAndUserTypeIn(tenantId,
+                        Arrays.asList(UserType.SUPER_ADMIN, UserType.SENIOR_ADMIN, UserType.ADMIN))
+                : userRepository.findByUserTypeIn(
+                        Arrays.asList(UserType.SUPER_ADMIN, UserType.SENIOR_ADMIN, UserType.ADMIN));
+
+        // 预取所有小区名称映射，避免 N+1 查询
+        Map<Long, String> tenantNameMap = tenantRepository.findAll().stream()
+                .collect(Collectors.toMap(Tenant::getId, Tenant::getName));
 
         return admins.stream()
                 .sorted(Comparator.comparing(User::getCreatedAt))
@@ -1016,7 +2259,11 @@ public class AdminService {
                     map.put("id", u.getId());
                     map.put("name", u.getName());
                     map.put("userType", u.getUserType());
-                    map.put("userTypeLabel", "super_admin".equals(u.getUserType()) ? "超级管理员" : "普通管理员");
+                    map.put("userTypeLabel",
+                            UserType.SUPER_ADMIN.equals(u.getUserType()) ? "超级管理员" :
+                            UserType.SENIOR_ADMIN.equals(u.getUserType()) ? "高级管理员" : "普通管理员");
+                    map.put("tenantName", u.getTenantId() != null
+                            ? tenantNameMap.getOrDefault(u.getTenantId(), "—") : "全部小区");
                     map.put("phone", maskPhone(u.getPhone()));
                     map.put("createdAt", u.getCreatedAt());
                     return map;
@@ -1028,11 +2275,19 @@ public class AdminService {
      * 创建子管理员账号。仅 super_admin 可调用。
      */
     @Transactional
-    public Map<String, Object> createAdmin(Long adminId, String name, String phone, String password) {
+    public Map<String, Object> createAdmin(Long adminId, String name, String phone, String password,
+                                             Long targetTenantId, String userType) {
         User creator = findAdmin(adminId);
         requireSuperAdmin(creator);
-        Long tenantId = getAdminTenantId(adminId);
 
+        if (targetTenantId == null) {
+            throw new RuntimeException("请选择目标小区");
+        }
+        // 默认普通管理员，仅 super_admin 可创建 senior_admin
+        String resolvedType = (userType != null && !userType.isEmpty()) ? userType : UserType.ADMIN;
+        if (!UserType.ADMIN.equals(resolvedType) && !UserType.SENIOR_ADMIN.equals(resolvedType)) {
+            throw new RuntimeException("无效的管理员类型");
+        }
         if (name == null || name.trim().isEmpty()) {
             throw new RuntimeException("姓名不能为空");
         }
@@ -1044,7 +2299,7 @@ public class AdminService {
         }
 
         // 校验手机号在小区内唯一
-        userRepository.findByPhoneAndTenantId(phone.trim(), tenantId)
+        userRepository.findByPhoneAndTenantId(phone.trim(), targetTenantId)
                 .ifPresent(u -> { throw new RuntimeException("该手机号已存在"); });
 
         String username = phone.trim();
@@ -1053,15 +2308,15 @@ public class AdminService {
                 .passwordHash(passwordEncoder.encode(password))
                 .name(name.trim())
                 .phone(phone.trim())
-                .userType("admin")
-                .tenantId(tenantId)
+                .userType(resolvedType)
+                .tenantId(targetTenantId)
                 .authStatus(BizStatus.APPROVED)
                 .build();
         newAdmin = userRepository.save(newAdmin);
 
         OperationLog log = new OperationLog();
         log.setAdminId(adminId);
-        log.setTenantId(tenantId);
+        log.setTenantId(targetTenantId);
         log.setAction("create_admin");
         log.setTargetType("user");
         log.setTargetId(newAdmin.getId());
@@ -1092,11 +2347,11 @@ public class AdminService {
 
         User target = findAdmin(targetId);
         Long tenantId = getAdminTenantId(adminId);
-        if (target.getTenantId() == null || !target.getTenantId().equals(tenantId)) {
+        if (!tenantMatches(tenantId, target.getTenantId())) {
             throw new RuntimeException("该管理员不属于当前小区");
         }
 
-        if ("super_admin".equals(target.getUserType())) {
+        if (UserType.SUPER_ADMIN.equals(target.getUserType())) {
             throw new RuntimeException("不能删除超级管理员");
         }
 
@@ -1120,8 +2375,31 @@ public class AdminService {
                 .orElseThrow(() -> new RuntimeException("管理员不存在"));
     }
 
+    /**
+     * 获取管理员所属小区名称，用于导出文件命名等场景。
+     * @param adminId 管理员用户ID
+     * @return 小区名称，找不到时返回 "community"
+     */
+    public String getTenantName(Long adminId) {
+        User admin = findAdmin(adminId);
+        Long tenantId = admin.getTenantId();
+        if (tenantId != null) {
+            Tenant tenant = tenantRepository.findById(tenantId).orElse(null);
+            if (tenant != null) return tenant.getName();
+        }
+        return "community";
+    }
+
+    /**
+     * 获取管理员对应的小区 ID。
+     * super_admin 返回 null（平台级视角，可查看全部小区数据），
+     * 普通 admin 返回其绑定的 tenantId。
+     */
     private Long getAdminTenantId(Long adminId) {
         User admin = findAdmin(adminId);
+        if (UserType.SUPER_ADMIN.equals(admin.getUserType())) {
+            return null;  // 平台级视角
+        }
         Long tenantId = admin.getTenantId();
         if (tenantId == null) {
             throw new RuntimeException("管理员未关联小区");
@@ -1129,9 +2407,38 @@ public class AdminService {
         return tenantId;
     }
 
+    /**
+     * 判断目标 tenantId 是否在管理员管辖范围内。
+     * adminTenantId 为 null（super_admin）时匹配全部小区。
+     */
+    private boolean tenantMatches(Long adminTenantId, Long targetTenantId) {
+        return adminTenantId == null || adminTenantId.equals(targetTenantId);
+    }
+
     private void requireSuperAdmin(User admin) {
-        if (!"super_admin".equals(admin.getUserType())) {
+        if (!UserType.SUPER_ADMIN.equals(admin.getUserType())) {
             throw new RuntimeException("权限不足，仅超级管理员可操作");
+        }
+    }
+
+    /**
+     * 要求 senior_admin 及以上权限（super_admin 或 senior_admin）。
+     * 用于数据导入、系统设置、管理员列表、操作日志等高级功能。
+     */
+    private void requireSeniorAdmin(User admin) {
+        if (!UserType.SUPER_ADMIN.equals(admin.getUserType())
+                && !UserType.SENIOR_ADMIN.equals(admin.getUserType())) {
+            throw new RuntimeException("权限不足，仅高级管理员及以上可操作");
+        }
+    }
+
+    /**
+     * 禁止超级管理员访问业务数据。
+     * super_admin 仅管理平台本身（管理员账号、操作日志、系统设置），不接触小区业务数据。
+     */
+    private void requireNotSuperAdmin(User admin) {
+        if (UserType.SUPER_ADMIN.equals(admin.getUserType())) {
+            throw new RuntimeException("超级管理员无权查看业务数据，仅可管理系统设置");
         }
     }
 
@@ -1149,9 +2456,11 @@ public class AdminService {
      * @param size     每页条数
      * @return 分页住户 DTO 列表
      */
-    public PageDTO<ResidentDTO> searchResidents(String building, String unit, String room,
+    public PageDTO<ResidentDTO> searchResidents(Long adminId, String building, String unit, String room,
                                                  String userType, String keyword,
                                                  int page, int size) {
+        requireNotSuperAdmin(findAdmin(adminId));
+        Long tenantId = getAdminTenantId(adminId);
         // 将前端英文编码转换为数据库中的中文值
         String dbUserType = switch (userType != null ? userType : "") {
             case "owner"  -> "业主";
@@ -1159,7 +2468,7 @@ public class AdminService {
             default       -> userType;
         };
         PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<User> userPage = userRepository.findResidents(building, unit, room, dbUserType, keyword, pageRequest);
+        Page<User> userPage = userRepository.findResidents(tenantId, building, unit, room, dbUserType, keyword, pageRequest);
 
         List<ResidentDTO> dtos = userPage.getContent().stream()
                 .map(u -> ResidentDTO.builder()
@@ -1275,10 +2584,11 @@ public class AdminService {
                 .violationReason(item.getViolationReason())
                 .violatorName(violatorName)
                 .violatedAt(item.getViolatedAt())
+                .applicantName(user != null ? user.getName() : "未知用户")
                 .building(user != null ? getBuildingName(user) : null);
 
         // 根据状态填充对方信息、评价和时间线
-        if ("borrowing".equals(item.getStatus())) {
+        if (BizStatus.ACTIVE.equals(item.getStatus())) {
             fillBorrowingPeerInfo(item, builder);
         } else if (BizStatus.COMPLETED.equals(item.getStatus())) {
             fillCompletedPeerInfo(item, builder);
@@ -1335,7 +2645,7 @@ public class AdminService {
 
         // 发布者评价：借入方对物主的评价
         Rating pubRating = ratingRepository
-                .findByBorrowIdAndFromUserId(completedBorrow.getId(), completedBorrow.getBorrowerId())
+                .findFirstByBorrowIdAndFromUserId(completedBorrow.getId(), completedBorrow.getBorrowerId())
                 .orElse(null);
         if (pubRating != null) {
             builder.publisherRatingScore((double) pubRating.getScore());
@@ -1345,7 +2655,7 @@ public class AdminService {
 
         // 对方评价：物主对借入方的评价
         Rating peerR = ratingRepository
-                .findByBorrowIdAndFromUserId(completedBorrow.getId(), item.getUserId())
+                .findFirstByBorrowIdAndFromUserId(completedBorrow.getId(), item.getUserId())
                 .orElse(null);
         if (peerR != null) {
             builder.peerRatingScore((double) peerR.getScore());
@@ -1356,7 +2666,7 @@ public class AdminService {
         // 时间线：借入申请 → 同意借出 → 已完成
         builder.applyAt(completedBorrow.getCreatedAt());
         builder.approveAt(timeStart != null ? timeStart : completedBorrow.getCreatedAt());
-        builder.completeAt(completedBorrow.getUpdatedAt());
+        builder.completeAt(completedBorrow.getReturnedAt());
     }
 
     /**
@@ -1386,10 +2696,11 @@ public class AdminService {
                 .violationReason(item.getViolationReason())
                 .violatorName(violatorName)
                 .violatedAt(item.getViolatedAt())
+                .applicantName(user != null ? user.getName() : "未知用户")
                 .building(user != null ? getBuildingName(user) : null);
 
         // 根据状态填充对方信息、评价和时间线
-        if ("helping".equals(item.getStatus())) {
+        if (BizStatus.ACTIVE.equals(item.getStatus())) {
             fillHelpingPeerInfo(item, builder);
         } else if (BizStatus.COMPLETED.equals(item.getStatus())) {
             fillHelpCompletedPeerInfo(item, builder);
@@ -1430,7 +2741,7 @@ public class AdminService {
 
         // 发布者评价：帮助者对求助者的评价
         Rating pubRating = ratingRepository
-                .findByHelpApplicationIdAndFromUserId(completedApp.getId(), completedApp.getHelperId())
+                .findFirstByHelpApplicationIdAndFromUserId(completedApp.getId(), completedApp.getHelperId())
                 .orElse(null);
         if (pubRating != null) {
             builder.publisherRatingScore((double) pubRating.getScore());
@@ -1440,7 +2751,7 @@ public class AdminService {
 
         // 对方评价：求助者对帮助者的评价
         Rating peerR = ratingRepository
-                .findByHelpApplicationIdAndFromUserId(completedApp.getId(), item.getUserId())
+                .findFirstByHelpApplicationIdAndFromUserId(completedApp.getId(), item.getUserId())
                 .orElse(null);
         if (peerR != null) {
             builder.peerRatingScore((double) peerR.getScore());
@@ -1486,7 +2797,7 @@ public class AdminService {
 
         // 应用租户过滤
         allItems = allItems.stream()
-                .filter(i -> tenantId.equals(i.getTenantId()))
+                .filter(i -> tenantMatches(tenantId, i.getTenantId()))
                 .collect(Collectors.toList());
 
         // 应用楼栋过滤
@@ -1518,7 +2829,7 @@ public class AdminService {
 
         // 应用租户过滤
         allItems = allItems.stream()
-                .filter(h -> tenantId.equals(h.getTenantId()))
+                .filter(h -> tenantMatches(tenantId, h.getTenantId()))
                 .collect(Collectors.toList());
 
         // 应用楼栋过滤
@@ -1537,6 +2848,105 @@ public class AdminService {
         }
 
         return allItems;
+    }
+
+    // ==================== 待审批 tab：borrow_requests / help_applications ====================
+
+    /**
+     * 获取该租户下所有待审批的借用申请，转换为 ContentItemDTO。
+     * 数据来源为 borrow_requests（status=pending），与 C端「管理页→审批」一致。
+     */
+    private List<ContentItemDTO> fetchPendingBorrowItems(Long tenantId, List<Long> buildingUserIds, String search) {
+        List<ContentItemDTO> result = new ArrayList<>();
+        List<BorrowRequest> pendingBorrows = borrowRequestRepository.findByStatus(BizStatus.PENDING);
+        for (BorrowRequest br : pendingBorrows) {
+            IdleItem idleItem = idleItemRepository.findById(br.getIdleId()).orElse(null);
+            if (idleItem == null || !tenantMatches(tenantId, idleItem.getTenantId())) {
+                continue;
+            }
+            // 楼栋筛选
+            if (buildingUserIds != null && !buildingUserIds.contains(idleItem.getUserId())) {
+                continue;
+            }
+            // 搜索筛选
+            if (search != null && !search.isEmpty()) {
+                String keyword = search.toLowerCase();
+                if (idleItem.getTitle() == null || !idleItem.getTitle().toLowerCase().contains(keyword)) {
+                    continue;
+                }
+            }
+            User owner = userRepository.findById(idleItem.getUserId()).orElse(null);
+            User borrower = userRepository.findById(br.getBorrowerId()).orElse(null);
+            result.add(ContentItemDTO.builder()
+                    .id(idleItem.getId())
+                    .type("idle")
+                    .title(idleItem.getTitle())
+                    .description(idleItem.getDescription())
+                    .images(parseImages(idleItem.getImages()))
+                    .category(idleItem.getCategory())
+                    .publisherName(owner != null ? owner.getName() : "未知用户")
+                    .publisherRoom(owner != null ? UserFormatter.formatRoomWithType(owner) : "")
+                    .displayStatus("待审批")
+                    .rawStatus(BizStatus.PENDING)
+                    .isProxy(idleItem.getIsProxy())
+                    .createdAt(br.getCreatedAt())
+                    .maxDuration(idleItem.getMaxDuration())
+                    .durationUnit(idleItem.getDurationUnit())
+                    .approverName(owner != null ? UserFormatter.formatRoomWithType(owner) : "未知用户")
+                    .applicantName(borrower != null ? UserFormatter.formatRoomWithType(borrower) : "未知用户")
+                    .building(owner != null ? getBuildingName(owner) : null)
+                    .build());
+        }
+        return result;
+    }
+
+    /**
+     * 获取该租户下所有待审批的帮助申请，转换为 ContentItemDTO。
+     * 数据来源为 help_applications（status=pending），与 C端「管理页→审批」一致。
+     */
+    private List<ContentItemDTO> fetchPendingHelpItems(Long tenantId, List<Long> buildingUserIds, String search) {
+        List<ContentItemDTO> result = new ArrayList<>();
+        List<HelpApplication> pendingApps = helpApplicationRepository.findByStatus(BizStatus.PENDING);
+        for (HelpApplication app : pendingApps) {
+            HelpRequest helpRequest = helpRequestRepository.findById(app.getHelpId()).orElse(null);
+            if (helpRequest == null || !tenantMatches(tenantId, helpRequest.getTenantId())) {
+                continue;
+            }
+            // 楼栋筛选
+            if (buildingUserIds != null && !buildingUserIds.contains(helpRequest.getUserId())) {
+                continue;
+            }
+            // 搜索筛选
+            if (search != null && !search.isEmpty()) {
+                String keyword = search.toLowerCase();
+                if (helpRequest.getTitle() == null || !helpRequest.getTitle().toLowerCase().contains(keyword)) {
+                    continue;
+                }
+            }
+            User requester = userRepository.findById(helpRequest.getUserId()).orElse(null);
+            User helper = userRepository.findById(app.getHelperId()).orElse(null);
+            result.add(ContentItemDTO.builder()
+                    .id(helpRequest.getId())
+                    .type("help")
+                    .title(helpRequest.getTitle())
+                    .description(helpRequest.getDescription())
+                    .images(parseImages(helpRequest.getImages()))
+                    .category(helpRequest.getCategory())
+                    .publisherName(requester != null ? requester.getName() : "未知用户")
+                    .publisherRoom(requester != null ? UserFormatter.formatRoomWithType(requester) : "")
+                    .displayStatus("待审批")
+                    .rawStatus(BizStatus.PENDING)
+                    .isProxy(helpRequest.getIsProxy())
+                    .isUrgent(helpRequest.getIsUrgent())
+                    .createdAt(app.getCreatedAt())
+                    .timeStart(helpRequest.getTimeStart())
+                    .timeEnd(helpRequest.getTimeEnd())
+                    .approverName(requester != null ? UserFormatter.formatRoomWithType(requester) : "未知用户")
+                    .applicantName(helper != null ? UserFormatter.formatRoomWithType(helper) : "未知用户")
+                    .building(requester != null ? getBuildingName(requester) : null)
+                    .build());
+        }
+        return result;
     }
 
     private BorrowRequest findActiveBorrowRequest(Long idleId) {
@@ -1613,14 +3023,14 @@ public class AdminService {
             case "showing":
                 return java.util.Collections.singletonList(BizStatus.ONLINE);
             case "progressing":
-                return java.util.Collections.singletonList("borrowing");
+                return java.util.Collections.singletonList(BizStatus.ACTIVE);
             case "completed":
                 return java.util.Collections.singletonList(BizStatus.COMPLETED);
             case "violation":
-                return java.util.Collections.singletonList("deleted");
+                return java.util.Collections.singletonList(BizStatus.DELETED);
             case "all":
             default:
-                return java.util.Arrays.asList(BizStatus.ONLINE, "borrowing", BizStatus.COMPLETED, "deleted");
+                return java.util.Arrays.asList(BizStatus.ONLINE, BizStatus.ACTIVE, BizStatus.COMPLETED, BizStatus.DELETED);
         }
     }
 
@@ -1632,14 +3042,14 @@ public class AdminService {
             case "showing":
                 return java.util.Collections.singletonList(BizStatus.ONLINE);
             case "progressing":
-                return java.util.Collections.singletonList("helping");
+                return java.util.Collections.singletonList(BizStatus.ACTIVE);
             case "completed":
                 return java.util.Collections.singletonList(BizStatus.COMPLETED);
             case "violation":
-                return java.util.Collections.singletonList("deleted");
+                return java.util.Collections.singletonList(BizStatus.DELETED);
             case "all":
             default:
-                return java.util.Arrays.asList(BizStatus.ONLINE, "helping", BizStatus.COMPLETED, "deleted");
+                return java.util.Arrays.asList(BizStatus.ONLINE, BizStatus.ACTIVE, BizStatus.COMPLETED, BizStatus.DELETED);
         }
     }
 
@@ -1650,13 +3060,14 @@ public class AdminService {
         if (rawStatus == null) return "未知";
         switch (rawStatus) {
             case BizStatus.ONLINE:
-                return "展示中";
-            case "borrowing":
-            case "helping":
+                return "在线中";
+            case BizStatus.PENDING:
+                return "待审批";
+            case BizStatus.ACTIVE:
                 return "进行中";
             case BizStatus.COMPLETED:
                 return "已完成";
-            case "deleted":
+            case BizStatus.DELETED:
                 return "已下架";
             default:
                 return rawStatus;
