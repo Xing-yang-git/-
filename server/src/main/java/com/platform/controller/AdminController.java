@@ -210,9 +210,9 @@ public class AdminController {
                                          Authentication auth) {
         Long adminId = Long.valueOf(auth.getName());
         byte[] excelBytes = adminService.exportData(adminId, req);
-        // 文件名格式：{小区名}_{导出日期yyyyMMdd}.xlsx
+        // 文件名格式：{小区名}_{导出日期yyyyMMdd_HHmm}.xlsx
         String tenantName = adminService.getTenantName(adminId);
-        String exportDate = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String exportDate = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmm"));
         String fileName = tenantName + "_" + exportDate + ".xlsx";
         // RFC 5987 编码，支持中文文件名
         String encodedFileName = java.net.URLEncoder.encode(fileName, java.nio.charset.StandardCharsets.UTF_8)
@@ -250,7 +250,20 @@ public class AdminController {
     public ResponseEntity<byte[]> exportOperationLogs(Authentication auth) {
         Long adminId = Long.valueOf(auth.getName());
         byte[] bytes = adminService.exportOperationLogs(adminId);
-        String filename = "操作日志_" + java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd")) + ".xlsx";
+        String filename = "操作日志_" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmm")) + ".xlsx";
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=" + java.net.URLEncoder.encode(filename, java.nio.charset.StandardCharsets.UTF_8))
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(bytes);
+    }
+
+    /** 导出导出日志为 Excel 文件 */
+    @GetMapping("/exports/logs/export")
+    public ResponseEntity<byte[]> exportExportLogs(Authentication auth) {
+        Long adminId = Long.valueOf(auth.getName());
+        byte[] bytes = adminService.exportExportLogs(adminId);
+        String filename = "导出日志_" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmm")) + ".xlsx";
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=" + java.net.URLEncoder.encode(filename, java.nio.charset.StandardCharsets.UTF_8))

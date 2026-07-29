@@ -1218,6 +1218,69 @@ public class AdminService {
         return baos.toByteArray();
     }
 
+    /**
+     * 导出导出日志为 Excel 文件，按租户范围过滤。
+     * super_admin 查看全部记录，senior_admin 仅查看本小区。
+     */
+    public byte[] exportExportLogs(Long adminId) {
+        User caller = findAdmin(adminId);
+        requireSeniorAdmin(caller);
+        Long tenantId = getAdminTenantId(adminId);
+
+        // super_admin 查看全部导出记录，senior_admin 仅查看本小区
+        List<ExportLog> allLogs = tenantId != null
+                ? exportLogRepository.findByTenantIdOrderByCreatedAtDesc(tenantId)
+                : exportLogRepository.findAll().stream()
+                        .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
+                        .collect(Collectors.toList());
+
+        // 导出选项的中文映射
+        Map<String, String> optionLabels = Map.of(
+            "residents", "住户",
+            "posts", "发布",
+            "borrows", "互借",
+            "helps", "互助",
+            "removals", "下架",
+            "ratings", "评分"
+        );
+
+        List<List<Object>> rows = new ArrayList<>();
+        for (ExportLog log : allLogs) {
+            User admin = userRepository.findById(log.getAdminId()).orElse(null);
+            // senior_admin 不展示 super_admin 的导出记录
+            if (tenantId != null && admin != null && UserType.SUPER_ADMIN.equals(admin.getUserType())) {
+                continue;
+            }
+            // 将英文选项键转为中文标签
+            String rawOptions = log.getSelectedOptions();
+            String optionsChinese = rawOptions;
+            if (rawOptions != null && !rawOptions.isEmpty()) {
+                String[] keys = rawOptions.split(",");
+                optionsChinese = java.util.Arrays.stream(keys)
+                        .map(k -> optionLabels.getOrDefault(k.trim(), k.trim()))
+                        .collect(Collectors.joining("、"));
+            }
+            List<Object> row = new ArrayList<>();
+            row.add(fmt(log.getCreatedAt()));
+            row.add(admin != null ? admin.getName() : "未知");
+            row.add(optionsChinese);
+            rows.add(row);
+        }
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ExcelWriter writer = EasyExcel.write(baos).build();
+        WriteSheet sheet = EasyExcel.writerSheet("导出日志")
+                .head(Arrays.asList(
+                        Arrays.asList("时间"),
+                        Arrays.asList("操作人"),
+                        Arrays.asList("导出项目")
+                )).build();
+        writer.write(rows, sheet);
+        writer.finish();
+
+        return baos.toByteArray();
+    }
+
     // ==================== 数据导出 ====================
 
 
@@ -1297,11 +1360,11 @@ public class AdminService {
 
         byte[] bytes = baos.toByteArray();
 
-        // 记录导出日志 — 文件名格式：{小区名}_{导出日期}.xlsx
-        // super_admin 的 tenantId 为 null，文件名为 "community_日期.xlsx"
+        // 记录导出日志 — 文件名格式：{小区名}_{导出日期时间}.xlsx
+        // super_admin 的 tenantId 为 null，文件名为 "community_日期时间.xlsx"
         Tenant tenant = tenantId != null ? tenantRepository.findById(tenantId).orElse(null) : null;
         String tenantName = tenant != null ? tenant.getName() : "community";
-        String exportDate = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String exportDate = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmm"));
         String fileName = tenantName + "_" + exportDate + ".xlsx";
         saveExportLog(adminId, tenantId, req, counts, fileName);
 

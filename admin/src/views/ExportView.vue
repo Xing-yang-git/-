@@ -86,33 +86,38 @@
           </div>
         </div>
 
-        <!-- 导出日志 -->
+        <!-- 导出日志（固定高度，约6条，内部滚动） -->
         <div class="panel">
           <div class="panel-header">
             <span class="panel-title">导出日志</span>
+            <el-button size="small" :loading="exportingLogs" @click="handleExportLogs">导出日志</el-button>
           </div>
-          <el-table
-            :data="exportLogs"
-            style="width: 100%"
-            v-loading="loadingLogs"
-          >
-            <el-table-column label="时间" width="155">
-              <template #default="{ row }">
-                {{ fmtTime(row.createdAt) }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="adminName" label="操作人" width="130" />
-            <el-table-column label="导出项目" width="250">
-              <template #default="{ row }">
-                {{ row.selectedOptions }}
-              </template>
-            </el-table-column>
-            <el-table-column label="状态" width="80">
-              <template #default>
-                <span class="badge badge-success">成功</span>
-              </template>
-            </el-table-column>
-          </el-table>
+          <div style="overflow: hidden; border-radius: 0 0 10px 10px">
+            <div style="max-height: 298px; overflow-y: auto">
+              <el-table
+                :data="exportLogs"
+                style="width: 100%"
+                v-loading="loadingLogs"
+              >
+                <el-table-column label="时间" width="175">
+                  <template #default="{ row }">
+                    {{ fmtTime(row.createdAt) }}
+                  </template>
+                </el-table-column>
+                <el-table-column prop="adminName" label="操作人" width="130" />
+                <el-table-column label="导出项目" width="250">
+                  <template #default="{ row }">
+                    {{ row.selectedOptions }}
+                  </template>
+                </el-table-column>
+                <el-table-column label="状态" width="80">
+                  <template #default>
+                    <span class="badge badge-success">成功</span>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </div>
         </div>
       </el-main>
     </el-container>
@@ -132,7 +137,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowDown, Download } from "@element-plus/icons-vue";
 
 import { useAuthStore } from "../stores/auth";
-import { exportData, getExportLogs } from "../api/admin";
+import { exportData, getExportLogs, exportExportLogs } from "../api/admin";
 import type { ExportLogItem } from "../api/admin";
 import AppSidebar from "../components/AppSidebar.vue";
 
@@ -159,6 +164,9 @@ const exportLogs = ref<ExportLogItem[]>([]);
 
 /** 日志加载状态 */
 const loadingLogs = ref<boolean>(false);
+
+/** 导出日志按钮 loading */
+const exportingLogs = ref<boolean>(false);
 
 /**
  * 根据选中的日期范围生成确认弹窗的描述文本。
@@ -270,12 +278,25 @@ async function loadExportLogs(): Promise<void> {
   }
 }
 
-/** 格式化导出时间为 MM-DD HH:mm */
+/** 格式化导出时间为 YYYY-MM-DD HH:mm */
 function fmtTime(ts?: string): string {
   if (!ts) return "";
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return ts.substring(0, 16);
-  return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/** 导出导出日志为 Excel 文件 */
+async function handleExportLogs(): Promise<void> {
+  exportingLogs.value = true;
+  try {
+    await exportExportLogs();
+    ElMessage.success("导出日志已导出");
+  } catch (err: any) {
+    ElMessage.error(err.message || "导出失败");
+  } finally {
+    exportingLogs.value = false;
+  }
 }
 
 function handleCommand(cmd: string): void {

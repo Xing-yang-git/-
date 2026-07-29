@@ -66,7 +66,7 @@
         </div>
 
         <!-- 管理员列表（仅超级管理员可见）-->
-        <div v-if="isSuperAdmin || isSeniorAdmin" class="panel">
+        <div v-if="isSuperAdmin" class="panel">
           <div class="panel-header">
             <span class="panel-title">管理员列表</span>
             <el-button type="primary" size="small" @click="openAddAdmin">+ 添加子账号</el-button>
@@ -98,24 +98,28 @@
           </el-table>
         </div>
 
-        <!-- 操作日志（仅超级管理员可见）-->
+        <!-- 操作日志（仅超级管理员可见，固定高度，约6条，内部滚动） -->
         <div v-if="isSuperAdmin || isSeniorAdmin" class="panel">
           <div class="panel-header">
             <span class="panel-title">操作日志</span>
             <el-button size="small" :loading="exportingLogs" @click="handleExportLogs">导出日志</el-button>
           </div>
-          <el-table :data="operationLogs" style="width:100%;" v-loading="logsLoading">
-            <el-table-column label="时间" align="center" width="160">
-              <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
-            </el-table-column>
-            <el-table-column prop="adminName" label="操作人" align="center" width="100" />
-            <el-table-column label="操作" align="center" width="120">
-              <template #default="{ row }">
-                <span :class="['badge', actionBadge(row.action)]">{{ actionLabel(row.action) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="detail" label="详情" />
-          </el-table>
+          <div style="overflow:hidden; border-radius:0 0 10px 10px;">
+            <div style="max-height:270px; overflow-y:auto;">
+              <el-table :data="operationLogs" style="width:100%;" v-loading="logsLoading">
+                <el-table-column label="时间" align="center" width="180">
+                  <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+                </el-table-column>
+                <el-table-column prop="adminName" label="操作人" align="center" width="100" />
+                <el-table-column label="操作" align="center" width="120">
+                  <template #default="{ row }">
+                    <span :class="['badge', actionBadge(row.action)]">{{ actionLabel(row.action) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="detail" label="详情" />
+              </el-table>
+            </div>
+          </div>
         </div>
 
         <!-- 添加管理员弹窗 -->
@@ -457,13 +461,13 @@ function actionBadge(action: string): string {
 }
 
 // ==================== 辅助函数 ====================
-/** 格式化时间字符串为 "MM-DD HH:mm" 格式 */
+/** 格式化时间字符串为 "YYYY-MM-DD HH:mm" 格式 */
 function formatTime(t?: string): string {
   if (!t) return '';
   if (typeof t === 'string') {
     const d = new Date(t);
     if (Number.isNaN(d.getTime())) return t.substring(0, 16);
-    return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   }
   return '';
 }
@@ -471,9 +475,11 @@ function formatTime(t?: string): string {
 // ==================== 生命周期 ====================
 onMounted(() => {
   profile.name = authStore.user?.name || '';
-  if (isSuperAdmin.value || isSeniorAdmin.value) {
-    if (isSuperAdmin.value) fetchTenants();
+  if (isSuperAdmin.value) {
+    fetchTenants();
     fetchAdmins();
+  }
+  if (isSuperAdmin.value || isSeniorAdmin.value) {
     fetchLogs();
   }
 });

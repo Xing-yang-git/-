@@ -510,6 +510,32 @@ export function getExportLogs(params: ExportLogParams = {}): Promise<AxiosRespon
 }
 
 /**
+ * 导出导出日志为 Excel 文件，触发浏览器下载。
+ */
+export async function exportExportLogs(): Promise<void> {
+  const token = localStorage.getItem('admin_token');
+  const response = await fetch('/api/admin/exports/logs/export', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ message: '导出失败' }));
+    throw new Error(err.message || '导出失败');
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get('Content-Disposition');
+  const match = disposition?.match(/filename\*?=(?:UTF-8'')?(.+)/i);
+  const fileName = match ? decodeURIComponent(match[1]) : '导出日志.xlsx';
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+}
+
+/**
  * 导出操作日志为 Excel 文件，触发浏览器下载。
  */
 export async function exportOperationLogs(): Promise<void> {

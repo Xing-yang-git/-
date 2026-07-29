@@ -261,7 +261,7 @@ textarea {
   background: var(--surface);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  margin-bottom: 24px;
+  margin-bottom: 18px;
   overflow: hidden;
 }
 
