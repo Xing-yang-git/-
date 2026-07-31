@@ -77,11 +77,14 @@ public class AdminController {
                                   @RequestParam(required = false) String building,
                                   @RequestParam(required = false) String unit,
                                   @RequestParam(required = false) String search,
+                                  @RequestParam(required = false) String moderationStatus,
+                                  @RequestParam(required = false) String moderatedBy,
                                   @RequestParam(defaultValue = "0") int page,
                                   @RequestParam(defaultValue = "10") int size,
                                   Authentication auth) {
         Long adminId = Long.valueOf(auth.getName());
-        return Result.ok(adminService.getContentList(adminId, status, type, building, unit, search, page, size));
+        return Result.ok(adminService.getContentList(adminId, status, type, building, unit, search,
+                moderationStatus, moderatedBy, page, size));
     }
 
     @GetMapping("/content/counts")
@@ -102,6 +105,16 @@ public class AdminController {
                                      Authentication auth) {
         Long adminId = Long.valueOf(auth.getName());
         return Result.ok(adminService.removeContent(adminId, id, req));
+    }
+
+    /** AI 内容审核通过 — 管理员人工确认帖子合规，将其上线。updatedAt 可选，用于乐观锁版本检查 */
+    @PutMapping("/content/{id}/approve")
+    public Result<?> approveContent(@PathVariable Long id, @RequestParam String type,
+                                     @RequestParam(required = false) String updatedAt,
+                                     Authentication auth) {
+        Long adminId = Long.valueOf(auth.getName());
+        adminService.approveContent(adminId, id, type, updatedAt);
+        return Result.ok();
     }
 
     // ===== 小区列表（super_admin 创建管理员时选择目标小区） =====

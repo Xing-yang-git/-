@@ -19,12 +19,17 @@ public class GlobalExceptionHandler {
                 .map(f -> f.getDefaultMessage())
                 .findFirst()
                 .orElse("请求参数校验失败");
-        return ResponseEntity.badRequest().body(Result.error(msg));
+        return ResponseEntity.badRequest().body(Result.error(400, msg));
+    }
+
+    @ExceptionHandler(VersionConflictException.class)
+    public ResponseEntity<Result<Void>> handleVersionConflict(VersionConflictException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Result.error(409, e.getMessage()));
     }
 
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Result<Void>> handleRuntime(RuntimeException e) {
-        return ResponseEntity.badRequest().body(Result.error(e.getMessage()));
+        return ResponseEntity.badRequest().body(Result.error(400, e.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)

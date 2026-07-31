@@ -174,6 +174,21 @@ public class NotificationService {
                     .existsByHelperIdAndHelpIdAndStatus(userId, relatedId, BizStatus.PENDING);
         }
 
+        // 供需匹配通知：始终可操作（点击即跳转需求详情页，无需状态校验）
+        if ("match_demand".equals(type)) {
+            return true;
+        }
+
+        // 内容审核通过通知：可操作（跳转详情页）
+        if ("content_approved".equals(type)) {
+            return true;
+        }
+
+        // 内容审核驳回通知：不可操作（不跳转，仅告知）
+        if ("content_rejected".equals(type)) {
+            return false;
+        }
+
         // 评价类：同 rateable
         if ("return_confirm".equals(type) || "help_result".equals(type)) {
             return computeRateable(type, relatedId, userId);

@@ -413,7 +413,7 @@ public class UserActivityService {
             if (!role.equals(resolveBorrowRole(br, userId))) continue;
             // 跳过已下架的物品
             IdleItem idleItem = resolveIdleItem(br);
-            if (idleItem != null && BizStatus.DELETED.equals(idleItem.getStatus())) continue;
+            if (idleItem != null && BizStatus.OFFLINE.equals(idleItem.getStatus())) continue;
             MyPostItemDTO dto = borrowRequestToDTO(br);
             dto.setType("idle");
             dto.setSubType(role);
@@ -437,7 +437,7 @@ public class UserActivityService {
         List<HelpRequest> myHelpRequests = helpRequestRepository.findByUserId(userId);
         for (HelpRequest hr : myHelpRequests) {
             // 跳过已被管理员下架的求助
-            if (BizStatus.DELETED.equals(hr.getStatus())) continue;
+            if (BizStatus.OFFLINE.equals(hr.getStatus())) continue;
             List<HelpApplication> completedApps = helpApplicationRepository
                     .findByHelpIdAndStatus(hr.getId(), BizStatus.COMPLETED);
             for (HelpApplication app : completedApps) {
@@ -479,7 +479,7 @@ public class UserActivityService {
             }
             if (hr == null) continue;
             // 跳过已被管理员下架的求助
-            if (BizStatus.DELETED.equals(hr.getStatus())) continue;
+            if (BizStatus.OFFLINE.equals(hr.getStatus())) continue;
             MyPostItemDTO dto = helpRequestToDTO(hr);
             dto.setId(app.getId());
             dto.setType("help");
@@ -538,6 +538,7 @@ public class UserActivityService {
                 .personName(personName)
                 .personRoom(personRoom)
                 .personType(personType)
+                .images(item.getImages())
                 .build();
     }
 
@@ -575,6 +576,7 @@ public class UserActivityService {
                 .personName(personName)
                 .personRoom(personRoom)
                 .personType(personType)
+                .images(hr.getImages())
                 .build();
     }
 
@@ -640,6 +642,7 @@ public class UserActivityService {
         return switch (status) {
             case BizStatus.ONLINE    -> "在线";
             case BizStatus.OFFLINE   -> "已下架";
+            case BizStatus.DRAFT     -> "已下架";
             case BizStatus.PENDING   -> "待审批";
             case BizStatus.ACTIVE    -> "进行中";
             case BizStatus.COMPLETED -> "已完成";
@@ -652,6 +655,7 @@ public class UserActivityService {
         return switch (status) {
             case BizStatus.ONLINE    -> "在线";
             case BizStatus.OFFLINE   -> "已下架";
+            case BizStatus.DRAFT     -> "已下架";
             case BizStatus.PENDING   -> "待审批";
             case BizStatus.ACTIVE    -> "进行中";
             case BizStatus.COMPLETED -> "已完成";

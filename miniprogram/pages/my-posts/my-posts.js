@@ -1,6 +1,6 @@
 const api = require("../../utils/api");
 const auth = require("../../utils/auth");
-const { STATUS, POST_TYPE, RETURN_STATUS } = require("../../utils/constants");
+const { POST_STATUS, POST_TYPE, BORROW_STATUS, RETURN_STATUS } = require("../../utils/constants");
 
 /**
  * 我的帖子页 — 我发布的 / 审批管理 / 进行中 / 已完成 四 Tab 视图。
@@ -19,11 +19,13 @@ Page({
     mainTab: "publish",
 
     // 「我发布的」子 tab
-    publishSubTab: STATUS.ONLINE,
+    publishSubTab: POST_STATUS.ONLINE,
     onlineCount: 0,
     offlineCount: 0,
+    reviewCount: 0,
     onlinePosts: [],
     offlinePosts: [],
+    reviewPosts: [],
 
     // 「待审批」子 tab
     approvalSubTab: "borrow",
@@ -83,6 +85,9 @@ Page({
     // 下拉刷新状态（四个 tab 共用，同一时刻只显示一个列表）
     refreshing: false,
 
+    // 帖子状态常量（供 WXML 模板引用）
+    POST_STATUS: POST_STATUS,
+
     // Confirmation Alerts
     showConfirmAlert: false,
     confirmAction: "", // 'approve' | 'reject'
@@ -95,9 +100,10 @@ Page({
 
     // Edit Sheet — mirrors publish-idle form fields
     showEditSheet: false,
-    editSource: STATUS.ONLINE,
+    editSource: POST_STATUS.ONLINE,
     editTargetId: null,
     editPostType: POST_TYPE.LEND,
+    editImages: [],
     editTitle: "",
     editCategory: "",
     editCustomType: "",
@@ -385,7 +391,7 @@ Page({
     let tasks;
     switch (tab) {
       case "publish":
-        tasks = [this.loadMyPosts()];
+        tasks = [this.loadMyPosts(), this.loadReviewPosts()];
         break;
       case "approval":
         tasks = [
@@ -454,11 +460,11 @@ Page({
       const data = await api.get("/api/users/posts");
       const allPosts = Array.isArray(data) ? data : [];
       const onlinePosts = allPosts
-        .filter((p) => p.displayStatus === "在线")
-        .map((p) => this.formatPostFromDTO(p, STATUS.ONLINE));
+        .filter((p) => p.status === POST_STATUS.ONLINE)
+        .map((p) => this.formatPostFromDTO(p, POST_STATUS.ONLINE));
       const offlinePosts = allPosts
-        .filter((p) => p.displayStatus === "已下架")
-        .map((p) => this.formatPostFromDTO(p, STATUS.OFFLINE));
+        .filter((p) => p.status === POST_STATUS.DRAFT)
+        .map((p) => this.formatPostFromDTO(p, POST_STATUS.DRAFT));
       this.setData({
         onlinePosts,
         onlineCount: onlinePosts.length,
@@ -473,6 +479,29 @@ Page({
     }
   },
 
+  /** 加载审核中的帖子列表（AI 内容审核中） */
+  async loadReviewPosts() {
+    try {
+      const data = await api.get("/api/users/posts", { status: "pending_review" });
+      const items = (Array.isArray(data) ? data : []).map((dto) => ({
+        id: dto.id,
+        postType: dto.type === "idle" ? (dto.postType || POST_TYPE.LEND) : POST_TYPE.HELP,
+        title: dto.title || "",
+        statusText: "审核中",
+      }));
+      this.setData({
+        reviewPosts: items,
+        reviewCount: items.length,
+      });
+      return items.length;
+    } catch (e) {
+      console.error("Load review posts failed:", e);
+      this._lastError = (e && e.message) || "加载审核列表失败";
+      return 0;
+    }
+  },
+
+
   formatPostFromDTO(dto, status) {
     const isIdle = dto.type === "idle";
     const durationNum = dto.maxDuration || 7;
@@ -483,7 +512,7 @@ Page({
       ? this.formatRelativeTime(new Date(dto.createdAt).getTime())
       : "";
     const timeText =
-      status === STATUS.OFFLINE
+      status === POST_STATUS.DRAFT
         ? dto.updatedAt
           ? this.formatRelativeTime(new Date(dto.updatedAt).getTime()) + "下架"
           : timeOnly
@@ -513,9 +542,9 @@ Page({
         ? new Date(dto.createdAt).getTime()
         : Date.now(),
       status: status,
-      statusText: status === STATUS.ONLINE ? "在线" : "已下架",
+      statusText: status === POST_STATUS.ONLINE ? "在线" : "已下架",
       statusTagClass:
-        status === STATUS.ONLINE
+        status === POST_STATUS.ONLINE
           ? "post-status-tag-blue"
           : "post-status-tag-fill",
       durationLabel: durationLabel,
@@ -523,6 +552,7 @@ Page({
       typeLabel: typeLabel,
       timeText: timeText,
       isProxy: dto.isProxy,
+      images: dto.images || "",
     };
 
     if (isIdle) {
@@ -578,7 +608,7 @@ Page({
         lendCount: dto.lendCount || 0,
         helpReqCount: dto.helpReqCount || 0,
         helpProCount: dto.helpProCount || 0,
-        status: dto.status || STATUS.PENDING,
+        status: dto.status || BORROW_STATUS.PENDING,
         note: dto.note || "",
         maxDuration: dto.maxDuration || 0,
         durationUnit: dto.durationUnit || "day",
@@ -793,6 +823,18 @@ Page({
     this.setData({ publishSubTab: e.currentTarget.dataset.sub });
   },
 
+  /** 审核中 tab 的 ? 图标：弹出提示说明 */
+  onReviewInfoTap(e) {
+    // 阻止冒泡到父级 segment-item 的 bindtap
+    if (e && e.stopPropagation) e.stopPropagation();
+    wx.showModal({
+      title: "审核中",
+      content: "您发布的内容正在由 AI 系统进行审核，审核完成后会通过服务通知告知您结果。审核期间内容暂不公开展示。",
+      showCancel: false,
+      confirmText: "我知道了",
+    });
+  },
+
   onApprovalSubTap(e) {
     this.setData({ approvalSubTab: e.currentTarget.dataset.sub });
   },
@@ -873,7 +915,7 @@ Page({
       const idx = onlinePosts.findIndex((p) => p.id === id);
       if (idx >= 0) {
         const item = { ...onlinePosts[idx] };
-        item.status = STATUS.OFFLINE;
+        item.status = POST_STATUS.DRAFT;
         item.statusText = "已下架";
         item.statusTagClass = "post-status-tag-fill";
         item.timeText = this.formatRelativeTime(Date.now()) + "下架";
@@ -899,7 +941,7 @@ Page({
   onOpenEdit(e) {
     const post = e.currentTarget.dataset.post;
     const type = e.currentTarget.dataset.type;
-    const source = e.currentTarget.dataset.source || STATUS.ONLINE;
+    const source = e.currentTarget.dataset.source || POST_STATUS.ONLINE;
     if (!post) return;
 
     const unit = post.durationUnit || "day";
@@ -981,6 +1023,27 @@ Page({
       // 未填写时间范围时 enableTimeRange 保持 false，不解析时间
     }
 
+    // 解析已有图片 URL（JSON 字符串 → 数组）
+    // _editOriginalUrls：原始存储路径（用于保存时区分已有/新增）
+    // editImages：展示用完整 URL（拼接 baseUrl 后小程序才能显示）
+    let originalUrls = [];
+    let displayImages = [];
+    try {
+      if (post.images) {
+        originalUrls = typeof post.images === "string" ? JSON.parse(post.images) : post.images;
+        const baseUrl = getApp().globalData.baseUrl || "";
+        displayImages = originalUrls.map(url => {
+          if (!url) return "";
+          if (url.startsWith("http")) return url;
+          return baseUrl + url;
+        });
+      }
+    } catch (e) {
+      originalUrls = [];
+      displayImages = [];
+    }
+    this._editOriginalUrls = originalUrls;
+
     // 存储原始值，用于保存时检测是否有修改
     this._originalPost = {
       title: post.title || "",
@@ -994,6 +1057,7 @@ Page({
       condition: post.condition || "normal",
       urgency: post.urgency || "normal",
       postType: postType,
+      images: originalUrls,
       // HELP 时间段原始值
       enableTimeRange: enableTimeRange,
       timeStartDate: startDate,
@@ -1007,6 +1071,7 @@ Page({
       editSource: source,
       editTargetId: post.id,
       editPostType: postType,
+      editImages: displayImages,
       editTitle: post.title || "",
       editCategory: editCategory,
       editCustomType: editCustomType,
@@ -1028,7 +1093,39 @@ Page({
   },
 
   onCloseEdit() {
-    this.setData({ showEditSheet: false, editTargetId: null });
+    this.setData({ showEditSheet: false, editTargetId: null, editImages: [] });
+  },
+
+  /** 编辑弹窗中 — 添加图片 */
+  onEditAddImage() {
+    const remaining = 4 - this.data.editImages.length;
+    if (remaining <= 0) {
+      wx.showToast({ title: '最多 4 张', icon: 'none' });
+      return;
+    }
+    wx.chooseImage({
+      count: remaining,
+      sizeType: ['compressed'],
+      sourceType: ['album', 'camera'],
+      success: res => {
+        this.setData({ editImages: [...this.data.editImages, ...res.tempFilePaths] });
+      }
+    });
+  },
+
+  /** 编辑弹窗中 — 预览图片 */
+  onEditPreviewImage(e) {
+    const idx = e.currentTarget.dataset.index;
+    const urls = this.data.editImages;
+    wx.previewImage({ current: urls[idx], urls: urls });
+  },
+
+  /** 编辑弹窗中 — 删除图片 */
+  onEditRemoveImage(e) {
+    const idx = e.currentTarget.dataset.index;
+    const imgs = [...this.data.editImages];
+    imgs.splice(idx, 1);
+    this.setData({ editImages: imgs });
   },
 
   onEditInput(e) {
@@ -1113,7 +1210,7 @@ Page({
     }
 
     // 检测是否有实质性修改（重新发布允许原样上架，不做此拦截）
-    if (this.data.editSource !== STATUS.OFFLINE && !this._editHasChanged()) {
+    if (this.data.editSource !== POST_STATUS.DRAFT && !this._editHasChanged()) {
       wx.showToast({ title: "您并没有修改内容", icon: "none" });
       return;
     }
@@ -1167,7 +1264,7 @@ Page({
     this.setData({ showSaveConfirmAlert: false });
 
     const id = this.data.editTargetId;
-    const isRepublish = this.data.editSource === STATUS.OFFLINE;
+    const isRepublish = this.data.editSource === POST_STATUS.DRAFT;
     const postType = this.data.editPostType;
     const isHelp = postType === POST_TYPE.HELP;
 
@@ -1205,6 +1302,30 @@ Page({
         const eh = this.data.hourOptions[this.data.editTimeEndHour] || "18:00";
         body.timeEnd = this.data.editTimeEndDate + " " + eh;
       }
+    }
+
+    // 处理图片：已有 URL 直接保留，新增临时路径先上传
+    try {
+      const baseUrl = getApp().globalData.baseUrl || "";
+      const origSet = new Set(this._editOriginalUrls || []);
+      let imageUrls = [];
+      for (const img of this.data.editImages) {
+        // 去除 baseUrl 前缀，得到原始存储路径
+        const stripped = img.startsWith(baseUrl) ? img.substring(baseUrl.length) : img;
+        if (origSet.has(stripped)) {
+          // 已有图片，保留原始路径
+          imageUrls.push(stripped);
+        } else {
+          // 新选图片（本地临时路径），先上传
+          const url = await api.upload('/api/common/upload', img);
+          imageUrls.push(url);
+        }
+      }
+      body.images = JSON.stringify(imageUrls);
+    } catch (e) {
+      wx.hideLoading();
+      wx.showToast({ title: '图片上传失败', icon: 'none' });
+      return;
     }
 
     // 调用后端 update API——后端会自动将 offline 重新上架为 online
@@ -1395,7 +1516,7 @@ Page({
     const list = this.data[key];
     const idx = list.findIndex((item) => item.id === id);
     if (idx >= 0) {
-      list[idx].status = STATUS.REJECTED;
+      list[idx].status = BORROW_STATUS.REJECTED;
       this.setData({ [key]: list });
     }
     wx.showToast({ title: "已拒绝", icon: "none" });
@@ -1805,22 +1926,22 @@ Page({
   // ================================================================
   getApplyStatusText(status) {
     const map = {
-      [STATUS.PENDING]: "待处理",
-      [STATUS.APPROVED]: "已同意",
-      [STATUS.REJECTED]: "已拒绝",
-      [STATUS.COMPLETED]: "已完成",
-      [STATUS.CANCELLED]: "已取消",
+      [BORROW_STATUS.PENDING]: "待处理",
+      [BORROW_STATUS.APPROVED]: "已同意",
+      [BORROW_STATUS.REJECTED]: "已拒绝",
+      [BORROW_STATUS.COMPLETED]: "已完成",
+      [BORROW_STATUS.CANCELLED]: "已取消",
     };
     return map[status] || status || "待处理";
   },
 
   getApplyStatusClass(status) {
     const map = {
-      [STATUS.PENDING]: "post-status-tag-orange",
-      [STATUS.APPROVED]: "post-status-tag-green",
-      [STATUS.REJECTED]: "post-status-tag-red",
-      [STATUS.COMPLETED]: "post-status-tag-green",
-      [STATUS.CANCELLED]: "post-status-tag-fill",
+      [BORROW_STATUS.PENDING]: "post-status-tag-orange",
+      [BORROW_STATUS.APPROVED]: "post-status-tag-green",
+      [BORROW_STATUS.REJECTED]: "post-status-tag-red",
+      [BORROW_STATUS.COMPLETED]: "post-status-tag-green",
+      [BORROW_STATUS.CANCELLED]: "post-status-tag-fill",
     };
     return map[status] || "post-status-tag-orange";
   },

@@ -131,9 +131,9 @@ Page({
   },
 
   onChooseImage() {
-    const remaining = 9 - this.data.images.length;
+    const remaining = 4 - this.data.images.length;
     if (remaining <= 0) {
-      wx.showToast({ title: '最多 9 张', icon: 'none' });
+      wx.showToast({ title: '最多 4 张', icon: 'none' });
       return;
     }
     wx.chooseImage({

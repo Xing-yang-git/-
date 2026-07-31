@@ -122,17 +122,13 @@ CREATE TABLE IF NOT EXISTS idle_items (
     category        VARCHAR(20)    NOT NULL,                                       -- 分类：工具/电子产品/书籍/家居/运动/玩具/服饰/其他
     condition       VARCHAR(10)    NOT NULL DEFAULT 'normal',                      -- 成色：like-new(几乎全新)/normal(正常使用痕迹)/worn(有明显磨损)
     price           DECIMAL(10,2)  NOT NULL DEFAULT 0,                             -- 参考价格（元）
-    images          TEXT,                                                          -- 图片URL（JSON数组），最多9张
+    images          TEXT,                                                          -- 图片URL（JSON数组），最多4张
     max_duration    INTEGER        DEFAULT 7,                                      -- 最大借出时长值
     duration_unit   VARCHAR(10)    NOT NULL DEFAULT 'day',                         -- 时长单位：day(天)/hour(小时)
     pickup_method   VARCHAR(30)    NOT NULL DEFAULT 'self_pickup',                 -- 取件方式：self_pickup(需自提)/both(自提或送上门)
-    status          VARCHAR(20)    NOT NULL DEFAULT 'online',                      -- 状态：online(在线)/pending(待审批)/active(进行中)/completed(已完成)/offline(已下架)/deleted(已删除)
-    delist_reason   VARCHAR(200),                                                  -- 下架原因，最多200字
+    status          VARCHAR(20)    NOT NULL DEFAULT 'online',                      -- 状态：online(在线)/draft(草稿)/pending_review(待AI审核)/pending(待审批)/active(进行中)/completed(已完成)/offline(已下架)
+    delist_reason   VARCHAR(200),                                                  -- 统一下架原因：AI审核原因、管理员驳回/下架原因、用户自行下架原因
     is_proxy        BOOLEAN        NOT NULL DEFAULT FALSE,                         -- 是否物业代发：false(否)/true(是)
-    violation_type  VARCHAR(20),                                                   -- 违规类型
-    violation_reason VARCHAR(200),                                                 -- 违规原因，最多200字
-    violated_by     BIGINT         REFERENCES users(id),                           -- 违规操作人ID
-    violated_at     TIMESTAMP,                                                     -- 违规操作时间
     created_at      TIMESTAMP      NOT NULL DEFAULT NOW(),                         -- 创建时间
     updated_at      TIMESTAMP      NOT NULL DEFAULT NOW()                          -- 更新时间
 );
@@ -146,17 +142,13 @@ COMMENT ON COLUMN idle_items.description     IS '描述，物品现状、使用�
 COMMENT ON COLUMN idle_items.category        IS '分类：工具/电子产品/书籍/家居/运动/玩具/服饰/其他（用户自定义）';
 COMMENT ON COLUMN idle_items.condition       IS '成色：like-new(几乎全新)/normal(正常使用痕迹)/worn(有明显磨损)';
 COMMENT ON COLUMN idle_items.price           IS '参考价格（元），用于损坏赔偿基准';
-COMMENT ON COLUMN idle_items.images          IS '图片URL（JSON数组格式），最多9张';
+COMMENT ON COLUMN idle_items.images          IS '图片URL（JSON数组格式），最多4张';
 COMMENT ON COLUMN idle_items.max_duration    IS '最大借出时长值，如7天=7';
 COMMENT ON COLUMN idle_items.duration_unit   IS '时长单位：day(天)/hour(小时)';
 COMMENT ON COLUMN idle_items.pickup_method   IS '取件方式：self_pickup(需自提)/both(自提或送上门)';
-COMMENT ON COLUMN idle_items.status          IS '状态：online(在线)/pending(待审批)/active(进行中)/completed(已完成)/offline(已下架)/deleted(已删除)';
-COMMENT ON COLUMN idle_items.delist_reason   IS '下架原因，最多200字';
+COMMENT ON COLUMN idle_items.status          IS '状态：online(在线)/draft(草稿)/pending_review(待AI审核)/pending(待审批)/active(进行中)/completed(已完成)/offline(已下架)';
+COMMENT ON COLUMN idle_items.delist_reason   IS '统一下架原因：AI审核原因、管理员驳回/下架原因、用户自行下架原因';
 COMMENT ON COLUMN idle_items.is_proxy        IS '是否物业代发：false(否)/true(是)';
-COMMENT ON COLUMN idle_items.violation_type  IS '违规类型，管理员标记';
-COMMENT ON COLUMN idle_items.violation_reason IS '违规原因，管理员标记时的说明，最多200字';
-COMMENT ON COLUMN idle_items.violated_by     IS '违规操作人ID，外键→users.id';
-COMMENT ON COLUMN idle_items.violated_at     IS '违规操作时间';
 COMMENT ON COLUMN idle_items.created_at      IS '创建时间';
 COMMENT ON COLUMN idle_items.updated_at      IS '更新时间';
 
@@ -174,13 +166,10 @@ CREATE TABLE IF NOT EXISTS help_requests (
     time_start      TIMESTAMP,                                                  -- 预计开始时间，可选
     time_end        TIMESTAMP,                                                  -- 预计结束时间，可选
     images          TEXT,                                                       -- 图片URL（JSON数组格式）
-    status          VARCHAR(20) NOT NULL DEFAULT 'online',                      -- 状态：online(在线)/pending(待审批)/active(进行中)/completed(已完成)/offline(已下架)/deleted(已删除)
-    delist_reason   VARCHAR(200),                                               -- 下架原因，最多200字
+    status          VARCHAR(20) NOT NULL DEFAULT 'online',                      -- 状态：online(在线)/draft(草稿)/pending_review(待AI审核)/pending(待审批)/active(进行中)/completed(已完成)/offline(已下架)
+    delist_reason   VARCHAR(200),                                               -- 统一下架原因：AI审核原因、管理员驳回/下架原因、用户自行下架原因
     is_proxy        BOOLEAN     NOT NULL DEFAULT FALSE,                         -- 是否物业代发：false(否)/true(是)
-    violation_type  VARCHAR(20),                                                -- 违规类型
-    violation_reason VARCHAR(200),                                              -- 违规原因，最多200字
-    violated_by     BIGINT      REFERENCES users(id),                           -- 违规操作人ID
-    violated_at     TIMESTAMP,                                                  -- 违规操作时间
+    location        VARCHAR(200),                                               -- 求助地点
     created_at      TIMESTAMP   NOT NULL DEFAULT NOW(),                         -- 创建时间
     updated_at      TIMESTAMP   NOT NULL DEFAULT NOW()                          -- 更新时间
 );
@@ -195,13 +184,10 @@ COMMENT ON COLUMN help_requests.is_urgent     IS '是否紧急：false(普通)/t
 COMMENT ON COLUMN help_requests.time_start    IS '预计开始时间，可选';
 COMMENT ON COLUMN help_requests.time_end      IS '预计结束时间，可选';
 COMMENT ON COLUMN help_requests.images        IS '图片URL（JSON数组格式）';
-COMMENT ON COLUMN help_requests.status        IS '状态：online(在线)/pending(待审批)/active(进行中)/completed(已完成)/offline(已下架)/deleted(已删除)';
-COMMENT ON COLUMN help_requests.delist_reason IS '下架原因，最多200字';
+COMMENT ON COLUMN help_requests.status        IS '状态：online(在线)/draft(草稿)/pending_review(待AI审核)/pending(待审批)/active(进行中)/completed(已完成)/offline(已下架)';
+COMMENT ON COLUMN help_requests.delist_reason IS '统一下架原因：AI审核原因、管理员驳回/下架原因、用户自行下架原因';
 COMMENT ON COLUMN help_requests.is_proxy      IS '是否物业代发：false(否)/true(是)';
-COMMENT ON COLUMN help_requests.violation_type IS '违规类型，管理员标记';
-COMMENT ON COLUMN help_requests.violation_reason IS '违规原因，管理员标记时的说明，最多200字';
-COMMENT ON COLUMN help_requests.violated_by   IS '违规操作人ID，外键→users.id';
-COMMENT ON COLUMN help_requests.violated_at   IS '违规操作时间';
+COMMENT ON COLUMN help_requests.location      IS '求助地点';
 COMMENT ON COLUMN help_requests.created_at    IS '创建时间';
 COMMENT ON COLUMN help_requests.updated_at    IS '更新时间';
 

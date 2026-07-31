@@ -98,12 +98,13 @@ public class IdleController {
     }
 
     /**
-     * 关键词搜索闲置物品（租户隔离）。
+     * 关键词搜索闲置物品（租户隔离），支持三种搜索模式。
      *
      * @param keyword  搜索关键词
      * @param postType 发布类型筛选
      * @param page     页码（从 0 开始）
      * @param size     每页条数
+     * @param mode     搜索模式：keyword(默认，LIKE 关键词) / semantic(语义向量) / 空或混合(语义+关键词去重合并)
      * @param auth     当前认证用户（用于租户隔离）
      * @return 搜索结果分页
      */
@@ -112,9 +113,10 @@ public class IdleController {
                              @RequestParam(defaultValue = PostType.LEND) String postType,
                              @RequestParam(defaultValue = "0") int page,
                              @RequestParam(defaultValue = "10") int size,
+                             @RequestParam(defaultValue = "") String mode,
                              Authentication auth) {
         Long userId = auth != null ? Long.valueOf(auth.getName()) : null;
-        return Result.ok(idleService.search(userId, keyword, postType, page, size));
+        return Result.ok(idleService.search(userId, keyword, postType, page, size, mode));
     }
 
     /**

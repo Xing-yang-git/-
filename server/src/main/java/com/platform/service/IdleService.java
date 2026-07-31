@@ -1,6 +1,12 @@
 package com.platform.service;
 
+import com.platform.ai.embedding.EmbeddingService;
+import com.platform.ai.matching.MatchingScheduler;
+import com.platform.ai.moderation.ModerationService;
+import com.platform.ai.search.SemanticSearchService;
 import com.platform.common.BizStatus;
+import com.platform.common.ModerationStatus;
+import com.platform.common.PostType;
 import com.platform.common.UserFormatter;
 import com.platform.model.dto.IdleItemDTO;
 import com.platform.model.dto.IdleItemRequest;
@@ -12,7 +18,9 @@ import com.platform.repository.BorrowRequestRepository;
 import com.platform.repository.RatingRepository;
 import com.platform.repository.RoomRepository;
 import com.platform.repository.UserRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -22,8 +30,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @Transactional
 public class IdleService {
@@ -34,19 +44,31 @@ public class IdleService {
     private final BorrowRequestRepository borrowRequestRepository;
     private final RatingRepository ratingRepository;
     private final UserActivityService userActivityService;
+    private final SemanticSearchService semanticSearchService;
+    private final EmbeddingService embeddingService;
+    private final MatchingScheduler matchingScheduler;
+    private final ModerationService moderationService;
 
     public IdleService(IdleItemRepository idleItemRepository,
                        UserRepository userRepository,
                        RoomRepository roomRepository,
                        BorrowRequestRepository borrowRequestRepository,
                        RatingRepository ratingRepository,
-                       UserActivityService userActivityService) {
+                       UserActivityService userActivityService,
+                       EmbeddingService embeddingService,
+                       MatchingScheduler matchingScheduler,
+                       SemanticSearchService semanticSearchService,
+                       ModerationService moderationService) {
         this.idleItemRepository = idleItemRepository;
         this.userRepository = userRepository;
         this.roomRepository = roomRepository;
         this.borrowRequestRepository = borrowRequestRepository;
         this.ratingRepository = ratingRepository;
         this.userActivityService = userActivityService;
+        this.embeddingService = embeddingService;
+        this.matchingScheduler = matchingScheduler;
+        this.semanticSearchService = semanticSearchService;
+        this.moderationService = moderationService;
     }
 
     public IdleItemDTO publish(Long userId, IdleItemRequest req) {
@@ -67,9 +89,32 @@ public class IdleService {
         item.setDurationUnit(req.getDurationUnit() != null ? req.getDurationUnit() : "day");
         item.setPickupMethod(req.getPickupMethod() != null ? req.getPickupMethod() : "self_pickup");
         item.setIsProxy(req.getIsProxy() != null && req.getIsProxy());
-        item.setStatus(BizStatus.ONLINE);
+        // 发布后先挂起，等待 AI 异步审核
+        item.setStatus(BizStatus.PENDING_REVIEW);
+        item.setModerationStatus(ModerationStatus.PENDING);
         item.setCreatedAt(LocalDateTime.now());
         item = idleItemRepository.save(item);
+
+        // 异步生成语义向量 + AI 内容审核，不阻塞发布响应
+        final IdleItem savedItem = item;
+        CompletableFuture.runAsync(() -> {
+            try {
+                embeddingService.updateItemEmbedding(savedItem);
+                log.debug("物品 {} 语义向量已生成", savedItem.getId());
+            } catch (Exception e) {
+                log.error("异步生成语义向量失败: itemId={}", savedItem.getId(), e);
+            }
+            try {
+                moderationService.scheduleModeration(savedItem);
+            } catch (Exception e) {
+                log.error("异步审核调度失败: itemId={}", savedItem.getId(), e);
+            }
+        });
+
+        // WANTED 发布时，异步触发供需匹配
+        if (PostType.WANTED.equals(item.getPostType())) {
+            matchingScheduler.scheduleMatch(item);
+        }
 
         return toDTO(item);
     }
@@ -123,14 +168,58 @@ public class IdleService {
     }
 
     public PageDTO<IdleItemDTO> search(Long userId, String keyword, String postType, int page, int size) {
+        return search(userId, keyword, postType, page, size, "keyword");
+    }
+
+    /**
+     * 搜索闲置物品，支持三种搜索模式。
+     *
+     * @param userId   当前用户 ID（用于租户隔离）
+     * @param keyword  搜索关键词
+     * @param postType 发布类型筛选
+     * @param page     页码（从 0 开始）
+     * @param size     每页条数
+     * @param mode     搜索模式：keyword(LIKE 关键词, 默认) / semantic(语义向量) / 其他或空(混合搜索)
+     * @return 搜索结果分页
+     */
+    public PageDTO<IdleItemDTO> search(Long userId, String keyword, String postType, int page, int size, String mode) {
         // 与 getHomeList 保持一致的租户隔离——不同小区的数据不得互相搜到
         User user = userId != null ? userRepository.findById(userId).orElse(null) : null;
         Long tenantId = user != null ? user.getTenantId() : null;
+
         PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<IdleItem> itemPage = tenantId != null
-                ? idleItemRepository.searchByTenant(BizStatus.ONLINE, postType, tenantId, keyword, keyword, pageRequest)
-                : idleItemRepository.findByStatusAndPostTypeAndTitleContainingOrDescriptionContaining(
-                        BizStatus.ONLINE, postType, keyword, keyword, pageRequest);
+        Page<IdleItem> itemPage;
+
+        if (tenantId == null) {
+            // 无租户上下文的兜底（理论上不应发生）
+            itemPage = Page.empty();
+        } else if ("semantic".equals(mode)) {
+            // 纯语义搜索
+            List<IdleItem> results = semanticSearchService.semanticSearchIdle(
+                    keyword, tenantId, postType, size);
+            int totalSize = results.size();
+            int start = page * size;
+            int end = Math.min(start + size, totalSize);
+            List<IdleItem> pageResults = start < totalSize
+                    ? results.subList(start, end)
+                    : List.of();
+            itemPage = new PageImpl<>(pageResults, pageRequest, totalSize);
+        } else if (mode == null || mode.isEmpty() || "keyword".equals(mode)) {
+            // 混合搜索 或 默认关键词搜索
+            if ("keyword".equals(mode)) {
+                // 纯关键词 LIKE 搜索（保持原有行为）
+                itemPage = idleItemRepository.searchByTenant(
+                        BizStatus.ONLINE, postType, tenantId, keyword, keyword, pageRequest);
+            } else {
+                // 混合搜索：语义 + 关键词去重合并
+                itemPage = semanticSearchService.hybridSearch(
+                        keyword, tenantId, postType, pageRequest);
+            }
+        } else {
+            // 未知 mode，回退到混合搜索
+            itemPage = semanticSearchService.hybridSearch(
+                    keyword, tenantId, postType, pageRequest);
+        }
 
         List<IdleItemDTO> dtos = itemPage.getContent().stream()
                 .map(this::toDTO)
@@ -160,7 +249,8 @@ public class IdleService {
             throw new RuntimeException("无权操作该物品");
         }
 
-        item.setStatus(BizStatus.OFFLINE);
+        item.setStatus(BizStatus.DRAFT);
+        item.setDelistReason("用户自行下架");
         item = idleItemRepository.save(item);
         return toDTO(item);
     }
@@ -173,14 +263,16 @@ public class IdleService {
             throw new RuntimeException("无权操作该物品");
         }
 
-        item.setStatus(BizStatus.DELETED);
+        item.setStatus(BizStatus.OFFLINE);
+        item.setDelistReason("用户删除");
         item = idleItemRepository.save(item);
         return toDTO(item);
     }
 
     /**
      * 更新闲置物品（编辑保存或重新上架）。
-     * 若当前状态为 completed/offline，自动重新上架为 online。
+     * 编辑后自动退回 pending_review 并重新排队 AI 审核，
+     * 审核通过后自动上线。
      */
     public IdleItemDTO update(Long userId, Long itemId, IdleItemRequest req) {
         IdleItem item = idleItemRepository.findById(itemId)
@@ -189,6 +281,9 @@ public class IdleService {
         if (!item.getUserId().equals(userId)) {
             throw new RuntimeException("无权操作该物品");
         }
+
+        // 保存原始状态，用于判断是否需要重新审核
+        String originalStatus = item.getStatus();
 
         item.setTitle(req.getTitle() != null ? req.getTitle() : item.getTitle());
         item.setDescription(req.getDescription() != null ? req.getDescription() : item.getDescription());
@@ -200,13 +295,40 @@ public class IdleService {
         item.setDurationUnit(req.getDurationUnit() != null ? req.getDurationUnit() : item.getDurationUnit());
         item.setPickupMethod(req.getPickupMethod() != null ? req.getPickupMethod() : item.getPickupMethod());
 
-        // 自动重新上架：completed/offline → online，并刷新发布时间
-        if (BizStatus.COMPLETED.equals(item.getStatus()) || BizStatus.OFFLINE.equals(item.getStatus())) {
-            item.setStatus(BizStatus.ONLINE);
-            item.setCreatedAt(LocalDateTime.now());
+        // 编辑后重新审核：原状态为 online/completed/offline 时，退回 pending_review
+        boolean needsModeration = BizStatus.ONLINE.equals(originalStatus)
+                || BizStatus.COMPLETED.equals(originalStatus)
+                || BizStatus.OFFLINE.equals(originalStatus)
+                || BizStatus.DRAFT.equals(originalStatus);
+        if (needsModeration) {
+            item.setStatus(BizStatus.PENDING_REVIEW);
+            item.setModerationStatus(ModerationStatus.PENDING);
+            // 从 completed/offline 重新发布时刷新时间
+            if (BizStatus.COMPLETED.equals(originalStatus) || BizStatus.OFFLINE.equals(originalStatus)) {
+                item.setCreatedAt(LocalDateTime.now());
+            }
         }
 
         item = idleItemRepository.save(item);
+
+        // 异步重新生成语义向量 + 重新审核
+        if (needsModeration) {
+            final IdleItem savedItem = item;
+            CompletableFuture.runAsync(() -> {
+                try {
+                    embeddingService.updateItemEmbedding(savedItem);
+                    log.debug("物品 {} 语义向量已更新", savedItem.getId());
+                } catch (Exception e) {
+                    log.error("异步更新语义向量失败: itemId={}", savedItem.getId(), e);
+                }
+                try {
+                    moderationService.scheduleModeration(savedItem);
+                } catch (Exception e) {
+                    log.error("异步审核调度失败: itemId={}", savedItem.getId(), e);
+                }
+            });
+        }
+
         return toDTO(item);
     }
 

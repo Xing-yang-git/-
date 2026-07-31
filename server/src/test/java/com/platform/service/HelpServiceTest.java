@@ -279,8 +279,8 @@ class HelpServiceTest {
         HelpResponseDTO result = helpService.delist(userId, helpId);
 
         // 断言
-        assertThat(result.getStatus()).isEqualTo("offline");
-        assertThat(helpRequest.getStatus()).isEqualTo("offline");
+        assertThat(result.getStatus()).isEqualTo("draft");
+        assertThat(helpRequest.getStatus()).isEqualTo("draft");
     }
 
     @Test

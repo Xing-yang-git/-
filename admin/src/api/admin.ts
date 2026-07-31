@@ -89,10 +89,7 @@ export interface PeerInfo {
 
 /** 违规信息 */
 export interface ViolationInfo {
-  violationType?: string;
-  violationReason?: string;
-  violatorName?: string;
-  violatedAt?: string;
+  delistReason?: string;
 }
 
 export interface ContentItemDTO {
@@ -124,11 +121,16 @@ export interface ContentItemDTO {
   // 互借专属（详情展示用）
   maxDuration?: number;
   durationUnit?: string;
-  // 违规下架信息（已下架时填充）
-  violationReason?: string;
-  violationType?: string;
-  violatedAt?: string;
-  violatorName?: string;
+  /** 统一下架原因 */
+  delistReason?: string;
+  /** 审核员姓名 */
+  reviewedByName?: string;
+  /** 更新时间 */
+  updatedAt?: string;
+  /** 审核状态：green / yellow / red / reviewed，审核 tab 详情弹窗展示用 */
+  moderationStatus?: string;
+  /** 发布类型：LEND / WANTED / HELP */
+  postType?: string;
   // 审批信息（待审批时填充）
   /** 审批人姓名 */
   approverName?: string;
@@ -140,6 +142,10 @@ export interface ContentOfflineBody {
   targetType: string;
   reasons: string[];
   customReason?: string;
+  /** 是否来自审核 tab 的驳回操作，后端据此决定 moderationStatus 的最终值 */
+  fromModeration?: boolean;
+  /** 乐观锁：管理员打开弹窗时的 updatedAt，ISO 字符串，可选 */
+  updatedAt?: string;
 }
 
 export interface ContentCounts {
@@ -155,8 +161,103 @@ export function getContentList(params: ContentListParams): Promise<AxiosResponse
   return get('/api/admin/content', params);
 }
 
-export function getContentCounts(): Promise<AxiosResponse> {
-  return get('/api/admin/content/counts');
+export function getContentCounts(params?: { status?: string }): Promise<AxiosResponse> {
+  return get('/api/admin/content/counts', params as Record<string, unknown> | undefined);
+}
+
+// ============================================================
+// AI 内容审核
+// ============================================================
+
+/** 审核列表查询参数 */
+export interface ModerationListParams {
+  status: string;
+  moderationStatus?: string;
+  moderatedBy?: string;
+  type?: string;
+  building?: string;
+  unit?: string;
+  search?: string;
+  page: number;
+  size: number;
+}
+
+/** 审核列表条目 DTO */
+export interface ModerationItemDTO {
+  id: number;
+  /** 内容类型：idle / help */
+  type: 'idle' | 'help';
+  /** 发布类型：LEND / WANTED / HELP */
+  postType: string;
+  title: string;
+  description: string;
+  images?: string[];
+  publisherName: string;
+  publisherRoom: string;
+  /** 数据库实际存储的原始状态值（如 online / offline），与后端 ContentItemDTO.rawStatus 对齐 */
+  rawStatus: string;
+  /** 审核状态：green / yellow / red / reviewed */
+  moderationStatus: string;
+  /** 审核员姓名，null 表示 AI 审核 */
+  reviewedByName: string | null;
+  /** 发布时间 */
+  createdAt: string;
+  /** 统一下架原因 */
+  delistReason?: string;
+  /** 更新时间 */
+  updatedAt?: string;
+  /** 最大借出时长（互借） */
+  maxDuration?: number;
+  /** 时长单位 */
+  durationUnit?: string;
+  /** 预计开始时间（互助） */
+  timeStart?: string;
+  /** 预计结束时间（互助） */
+  timeEnd?: string;
+}
+
+/** AI 审核各状态计数 */
+export interface ModerationCounts {
+  /** AI 审核通过（绿色） */
+  green: number;
+  /** 待人工复核（黄色） */
+  yellow: number;
+  /** AI 审核驳回（红色） */
+  red: number;
+  /** 已人工复核 */
+  reviewed: number;
+}
+
+/** 获取审核列表 */
+export function getModerationList(params: ModerationListParams): Promise<AxiosResponse> {
+  return get('/api/admin/content', params as unknown as Record<string, unknown>);
+}
+
+/** 获取 AI 内容审核各状态的数量统计 */
+export function getModerationCounts(): Promise<AxiosResponse> {
+  return get('/api/admin/content/counts', { status: 'moderation' });
+}
+
+/** 审核通过。updatedAt 可选，用于乐观锁版本检查 */
+export function approveContent(id: number, type: 'idle' | 'help', updatedAt?: string): Promise<AxiosResponse> {
+  const params: Record<string, unknown> = { type };
+  if (updatedAt) params.updatedAt = updatedAt;
+  return put(`/api/admin/content/${id}/approve`, null, params);
+}
+
+/** 违规下架（审核场景，body 字段与 ContentOfflineRequest 对齐） */
+export interface ModerationOfflineBody {
+  targetType: string;
+  reasons: string[];
+  customReason?: string;
+  /** 是否来自审核 tab 的驳回操作，后端据此决定 moderationStatus 的最终值 */
+  fromModeration?: boolean;
+  /** 乐观锁：管理员打开弹窗时的 updatedAt，ISO 字符串，可选 */
+  updatedAt?: string;
+}
+
+export function offlineModerationContent(id: number, body: ModerationOfflineBody): Promise<AxiosResponse> {
+  return put(`/api/admin/content/${id}/offline`, body);
 }
 
 export function getContentDetail(id: number, type: 'idle' | 'help'): Promise<AxiosResponse> {

@@ -62,6 +62,7 @@
               v-model="filterBuilding"
               placeholder="楼栋"
               style="width: 110px"
+              @change="filterUnit = ''"
             >
               <el-option label="全部" value="" />
               <el-option
@@ -110,7 +111,7 @@
           <div class="uf-body">
             <div class="panel">
               <el-table
-                :data="paginatedRecords"
+                :data="filteredRecords"
                 style="width: 100%"
                 @selection-change="handleSelectionChange"
               >
@@ -137,24 +138,6 @@
                 </el-table-column>
               </el-table>
 
-              <!-- 分页 -->
-              <div
-                v-if="filteredRecords.length > pageSize"
-                style="
-                  display: flex;
-                  justify-content: flex-end;
-                  padding: 12px 20px;
-                "
-              >
-                <el-pagination
-                  v-model:current-page="currentPage"
-                  :page-size="pageSize"
-                  :total="filteredRecords.length"
-                  :pager-count="5"
-                  layout="prev, pager, next"
-                  small
-                />
-              </div>
             </div>
           </div>
         </div>
@@ -452,15 +435,6 @@ const filteredRecords = computed(() => {
   });
 });
 
-// --- 分页 ---
-const currentPage = ref(1);
-const pageSize = ref(10);
-/** 当前页的记录切片 */
-const paginatedRecords = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value;
-  return filteredRecords.value.slice(start, start + pageSize.value);
-});
-
 // --- 选择 & 筛选 ---
 /** 勾选的行 */
 const selectedRows = ref<Record<string, unknown>[]>([]);
@@ -471,10 +445,9 @@ const filterUnitOptions = computed<{ id: number; name: string }[]>(() => {
   return buildingId ? communityStore.getUnits(buildingId) : [];
 });
 
-/** 重置筛选条件并重新加载数据 */
+/** 重置筛选条件 */
 function applyFilters(): void {
   search.value = search.value.replace(/\s+/g, "");
-  currentPage.value = 1;
 }
 
 /**

@@ -510,7 +510,9 @@ class UserActivityServiceTest {
         BorrowRequest br = BorrowRequest.builder()
                 .id(100L).idleId(idleId).borrowerId(userId)
                 .durationType("day").durationDays(3)
-                .status("returned").createdAt(LocalDateTime.now())
+                .status("returned")
+                .returnedAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();
         br.setIdleItem(lendItem);

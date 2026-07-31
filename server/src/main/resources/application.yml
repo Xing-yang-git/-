@@ -14,7 +14,7 @@ spring:
     name: community-platform
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/community_platform
+    url: jdbc:postgresql://localhost:5433/community_platform
     username: postgres
     password: ${DB_PASSWORD:123456}
     driver-class-name: org.postgresql.Driver
@@ -57,7 +57,7 @@ jwt:
   # 优先从 JWT_SECRET 环境变量注入；未设置时回退到本地开发默认值。
   # 生产环境必须通过环境变量提供至少 256 位的随机密钥并定期轮换。
   secret: ${JWT_SECRET:dev-secret-change-me-in-production}
-  expiration: 604800000  # 7天
+  expiration: 604800000 # 7天
 
 # 文件上传路径
 file:
@@ -67,3 +67,17 @@ logging:
   level:
     com.platform: DEBUG
     org.springframework.security: DEBUG
+
+# AI 配置（Embedding API — 智谱 AI）
+ai:
+  embedding:
+    api-key: ${BIGMODEL_EMBEDDING3_KEY:your-api-key}
+    base-url: https://open.bigmodel.cn/api/paas/v4
+    model: embedding-3
+    similarity-threshold: 0.25
+  zhipu:
+    chat:
+      api-key: ${BIGMODEL_EMBEDDING3_KEY:your-api-key}
+      base-url: https://open.bigmodel.cn/api/paas/v4
+      model-vision: glm-4v-flash
+      model-text: glm-4-flash

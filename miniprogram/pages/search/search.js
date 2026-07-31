@@ -50,7 +50,7 @@ Page({
     const keyword = raw.trim().replace(/\s+/g, ' ');
     this.setData({ keyword });
 
-    // 清空计时器，避免无效搜索请求堆积
+    // 清空节流计时器
     if (this._searchTimer) { clearTimeout(this._searchTimer); this._searchTimer = null; }
 
     // 输入为空时清除搜索结果
@@ -64,20 +64,28 @@ Page({
       return;
     }
 
-    // 300ms 防抖后实时搜索
+    // 1s 节流后实时搜索
     this._searchTimer = setTimeout(() => {
       this.onSearch();
-    }, 300);
+    }, 1000);
   },
 
   onClearKeyword() {
     if (this._searchTimer) { clearTimeout(this._searchTimer); this._searchTimer = null; }
+    this._searchSeq = (this._searchSeq || 0) + 1; // 使进行中的请求失活
     this.setData({ keyword: '', searching: false, filteredResults: [] });
   },
 
   onSearch() {
     const keyword = this.data.keyword.trim();
     if (!keyword) return;
+
+    // 取消排队中的输入节流
+    if (this._searchTimer) { clearTimeout(this._searchTimer); this._searchTimer = null; }
+
+    // 递增序列号，忽略旧请求的响应
+    const seq = (this._searchSeq || 0) + 1;
+    this._searchSeq = seq;
 
     this.saveHistory(keyword);
     this.setData({ searching: true, searchKeyword: keyword });
@@ -92,6 +100,9 @@ Page({
       api.get('/api/idle-items/search', { keyword, postType: POST_TYPE.WANTED, page: 0, size: 20 }).catch(() => ({ content: [] })),
       api.get('/api/help-requests/search', { keyword, page: 0, size: 20 }).catch(() => ({ content: [] }))
     ]).then(([lendData, wantedData, helpData]) => {
+      // 忽略过期响应：序列号不匹配说明有更新的搜索已发起
+      if (this._searchSeq !== seq) return;
+
       wx.hideLoading();
 
       const lendList = (lendData.content || lendData.list || lendData.records || []).map((item, i) => ({
@@ -127,8 +138,9 @@ Page({
       });
       this.applyFilter();
     }).catch((err) => {
+      if (this._searchSeq !== seq) return;
       wx.hideLoading();
-      wx.showToast({ title: err.message, icon: 'none' });
+      wx.showToast({ title: err.message || '搜索失败', icon: 'none' });
     });
   },
 

@@ -3,7 +3,7 @@
  * token 管理、登录检查、JWT 解析。
  */
 
-const { STATUS } = require('./constants');
+const { AUTH_STATUS } = require('./constants');
 
 const TOKEN_KEY = 'token';
 
@@ -106,8 +106,8 @@ function ensureAccess() {
   }
   const userInfo = wx.getStorageSync('userInfo') || {};
   const status = userInfo.authStatus;
-  if (!status || status === STATUS.APPROVED) return true; // 旧存储无 authStatus 放行，由服务端 401/403 兜底
-  if (status === STATUS.REGISTERING) {
+  if (!status || status === AUTH_STATUS.APPROVED) return true; // 旧存储无 authStatus 放行，由服务端 401/403 兜底
+  if (status === AUTH_STATUS.REGISTERING) {
     _guardRedirect('/pages/register/register');
     return false;
   }

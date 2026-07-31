@@ -79,15 +79,23 @@ Page({
     const isPendingResponseActive = isPendingResponseType && n.actionable === true;
     // 已失效：审批类或待回应类中不再可操作的
     const isExpired = (isApprovalType || isPendingResponseType) && !n.actionable;
+    // 供需匹配通知（始终可点击）
+    const isMatchDemand = n.type === 'match_demand';
+    // AI 内容审核通知：通过可点击跳转详情，驳回不可点击
+    const isContentApproved = n.type === 'content_approved';
+    const isContentRejected = n.type === 'content_rejected';
     return {
       ...n,
       title: cleanTitle,
       content: cleanContent,
       dateTimeText: this.formatDateTime(n.createdAt),
-      isTappable: isApprovalActive || isPendingResponseActive || (!isApprovalType && !isPendingResponseType && ['help_approved'].includes(n.type)),
+      isTappable: isApprovalActive || isPendingResponseActive || isMatchDemand || isContentApproved || (!isApprovalType && !isPendingResponseType && ['help_approved'].includes(n.type)),
       isApprovalType: isApprovalActive,
       isPendingResponseType: isPendingResponseActive,
       isExpired: isExpired,
+      isMatchDemand: isMatchDemand,
+      isContentApproved: isContentApproved,
+      isContentRejected: isContentRejected,
       isRateable: backendRateable && !ratedIds.includes(n.relatedId),
       isRated: backendRateable && ratedIds.includes(n.relatedId)
     };
@@ -105,7 +113,7 @@ Page({
       const isExpired = (isApprovalType || isPendingResponseType) && !n.actionable;
       return {
         ...n,
-        isTappable: isApprovalActive || isPendingResponseActive || (!isApprovalType && !isPendingResponseType && ['help_approved'].includes(n.type)),
+        isTappable: isApprovalActive || isPendingResponseActive || n.isMatchDemand || n.isContentApproved || (!isApprovalType && !isPendingResponseType && ['help_approved'].includes(n.type)),
         isApprovalType: isApprovalActive,
         isPendingResponseType: isPendingResponseActive,
         isExpired: isExpired,
@@ -150,6 +158,12 @@ Page({
     } else if (item.type === 'help_approved') {
       // 帮助申请已通过 → 跳转到管理页，用户在「进行中」tab 查看
       wx.switchTab({ url: '/pages/my-posts/my-posts' });
+    } else if (item.type === 'content_approved') {
+      // AI 内容审核通过通知 → 跳转到闲置详情页
+      wx.navigateTo({ url: '/pages/idle-detail/idle-detail?id=' + item.relatedId });
+    } else if (item.type === 'match_demand') {
+      // 供需匹配通知 → 跳转到需求方（WANTED）的详情页，让借出方查看并自行决定
+      wx.navigateTo({ url: '/pages/idle-detail/idle-detail?id=' + item.relatedId });
     }
   },
 

@@ -37,7 +37,11 @@
         <view class="segment-item {{publishSubTab === 'online' ? 'active' : ''}}" bindtap="onPublishSubTap" data-sub="online">
           在线中 <text class="seg-count">{{onlineCount}}</text>
         </view>
-        <view class="segment-item {{publishSubTab === 'offline' ? 'active' : ''}}" bindtap="onPublishSubTap" data-sub="offline">
+        <view class="segment-item {{publishSubTab === 'review' ? 'active' : ''}}" bindtap="onPublishSubTap" data-sub="review">
+          审核中 <text class="seg-count">{{reviewCount}}</text>
+          <text class="review-info-icon" catchtap="onReviewInfoTap">?</text>
+        </view>
+        <view class="segment-item {{publishSubTab === POST_STATUS.DRAFT ? 'active' : ''}}" bindtap="onPublishSubTap" data-sub="{{POST_STATUS.DRAFT}}">
           已下架 <text class="seg-count">{{offlineCount}}</text>
         </view>
       </view>
@@ -67,10 +71,31 @@
         </view>
       </view>
 
+      <!-- 审核中发布 -->
+      <view wx:if="{{publishSubTab === 'review'}}">
+        <block wx:for="{{reviewPosts}}" wx:key="id">
+          <view class="post-card post-card-review">
+            <view class="post-img" style="background: #F5F5F5;">
+              <image class="post-icon" src="../../images/icon-info.svg" mode="aspectFit" />
+            </view>
+            <view class="post-info">
+              <text class="post-title">{{item.title}}</text>
+              <view class="post-meta-row">
+                <text class="tag tag-fill post-review-tag">审核中</text>
+              </view>
+            </view>
+          </view>
+        </block>
+        <view class="list-end" wx:if="{{reviewPosts.length > 0}}">— 共 {{reviewCount}} 条审核中 —</view>
+        <view class="empty-state" wx:if="{{reviewPosts.length === 0}}">
+          <text class="empty-text">暂无审核中的发布</text>
+        </view>
+      </view>
+
       <!-- 已下架发布 -->
-      <view wx:if="{{publishSubTab === 'offline'}}">
+      <view wx:if="{{publishSubTab === POST_STATUS.DRAFT}}">
         <block wx:for="{{offlinePosts}}" wx:key="id">
-          <view class="post-card" bindtap="onOpenEdit" data-post="{{item}}" data-type="{{item.postType === 'HELP' ? 'help' : 'idle'}}" data-source="offline">
+          <view class="post-card" bindtap="onOpenEdit" data-post="{{item}}" data-type="{{item.postType === 'HELP' ? 'help' : 'idle'}}" data-source="{{POST_STATUS.DRAFT}}">
             <view class="post-img" style="background: {{item.iconBg}};">
               <image class="post-icon" src="{{item.iconSrc}}" mode="aspectFit" />
             </view>
@@ -81,7 +106,7 @@
                 <text class="post-time">· {{item.timeText}}</text>
               </view>
             </view>
-            <view class="post-act-btn primary" catchtap="onOpenEdit" data-post="{{item}}" data-type="{{item.postType === 'HELP' ? 'help' : 'idle'}}" data-source="offline">重新发布</view>
+            <view class="post-act-btn primary" catchtap="onOpenEdit" data-post="{{item}}" data-type="{{item.postType === 'HELP' ? 'help' : 'idle'}}" data-source="{{POST_STATUS.DRAFT}}">重新发布</view>
           </view>
         </block>
         <view class="list-end" wx:if="{{offlinePosts.length > 0}}">— 共 {{offlineCount}} 条已下架 —</view>
@@ -635,11 +660,27 @@
 
     </block>
 
+    <!-- 图片区域 -->
+    <view class="input-group" style="margin-top:20rpx;">
+      <text class="edit-input-label">图片（选填，最多 4 张）</text>
+      <view class="img-upload-grid">
+        <block wx:for="{{editImages}}" wx:key="*this">
+          <view class="img-upload-item" bindtap="onEditPreviewImage" data-index="{{index}}">
+            <image class="upload-img" src="{{item}}" mode="aspectFill" />
+            <view class="img-delete" catchtap="onEditRemoveImage" data-index="{{index}}">×</view>
+          </view>
+        </block>
+        <view class="img-upload-item img-add-btn" wx:if="{{editImages.length < 4}}" catchtap="onEditAddImage">
+          <text class="add-plus">+</text>
+        </view>
+      </view>
+    </view>
+
     <view style="height:20rpx;"></view>
   </scroll-view>
   <view class="edit-sheet-footer">
     <view class="edit-sheet-footer-row">
-    <view class="edit-save-btn" bindtap="onSaveEdit">{{editSource === 'offline' ? '重新发布' : '保存'}}</view>
+    <view class="edit-save-btn" bindtap="onSaveEdit">{{editSource === POST_STATUS.DRAFT ? '重新发布' : '保存'}}</view>
     </view>
   </view>
 </view>
@@ -986,8 +1027,8 @@
 <!-- ===== Save Confirm Alert (Edit Sheet) ===== -->
 <view class="alert-overlay" wx:if="{{showSaveConfirmAlert}}" catchtap="onCancelSaveConfirm">
   <view class="alert" catchtap="">
-    <view class="alert-title">{{editSource === 'offline' ? '确认重新发布' : '确认保存'}}</view>
-    <view class="alert-body">{{editSource === 'offline' ? '重新发布后该内容将重新公开展示，确定继续？' : '确定保存此次编辑？'}}</view>
+    <view class="alert-title">{{editSource === POST_STATUS.DRAFT ? '确认重新发布' : '确认保存'}}</view>
+    <view class="alert-body">{{editSource === POST_STATUS.DRAFT ? '重新发布内容经过审核后会公开展示，确认继续？' : '保存后需要重新审核，确认保存此次编辑？'}}</view>
     <view class="alert-actions">
       <view class="alert-btn" bindtap="onCancelSaveConfirm">取消</view>
       <view class="alert-btn alert-btn-bold" bindtap="onDoSave">确认</view>

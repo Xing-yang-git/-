@@ -95,6 +95,11 @@
   color: var(--text-tertiary);
 }
 
+.notice-card-rejected {
+  font-size: 26rpx;
+  color: var(--text-tertiary);
+}
+
 /* 空状态 */
 .empty-state {
   padding: 160rpx 40rpx;

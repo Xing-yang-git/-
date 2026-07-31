@@ -9,7 +9,7 @@
 --           王五(4000...13), 钱七(4000...15, 1栋2单元102号)
 
 -- =============================================================================
--- 1. 发布 → 已下架: status='offline' 的 idle_items
+-- 1. 发布 → 已下架: status='draft' 的 idle_items（用户自行下架后的草稿态）
 -- =============================================================================
 INSERT INTO idle_items (id, user_id, post_type, title, description, category, condition, price, images,
     max_duration, duration_unit, pickup_method, status, delist_reason, is_proxy, created_at, updated_at)
@@ -17,13 +17,13 @@ VALUES
 -- 痞老板的已下架物品
 (gen_random_uuid(), '284879cc-fb93-44ce-8971-966b41431ca7', 'LEND',
  '闲置台灯LED护眼', '很少用，放久了有点灰，功能正常', '家居', 'normal', 0,
- '["/images/demo/lamp.jpg"]', 7, 'day', 'self_pickup', 'offline',
- 'cancelled', false,
+ '["/images/demo/lamp.jpg"]', 7, 'day', 'self_pickup', 'draft',
+ '用户自行下架', false,
  NOW() - INTERVAL '10 days', NOW() - INTERVAL '2 days'),
 (gen_random_uuid(), '284879cc-fb93-44ce-8971-966b41431ca7', 'LEND',
  '闲置书架4层', '搬家后不需要了，有点重需要自取', '家居', 'worn', 0,
- '["/images/demo/shelf.jpg"]', 14, 'day', 'self_pickup', 'offline',
- 'cancelled', false,
+ '["/images/demo/shelf.jpg"]', 14, 'day', 'self_pickup', 'draft',
+ '用户自行下架', false,
  NOW() - INTERVAL '15 days', NOW() - INTERVAL '5 days')
 ON CONFLICT DO NOTHING;
 

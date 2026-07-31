@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
  * 闲置物品实体，对应 idle_items 表。
  *
  * <p>支持出借（LEND）和求借（WANTED）两种发布类型。
- * 物品状态流转：online（展示中）→ reserved（已预订）→ returned（已归还）/ offline（已下架）。
+ * 物品状态流转：pending_review（待AI审核）→ online（展示中）→ reserved（已预订）→ returned（已归还）/ draft（草稿，用户下架）/ offline（已下架）。
  * 物品成色分为 like-new（几乎全新）、normal（正常）、worn（有磨损）。
  * 借出时长可按天、周、月计算；取货方式支持自取和快递。</p>
  */
@@ -85,12 +85,12 @@ public class IdleItem {
     @Builder.Default
     private String pickupMethod = PickupMethod.SELF_PICKUP;
 
-    /** 状态：online(展示中) / reserved(已预订) / offline(已下架) / deleted(已删除)，引用 {@link BizStatus} */
+    /** 状态：online(展示中) / draft(草稿，用户下架) / offline(已下架) / pending_review(待AI审核) / reserved(已预订) / completed(已完成)，引用 {@link BizStatus} */
     @Column(name = IdleItemsColumn.COL_STATUS, nullable = false, length = 20)
     @Builder.Default
     private String status = BizStatus.ONLINE;
 
-    /** 下架原因（delist_reason 为 violation 表示违规下架） */
+    /** 统一下架原因：AI审核原因、管理员驳回/下架原因、用户自行下架原因，新原因直接覆盖旧值 */
     @Column(name = IdleItemsColumn.COL_DELIST_REASON, length = 200)
     private String delistReason;
 
@@ -99,21 +99,17 @@ public class IdleItem {
     @Builder.Default
     private Boolean isProxy = false;
 
-    /** 违规类型 */
-    @Column(name = IdleItemsColumn.COL_VIOLATION_TYPE, length = 20)
-    private String violationType;
+    /** 语义向量（TEXT 存储 pgvector 字面量，如 '[0.1, 0.2, ...]'），查询时 CAST 为 vector */
+    @Column(name = IdleItemsColumn.COL_EMBEDDING, columnDefinition = "TEXT")
+    private String embedding;
 
-    /** 违规原因描述 */
-    @Column(name = IdleItemsColumn.COL_VIOLATION_REASON, length = 200)
-    private String violationReason;
+    /** AI 审核状态：pending（待审核）/ green（通过）/ yellow（待复核）/ red（驳回）/ reviewed（已人工复核） */
+    @Column(name = IdleItemsColumn.COL_MODERATION_STATUS, length = 10)
+    private String moderationStatus;
 
-    /** 违规处理人 ID，外键 → users.id */
-    @Column(name = IdleItemsColumn.COL_VIOLATED_BY)
-    private Long violatedBy;
-
-    /** 违规处理时间 */
-    @Column(name = IdleItemsColumn.COL_VIOLATED_AT)
-    private LocalDateTime violatedAt;
+    /** 审核内容的管理员用户ID，外键→users.id，NULL表示AI自动处理，非NULL表示该管理员手动通过或驳回了审核 */
+    @Column(name = IdleItemsColumn.COL_REVIEWED_BY)
+    private Long reviewedBy;
 
     /** 创建时间 */
     @Column(name = IdleItemsColumn.COL_CREATED_AT, nullable = false)
@@ -132,11 +128,6 @@ public class IdleItem {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = IdleItemsColumn.COL_TENANT_ID, insertable = false, updatable = false)
     private Tenant tenant;
-
-    /** 关联违规处理人实体（懒加载） */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = IdleItemsColumn.COL_VIOLATED_BY, insertable = false, updatable = false)
-    private User violator;
 
     @PrePersist
     protected void onCreate() {

@@ -68,6 +68,7 @@
               v-model="filterBuilding"
               placeholder="楼栋"
               style="width: 110px"
+              @change="filterUnit = ''"
             >
               <el-option label="全部" value="" />
               <el-option

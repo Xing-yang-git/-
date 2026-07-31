@@ -118,14 +118,6 @@ Page({
     return M + '/' + DD + ' ' + h + ':' + mi;
   },
 
-  formatReward(type) {
-    const map = {
-      'free': '无偿互助',
-      'paid': '有偿答谢',
-      'exchange': '技能互换'
-    };
-    return map[type] || type || '无偿互助';
-  },
 
   onContactTap() {
     const { item } = this.data;

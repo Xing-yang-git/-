@@ -20,6 +20,9 @@
             <text class="notice-card-expired" wx:if="{{item.isExpired}}">已失效</text>
             <text class="notice-card-rate" wx:if="{{item.isRateable && !item.isRated}}">去评价 ›</text>
             <text class="notice-card-rated" wx:if="{{item.isRateable && item.isRated}}">已评价</text>
+            <text class="notice-card-arrow" wx:if="{{item.isMatchDemand}}">去看看 ›</text>
+            <text class="notice-card-arrow" wx:if="{{item.isContentApproved}}">去看看 ›</text>
+            <text class="notice-card-rejected" wx:if="{{item.isContentRejected}}">已驳回</text>
           </view>
         </view>
       </block>

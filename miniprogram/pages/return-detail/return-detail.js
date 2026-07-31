@@ -71,7 +71,7 @@ Page({
   },
 
   onChooseImage() {
-    const remaining = 9 - this.data.images.length;
+    const remaining = 4 - this.data.images.length;
     if (remaining <= 0) return;
     wx.chooseImage({
       count: remaining,

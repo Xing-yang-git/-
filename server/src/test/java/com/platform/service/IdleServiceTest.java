@@ -295,8 +295,9 @@ class IdleServiceTest {
         IdleItemDTO result = idleService.delist(userId, itemId);
 
         // 断言
-        assertThat(result.getStatus()).isEqualTo("offline");
-        assertThat(idleItem.getStatus()).isEqualTo("offline");
+        assertThat(result.getStatus()).isEqualTo(BizStatus.DRAFT);
+        assertThat(idleItem.getStatus()).isEqualTo(BizStatus.DRAFT);
+        assertThat(idleItem.getDelistReason()).isEqualTo("用户自行下架");
     }
 
     @Test
@@ -326,8 +327,9 @@ class IdleServiceTest {
         IdleItemDTO result = idleService.deleteItem(userId, itemId);
 
         // 断言
-        assertThat(result.getStatus()).isEqualTo(BizStatus.DELETED);
-        assertThat(idleItem.getStatus()).isEqualTo(BizStatus.DELETED);
+        assertThat(result.getStatus()).isEqualTo(BizStatus.OFFLINE);
+        assertThat(idleItem.getStatus()).isEqualTo(BizStatus.OFFLINE);
+        assertThat(idleItem.getDelistReason()).isEqualTo("用户删除");
     }
 
     @Test

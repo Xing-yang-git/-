@@ -32,4 +32,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     void deleteByUserIdAndTypeAndRelatedId(@Param("userId") Long userId,
                                            @Param("type") String type,
                                            @Param("relatedId") Long relatedId);
+
+    /** 检查指定用户、类型、关联ID的通知是否已存在（用于供需匹配去重） */
+    boolean existsByUserIdAndTypeAndRelatedId(Long userId, String type, Long relatedId);
 }

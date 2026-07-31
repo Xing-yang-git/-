@@ -1,6 +1,8 @@
 package com.platform.service;
 
+import com.platform.ai.moderation.ModerationService;
 import com.platform.common.BizStatus;
+import com.platform.common.ModerationStatus;
 import com.platform.common.UserFormatter;
 import com.platform.model.dto.ApproveRequest;
 import com.platform.model.dto.HelpRequestDTO;
@@ -27,6 +29,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Service
@@ -42,6 +45,7 @@ public class HelpService {
     private final RoomRepository roomRepository;
     private final RatingRepository ratingRepository;
     private final UserActivityService userActivityService;
+    private final ModerationService moderationService;
 
     public HelpService(HelpRequestRepository helpRequestRepository,
                        HelpApplicationRepository helpApplicationRepository,
@@ -49,7 +53,8 @@ public class HelpService {
                        UserRepository userRepository,
                        RoomRepository roomRepository,
                        RatingRepository ratingRepository,
-                       UserActivityService userActivityService) {
+                       UserActivityService userActivityService,
+                       ModerationService moderationService) {
         this.helpRequestRepository = helpRequestRepository;
         this.helpApplicationRepository = helpApplicationRepository;
         this.notificationService = notificationService;
@@ -57,6 +62,7 @@ public class HelpService {
         this.roomRepository = roomRepository;
         this.ratingRepository = ratingRepository;
         this.userActivityService = userActivityService;
+        this.moderationService = moderationService;
     }
 
     private static final DateTimeFormatter DT_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
@@ -70,6 +76,7 @@ public class HelpService {
         helpRequest.setTenantId(user.getTenantId());
         helpRequest.setTitle(req.getTitle());
         helpRequest.setDescription(req.getDescription());
+        helpRequest.setLocation(req.getLocation());
         helpRequest.setCategory(req.getCategory());
         helpRequest.setIsUrgent(req.getIsUrgent() != null && req.getIsUrgent());
         if (req.getTimeStart() != null && !req.getTimeStart().isEmpty()) {
@@ -87,10 +94,22 @@ public class HelpService {
             }
         }
         helpRequest.setImages(req.getImages());
-        helpRequest.setStatus(BizStatus.ONLINE);
+        // 发布后先挂起，等待 AI 异步审核
+        helpRequest.setStatus(BizStatus.PENDING_REVIEW);
+        helpRequest.setModerationStatus(ModerationStatus.PENDING);
         helpRequest.setIsProxy(req.getIsProxy() != null && req.getIsProxy());
         helpRequest.setCreatedAt(LocalDateTime.now());
         helpRequest = helpRequestRepository.save(helpRequest);
+
+        // 异步 AI 内容审核，不阻塞发布响应
+        final HelpRequest savedHelp = helpRequest;
+        CompletableFuture.runAsync(() -> {
+            try {
+                moderationService.scheduleModeration(savedHelp);
+            } catch (Exception e) {
+                log.error("异步审核调度失败: helpId={}", savedHelp.getId(), e);
+            }
+        });
 
         return toDTO(helpRequest);
     }
@@ -160,7 +179,8 @@ public class HelpService {
             throw new RuntimeException("无权操作该求助");
         }
 
-        helpRequest.setStatus(BizStatus.OFFLINE);
+        helpRequest.setStatus(BizStatus.DRAFT);
+        helpRequest.setDelistReason("用户自行下架");
         helpRequest = helpRequestRepository.save(helpRequest);
 
         // 将所有待处理的帮助申请设为已拒绝，并通知申请人
@@ -176,6 +196,21 @@ public class HelpService {
                     app.getId());
         }
 
+        return toDTO(helpRequest);
+    }
+
+    /**
+     * 用户从草稿中删除求助，将其标记为已下架。
+     */
+    public HelpResponseDTO deleteItem(Long userId, Long helpId) {
+        HelpRequest helpRequest = helpRequestRepository.findById(helpId)
+                .orElseThrow(() -> new RuntimeException("求助不存在"));
+        if (!helpRequest.getUserId().equals(userId)) {
+            throw new RuntimeException("无权操作该求助");
+        }
+        helpRequest.setStatus(BizStatus.OFFLINE);
+        helpRequest.setDelistReason("用户删除");
+        helpRequest = helpRequestRepository.save(helpRequest);
         return toDTO(helpRequest);
     }
 
@@ -318,7 +353,8 @@ public class HelpService {
 
     /**
      * 更新求助信息（编辑保存或重新上架）。
-     * 若当前状态为 completed/offline，自动重新上架为 online。
+     * 编辑后自动退回 pending_review 并重新排队 AI 审核，
+     * 审核通过后自动上线。
      */
     public HelpResponseDTO update(Long userId, Long helpId, HelpRequestDTO req) {
         HelpRequest helpRequest = helpRequestRepository.findById(helpId)
@@ -328,9 +364,13 @@ public class HelpService {
             throw new RuntimeException("无权操作该求助");
         }
 
+        // 保存原始状态，用于判断是否需要重新审核
+        String originalStatus = helpRequest.getStatus();
+
         helpRequest.setTitle(req.getTitle() != null ? req.getTitle() : helpRequest.getTitle());
         helpRequest.setDescription(req.getDescription() != null ? req.getDescription() : helpRequest.getDescription());
         helpRequest.setCategory(req.getCategory() != null ? req.getCategory() : helpRequest.getCategory());
+        helpRequest.setLocation(req.getLocation() != null ? req.getLocation() : helpRequest.getLocation());
         helpRequest.setIsUrgent(req.getIsUrgent() != null ? req.getIsUrgent() : helpRequest.getIsUrgent());
 
         if (req.getTimeStart() != null && !req.getTimeStart().isEmpty()) {
@@ -345,13 +385,34 @@ public class HelpService {
         }
         helpRequest.setImages(req.getImages());
 
-        // 自动重新上架：completed/offline → online，并刷新发布时间
-        if (BizStatus.COMPLETED.equals(helpRequest.getStatus()) || BizStatus.OFFLINE.equals(helpRequest.getStatus())) {
-            helpRequest.setStatus(BizStatus.ONLINE);
-            helpRequest.setCreatedAt(LocalDateTime.now());
+        // 编辑后重新审核：原状态为 online/completed/offline 时，退回 pending_review
+        boolean needsModeration = BizStatus.ONLINE.equals(originalStatus)
+                || BizStatus.COMPLETED.equals(originalStatus)
+                || BizStatus.OFFLINE.equals(originalStatus)
+                || BizStatus.DRAFT.equals(originalStatus);
+        if (needsModeration) {
+            helpRequest.setStatus(BizStatus.PENDING_REVIEW);
+            helpRequest.setModerationStatus(ModerationStatus.PENDING);
+            // 从 completed/offline 重新发布时刷新时间
+            if (BizStatus.COMPLETED.equals(originalStatus) || BizStatus.OFFLINE.equals(originalStatus)) {
+                helpRequest.setCreatedAt(LocalDateTime.now());
+            }
         }
 
         helpRequest = helpRequestRepository.save(helpRequest);
+
+        // 异步重新审核
+        if (needsModeration) {
+            final HelpRequest savedHelp = helpRequest;
+            CompletableFuture.runAsync(() -> {
+                try {
+                    moderationService.scheduleModeration(savedHelp);
+                } catch (Exception e) {
+                    log.error("异步审核调度失败: helpId={}", savedHelp.getId(), e);
+                }
+            });
+        }
+
         return toDTO(helpRequest);
     }
 
@@ -427,6 +488,7 @@ public class HelpService {
                 .images(hr.getImages())
                 .status(hr.getStatus())
                 .delistReason(hr.getDelistReason())
+                .location(hr.getLocation())
                 .isProxy(hr.getIsProxy())
                 .createdAt(hr.getCreatedAt())
                 .build();

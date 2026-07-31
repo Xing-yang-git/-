@@ -7,7 +7,7 @@ package com.platform.common;
  * 同一常量可能被多个业务域复用（例如 pending 同时用于借用申请、帮助申请与用户审核），
  * 按主要业务域分组说明如下：
  * <ul>
- *   <li>内容状态（IdleItem/HelpRequest.status）：online（展示中）/ offline（已下架）</li>
+ *   <li>内容状态（IdleItem/HelpRequest.status）：online（展示中）/ offline（已下架）/ draft（草稿，用户下架态）</li>
  *   <li>借用流转（BorrowRequest.status）：pending（待审批）→ approved（已同意）/ rejected（已拒绝）→ returned（已归还）</li>
  *   <li>帮助流转（HelpApplication.status）：pending（待审批）→ approved（已同意）/ rejected（已拒绝）→ completed（已完成）</li>
  *   <li>用户审核（User.authStatus）：pending（待审核）→ approved（已通过）/ rejected（已驳回）</li>
@@ -50,6 +50,9 @@ public final class BizStatus {
     /** 已下架 */
     public static final String OFFLINE = "offline";
 
+    /** 草稿（用户自行下架后的中间态，C端显示为"已下架"） */
+    public static final String DRAFT = "draft";
+
     // ==================== 账号 / 记录状态 ====================
 
     /** 正常（物品成色 condition 默认值） */
@@ -66,8 +69,7 @@ public final class BizStatus {
     /** 注册中（用户已微信登录但尚未完成手机号绑定/实名） */
     public static final String REGISTERING = "registering";
 
-    // ==================== 软删除 ====================
+    /** 待 AI 审核（内容发布后先挂起，等待异步审核结果） */
+    public static final String PENDING_REVIEW = "pending_review";
 
-    /** 已删除（软删除标记，记录保留但不可见） */
-    public static final String DELETED = "deleted";
 }

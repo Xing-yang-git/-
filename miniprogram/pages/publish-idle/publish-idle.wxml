@@ -17,7 +17,7 @@
 
     <!-- 图片 -->
     <view class="section">
-      <view class="input-label">物品图片（选填，最多 9 张）</view>
+      <view class="input-label">物品图片（选填，最多 4 张）</view>
       <view class="img-upload-grid">
         <block wx:for="{{images}}" wx:key="*this">
           <view class="img-upload-item">
@@ -150,7 +150,7 @@
 
     <!-- 图片 -->
     <view class="section">
-      <view class="input-label">物品图片（可选，最多 9 张）</view>
+      <view class="input-label">物品图片（可选，最多 4 张）</view>
       <view class="img-upload-grid">
         <block wx:for="{{images}}" wx:key="*this">
           <view class="img-upload-item">
@@ -351,7 +351,7 @@
 
     <!-- 图片（选填） -->
     <view class="section">
-      <view class="input-label">图片（选填，最多 9 张）</view>
+      <view class="input-label">图片（选填，最多 4 张）</view>
       <view class="img-upload-grid">
         <block wx:for="{{images}}" wx:key="*this">
           <view class="img-upload-item">

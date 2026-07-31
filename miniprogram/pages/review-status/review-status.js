@@ -1,6 +1,6 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
-const { STATUS } = require('../../utils/constants');
+const { AUTH_STATUS } = require('../../utils/constants');
 
 /**
  * 审核状态页 — 用户认证审核结果展示。
@@ -10,7 +10,7 @@ const { STATUS } = require('../../utils/constants');
  */
 Page({
   data: {
-    status: STATUS.PENDING,
+    status: AUTH_STATUS.PENDING,
     rejectReason: '',
     banReason: '',
     loading: true
@@ -22,7 +22,7 @@ Page({
       wx.reLaunch({ url: '/pages/login/login' });
       return;
     }
-    const state = options.state || STATUS.PENDING;
+    const state = options.state || AUTH_STATUS.PENDING;
     this.setData({ status: state });
     this.checkStatus();
   },
@@ -46,12 +46,12 @@ Page({
           const app = getApp();
           if (app) app.globalData.userInfo = userInfo;
         }
-        if (authStatus === STATUS.APPROVED) {
+        if (authStatus === AUTH_STATUS.APPROVED) {
           wx.switchTab({ url: '/pages/home/home' });
           return;
         }
         this.setData({
-          status: authStatus || STATUS.PENDING,
+          status: authStatus || AUTH_STATUS.PENDING,
           rejectReason: data.rejectReason || '',
           banReason: data.bannedReason || '', // 修复：服务端返回键名是 bannedReason
           loading: false

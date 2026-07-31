@@ -31,7 +31,6 @@ ALTER TABLE idle_items ALTER COLUMN price SET NOT NULL;
 ALTER TABLE help_requests ADD COLUMN IF NOT EXISTS time_start TIMESTAMP;
 ALTER TABLE help_requests ADD COLUMN IF NOT EXISTS time_end TIMESTAMP;
 ALTER TABLE help_requests ADD COLUMN IF NOT EXISTS location VARCHAR(200);
-ALTER TABLE help_requests ADD COLUMN IF NOT EXISTS reward_type VARCHAR(20) NOT NULL DEFAULT 'free';
 ALTER TABLE help_requests ADD COLUMN IF NOT EXISTS images TEXT;
 ALTER TABLE help_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW();
 -- 修复 category：应为 NOT NULL
@@ -221,3 +220,101 @@ UPDATE idle_items SET status = 'active' WHERE status = 'borrowing';
 UPDATE help_requests SET status = 'pending' WHERE status = 'reserved';
 -- help_requests: helping → active
 UPDATE help_requests SET status = 'active' WHERE status = 'helping';
+
+-- =============================================================================
+-- 32. pgvector 扩展及向量列 — 语义搜索和供需匹配基础设施
+-- =============================================================================
+CREATE EXTENSION IF NOT EXISTS vector;
+
+ALTER TABLE idle_items ADD COLUMN IF NOT EXISTS embedding vector(1024);
+ALTER TABLE help_requests ADD COLUMN IF NOT EXISTS embedding vector(1024);
+
+-- IVFFlat 向量索引（余弦相似度）
+CREATE INDEX IF NOT EXISTS idx_idle_embedding ON idle_items USING ivfflat (embedding vector_cosine_ops) WITH (lists = 50);
+CREATE INDEX IF NOT EXISTS idx_help_embedding ON help_requests USING ivfflat (embedding vector_cosine_ops) WITH (lists = 50);
+
+-- =============================================================================
+-- 33. AI 内容审核字段 — idle_items + help_requests
+-- =============================================================================
+ALTER TABLE idle_items ADD COLUMN IF NOT EXISTS moderation_status VARCHAR(10);
+ALTER TABLE idle_items ADD COLUMN IF NOT EXISTS moderation_reason TEXT;
+ALTER TABLE idle_items ADD COLUMN IF NOT EXISTS moderated_at TIMESTAMP;
+ALTER TABLE idle_items ADD COLUMN IF NOT EXISTS reviewed_by BIGINT;
+ALTER TABLE idle_items ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP;
+ALTER TABLE help_requests ADD COLUMN IF NOT EXISTS moderation_status VARCHAR(10);
+ALTER TABLE help_requests ADD COLUMN IF NOT EXISTS moderation_reason TEXT;
+ALTER TABLE help_requests ADD COLUMN IF NOT EXISTS moderated_at TIMESTAMP;
+ALTER TABLE help_requests ADD COLUMN IF NOT EXISTS reviewed_by BIGINT;
+ALTER TABLE help_requests ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP;
+
+-- 列注释
+COMMENT ON COLUMN idle_items.embedding IS '语义向量（TEXT存储pgvector字面量，1024维浮点数组），查询时通过CAST转为vector类型进行余弦距离计算，用于语义搜索和供需匹配';
+COMMENT ON COLUMN idle_items.moderation_status IS 'AI内容审核状态：pending(待AI审核)/green(审核通过，自动上线)/yellow(待人工复核，AI判定疑似不合规)/red(审核驳回，AI确认违规自动拒绝)/reviewed(已人工复核，管理员已手动处理)/NULL(非审核流程下架，不参与moderation筛选)';
+COMMENT ON COLUMN idle_items.moderation_reason IS 'AI审核原因简述，green时为空，yellow/red时记录AI判定的具体违规类型';
+COMMENT ON COLUMN idle_items.moderated_at IS 'AI审核完成时间，AI判定出结果时写入，后续管理员操作不更新此字段';
+COMMENT ON COLUMN idle_items.reviewed_by IS '人工复核的管理员用户ID，外键→users.id，NULL表示AI自动处理';
+COMMENT ON COLUMN idle_items.reviewed_at IS '人工复核时间，管理员通过或驳回时写入，NULL表示尚未人工处理';
+COMMENT ON COLUMN help_requests.embedding IS '语义向量（TEXT存储pgvector字面量，1024维浮点数组），查询时通过CAST转为vector类型进行余弦距离计算，用于语义搜索和供需匹配';
+COMMENT ON COLUMN help_requests.moderation_status IS 'AI内容审核状态：pending(待AI审核)/green(审核通过，自动上线)/yellow(待人工复核，AI判定疑似不合规)/red(审核驳回，AI确认违规自动拒绝)/reviewed(已人工复核，管理员已手动处理)/NULL(非审核流程下架，不参与moderation筛选)';
+COMMENT ON COLUMN help_requests.moderation_reason IS 'AI审核原因简述，green时为空，yellow/red时记录AI判定的具体违规类型';
+COMMENT ON COLUMN help_requests.moderated_at IS 'AI审核完成时间，AI判定出结果时写入，后续管理员操作不更新此字段';
+COMMENT ON COLUMN help_requests.reviewed_by IS '人工复核的管理员用户ID，外键→users.id，NULL表示AI自动处理';
+COMMENT ON COLUMN help_requests.reviewed_at IS '人工复核时间，管理员通过或驳回时写入，NULL表示尚未人工处理';
+
+-- 存量数据迁移：已上线的历史内容标记为 AI 审核通过
+UPDATE idle_items SET moderation_status='green', moderated_at=NOW() WHERE moderation_status IS NULL AND status IN ('online','completed','offline');
+UPDATE help_requests SET moderation_status='green', moderated_at=NOW() WHERE moderation_status IS NULL AND status IN ('online','completed','offline');
+
+-- =============================================================================
+-- 2026-07-31: 统一原因字段 + 删除冗余列 + DELETED → OFFLINE 迁移
+-- =============================================================================
+
+-- Step 1: 迁移 delistReason（violation_reason 优先，其次 moderation_reason）
+UPDATE idle_items SET delist_reason = violation_reason
+  WHERE delist_reason IS NULL AND violation_reason IS NOT NULL;
+UPDATE idle_items SET delist_reason = moderation_reason
+  WHERE delist_reason IS NULL AND moderation_reason IS NOT NULL;
+
+UPDATE help_requests SET delist_reason = violation_reason
+  WHERE delist_reason IS NULL AND violation_reason IS NOT NULL;
+UPDATE help_requests SET delist_reason = moderation_reason
+  WHERE delist_reason IS NULL AND moderation_reason IS NOT NULL;
+
+-- Step 2: DELETED → OFFLINE（idle_items 原 deleteItem 改为设置 OFFLINE）
+UPDATE idle_items SET status = 'offline', delist_reason = COALESCE(delist_reason, '用户删除'), updated_at = NOW()
+  WHERE status = 'deleted';
+UPDATE help_requests SET status = 'offline', updated_at = NOW()
+  WHERE status = 'deleted';
+
+-- Step 3: 删除冗余列（idle_items 7 列）
+ALTER TABLE idle_items DROP COLUMN IF EXISTS violation_type;
+ALTER TABLE idle_items DROP COLUMN IF EXISTS violation_reason;
+ALTER TABLE idle_items DROP COLUMN IF EXISTS violated_by;
+ALTER TABLE idle_items DROP COLUMN IF EXISTS violated_at;
+ALTER TABLE idle_items DROP COLUMN IF EXISTS moderation_reason;
+ALTER TABLE idle_items DROP COLUMN IF EXISTS moderated_at;
+ALTER TABLE idle_items DROP COLUMN IF EXISTS reviewed_at;
+
+-- Step 4: 删除冗余列（help_requests 8 列 + 新增 location）
+ALTER TABLE help_requests DROP COLUMN IF EXISTS violation_type;
+ALTER TABLE help_requests DROP COLUMN IF EXISTS violation_reason;
+ALTER TABLE help_requests DROP COLUMN IF EXISTS violated_by;
+ALTER TABLE help_requests DROP COLUMN IF EXISTS violated_at;
+ALTER TABLE help_requests DROP COLUMN IF EXISTS moderation_reason;
+ALTER TABLE help_requests DROP COLUMN IF EXISTS moderated_at;
+ALTER TABLE help_requests DROP COLUMN IF EXISTS reviewed_at;
+ALTER TABLE help_requests DROP COLUMN IF EXISTS embedding;
+
+ALTER TABLE help_requests ADD COLUMN IF NOT EXISTS location    VARCHAR(200);
+
+-- Step 5: 更新列注释
+COMMENT ON COLUMN idle_items.status        IS '状态：online(在线)/draft(草稿)/pending_review(待AI审核)/pending(待审批)/active(进行中)/completed(已完成)/offline(已下架)';
+COMMENT ON COLUMN idle_items.delist_reason IS '统一下架原因：AI审核原因、管理员驳回/下架原因、用户自行下架原因';
+COMMENT ON COLUMN help_requests.status        IS '状态：online(在线)/draft(草稿)/pending_review(待AI审核)/pending(待审批)/active(进行中)/completed(已完成)/offline(已下架)';
+COMMENT ON COLUMN help_requests.delist_reason IS '统一下架原因：AI审核原因、管理员驳回/下架原因、用户自行下架原因';
+COMMENT ON COLUMN help_requests.location      IS '求助地点';
+
+-- =============================================================================
+-- 2026-07-31: 删除 reward_type 列（字段预留后确认不需要）
+-- =============================================================================
+ALTER TABLE help_requests DROP COLUMN IF EXISTS reward_type;

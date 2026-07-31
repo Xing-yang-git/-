@@ -15,7 +15,7 @@ Component({
     /** 最大可选图片数量 */
     max: {
       type: Number,
-      value: 9
+      value: 4
     }
   },
 

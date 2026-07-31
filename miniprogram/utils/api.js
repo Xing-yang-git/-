@@ -7,7 +7,7 @@
  * 或在预览二维码生成时勾选「不校验合法域名」选项。
  */
 
-const { STATUS } = require('./constants');
+const { AUTH_STATUS } = require('./constants');
 
 // —— 防抖：避免并发 401 触发多次 wx.reLaunch ——
 let _reauthPending = false;
@@ -97,7 +97,7 @@ const request = (method, url, data) => {
           // 未审核账号被服务端拒绝：body 为 { code: 403, message: '账号未通过审核', data: '<authStatus>' }
           const resBody = res.data || {};
           if (resBody.message === '账号未通过审核') {
-            forceReviewStatus(typeof resBody.data === 'string' ? resBody.data : STATUS.PENDING);
+            forceReviewStatus(typeof resBody.data === 'string' ? resBody.data : AUTH_STATUS.PENDING);
             reject(new Error('账号未通过审核'));
           } else {
             reject(new Error(resBody.message || '无权限访问'));
@@ -163,7 +163,7 @@ const upload = (url, filePath) => {
           let body = {};
           try { body = JSON.parse(res.data) || {}; } catch (e) { /* 解析失败则按普通 403 处理 */ }
           if (body.message === '账号未通过审核') {
-            forceReviewStatus(typeof body.data === 'string' ? body.data : STATUS.PENDING);
+            forceReviewStatus(typeof body.data === 'string' ? body.data : AUTH_STATUS.PENDING);
             reject(new Error('账号未通过审核'));
           } else {
             reject(new Error(body.message || '无权限访问'));

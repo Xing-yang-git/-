@@ -1,6 +1,6 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
-const { STATUS, POST_TYPE } = require('../../utils/constants');
+const { POST_STATUS, BORROW_STATUS, POST_TYPE } = require('../../utils/constants');
 
 /**
  * 闲置物品详情页 — 物品信息展示 + 借用操作入口。
@@ -64,7 +64,7 @@ Page({
         const item = this.formatItem(data);
         // 从服务通知"待回应"卡片进入时，若后端未返回 userBorrowStatus，强制设为 pending 以禁用按钮
         if (this.data.fromNotice === 'pending' && !item.userBorrowStatus) {
-          item.userBorrowStatus = STATUS.PENDING;
+          item.userBorrowStatus = BORROW_STATUS.PENDING;
         }
         const historyData = this.buildHistoryData(data);
         // 记录帖子的更新时间，用于操作前检测冲突
@@ -78,13 +78,13 @@ Page({
   },
 
   formatItem(item) {
-    // 解析 images：JSON 字符串转数组，最多 9 张
+    // 解析 images：JSON 字符串转数组，最多 4 张
     let imageList = [];
     if (item.images) {
       try {
         imageList = typeof item.images === 'string' ? JSON.parse(item.images) : item.images;
         if (!Array.isArray(imageList)) imageList = [];
-        imageList = imageList.slice(0, 9);
+        imageList = imageList.slice(0, 4);
       } catch (e) {
         imageList = [];
       }
@@ -230,9 +230,9 @@ Page({
     const { item, userId } = this.data;
 
     // 已被借出 / 已被预定 / 已申请 / 已通过 / 已归还 — 不可重复操作
-    if (item.status === STATUS.BORROWING || item.status === STATUS.RESERVED ||
-        item.userBorrowStatus === STATUS.PENDING || item.userBorrowStatus === STATUS.APPROVED ||
-        item.userBorrowStatus === STATUS.RETURNED) return;
+    if (item.status === POST_STATUS.ACTIVE || item.status === POST_STATUS.PENDING ||
+        item.userBorrowStatus === BORROW_STATUS.PENDING || item.userBorrowStatus === BORROW_STATUS.APPROVED ||
+        item.userBorrowStatus === BORROW_STATUS.RETURNED) return;
 
     // 自己发布的物品/需求不可操作
     if (userId && item.userId && String(userId) === String(item.userId)) {
@@ -270,7 +270,7 @@ Page({
               // 刷新页面数据
               const item = this.formatItem(data);
               if (this.data.fromNotice === 'pending' && !item.userBorrowStatus) {
-                item.userBorrowStatus = STATUS.PENDING;
+                item.userBorrowStatus = BORROW_STATUS.PENDING;
               }
               const historyData = this.buildHistoryData(data);
               this.setData({
@@ -403,7 +403,7 @@ Page({
         this.setData({ showSheet: false });
         wx.showToast({ title: item.isWanted ? '借出意向已发送' : '借入申请已发送', icon: 'success' });
         // 本地更新物品状态（通过后端 userBorrowStatus 在重新进入时保持）
-        this.setData({ 'item.status': STATUS.RESERVED, 'item.userBorrowStatus': STATUS.PENDING });
+        this.setData({ 'item.status': POST_STATUS.PENDING, 'item.userBorrowStatus': BORROW_STATUS.PENDING });
       })
       .catch((err) => {
         wx.hideLoading();

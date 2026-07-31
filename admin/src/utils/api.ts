@@ -74,8 +74,9 @@ export function post<T = unknown>(
 export function put<T = unknown>(
   url: string,
   data?: unknown,
+  params?: Record<string, unknown>,
 ): Promise<AxiosResponse<T>> {
-  return api.put(url, data);
+  return api.put(url, data, { params });
 }
 
 /**

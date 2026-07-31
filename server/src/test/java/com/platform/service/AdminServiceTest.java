@@ -275,8 +275,8 @@ class AdminServiceTest {
         when(helpRequestRepository.countByTenantIdAndStatus(tenantId, "active")).thenReturn(2L);
         when(idleItemRepository.countByTenantIdAndStatus(tenantId, "completed")).thenReturn(8L);
         when(helpRequestRepository.countByTenantIdAndStatus(tenantId, "completed")).thenReturn(4L);
-        when(idleItemRepository.countByTenantIdAndStatus(tenantId, BizStatus.DELETED)).thenReturn(1L);
-        when(helpRequestRepository.countByTenantIdAndStatus(tenantId, BizStatus.DELETED)).thenReturn(1L);
+        when(idleItemRepository.countByTenantIdAndStatus(tenantId, BizStatus.OFFLINE)).thenReturn(1L);
+        when(helpRequestRepository.countByTenantIdAndStatus(tenantId, BizStatus.OFFLINE)).thenReturn(1L);
 
         // 执行
         Map<String, Long> result = adminService.getContentCounts(adminId);
@@ -604,8 +604,8 @@ class AdminServiceTest {
         // 断言
         assertThat(result.get("success")).isEqualTo(true);
         assertThat(result.get("message")).isEqualTo("内容已删除");
-        assertThat(idleItem.getStatus()).isEqualTo(BizStatus.DELETED);
-        assertThat(idleItem.getViolationType()).isEqualTo("违规内容");
+        assertThat(idleItem.getStatus()).isEqualTo(BizStatus.OFFLINE);
+        assertThat(idleItem.getDelistReason()).isEqualTo("违规内容");
         verify(operationLogRepository).save(any(OperationLog.class));
     }
 
@@ -626,7 +626,7 @@ class AdminServiceTest {
 
         // 断言
         assertThat(result.get("success")).isEqualTo(true);
-        assertThat(helpRequest.getStatus()).isEqualTo(BizStatus.DELETED);
+        assertThat(helpRequest.getStatus()).isEqualTo(BizStatus.OFFLINE);
     }
 
     @Test
@@ -645,7 +645,7 @@ class AdminServiceTest {
         adminService.removeContent(adminId, itemId, req);
 
         // 断言
-        assertThat(idleItem.getViolationType()).isEqualTo("违规");
+        assertThat(idleItem.getDelistReason()).isEqualTo("违规");
     }
 
     @Test

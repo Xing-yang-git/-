@@ -1,6 +1,6 @@
 /**
  * constants.js 单元测试。
- * 验证 STATUS 和 POST_TYPE 常量值与后端定义一致。
+ * 验证 POST_STATUS、POST_TYPE、AUTH_STATUS、BORROW_STATUS、HELP_APPLICATION_STATUS 常量值与后端定义一致。
  */
 
 describe('constants', () => {
@@ -12,36 +12,21 @@ describe('constants', () => {
     constants = require('../constants');
   });
 
-  // ==================== STATUS ====================
+  // ==================== POST_STATUS ====================
 
-  describe('STATUS', () => {
-    it('应包含全部通用流转状态', () => {
-      expect(constants.STATUS.PENDING).toBe('pending');
-      expect(constants.STATUS.APPROVED).toBe('approved');
-      expect(constants.STATUS.REJECTED).toBe('rejected');
-      expect(constants.STATUS.RETURNED).toBe('returned');
-      expect(constants.STATUS.COMPLETED).toBe('completed');
+  describe('POST_STATUS', () => {
+    it('应包含全部帖子状态', () => {
+      expect(constants.POST_STATUS.ONLINE).toBe('online');
+      expect(constants.POST_STATUS.DRAFT).toBe('draft');
+      expect(constants.POST_STATUS.OFFLINE).toBe('offline');
+      expect(constants.POST_STATUS.PENDING_REVIEW).toBe('pending_review');
+      expect(constants.POST_STATUS.PENDING).toBe('pending');
+      expect(constants.POST_STATUS.ACTIVE).toBe('active');
+      expect(constants.POST_STATUS.COMPLETED).toBe('completed');
     });
 
-    it('应包含全部内容状态', () => {
-      expect(constants.STATUS.ONLINE).toBe('online');
-      expect(constants.STATUS.OFFLINE).toBe('offline');
-    });
-
-    it('应包含全部账号状态', () => {
-      expect(constants.STATUS.REGISTERING).toBe('registering');
-      expect(constants.STATUS.BANNED).toBe('banned');
-      expect(constants.STATUS.CANCELLED).toBe('cancelled');
-    });
-
-    it('应包含全部借用交互状态', () => {
-      expect(constants.STATUS.ACTIVE).toBe('active');
-      expect(constants.STATUS.RESERVED).toBe('pending');   // 已合并到 pending
-      expect(constants.STATUS.BORROWING).toBe('active');   // 已合并到 active
-    });
-
-    it('所有常量值应为小写字符串', () => {
-      Object.values(constants.STATUS).forEach(value => {
+    it('所有 POST_STATUS 常量值应为小写字符串', () => {
+      Object.values(constants.POST_STATUS).forEach(value => {
         expect(value).toBe(value.toLowerCase());
       });
     });
@@ -61,5 +46,65 @@ describe('constants', () => {
         expect(value).toBe(value.toUpperCase());
       });
     });
+  });
+
+  // ==================== AUTH_STATUS ====================
+
+  describe('AUTH_STATUS', () => {
+    it('应包含全部账户审核状态', () => {
+      expect(constants.AUTH_STATUS.PENDING).toBe('pending');
+      expect(constants.AUTH_STATUS.APPROVED).toBe('approved');
+      expect(constants.AUTH_STATUS.REJECTED).toBe('rejected');
+      expect(constants.AUTH_STATUS.REGISTERING).toBe('registering');
+      expect(constants.AUTH_STATUS.BANNED).toBe('banned');
+    });
+
+    it('所有 AUTH_STATUS 常量值应为小写字符串', () => {
+      Object.values(constants.AUTH_STATUS).forEach(value => {
+        expect(value).toBe(value.toLowerCase());
+      });
+    });
+  });
+
+  // ==================== BORROW_STATUS ====================
+
+  describe('BORROW_STATUS', () => {
+    it('应包含全部借用申请状态', () => {
+      expect(constants.BORROW_STATUS.PENDING).toBe('pending');
+      expect(constants.BORROW_STATUS.APPROVED).toBe('approved');
+      expect(constants.BORROW_STATUS.REJECTED).toBe('rejected');
+      expect(constants.BORROW_STATUS.RETURNED).toBe('returned');
+      expect(constants.BORROW_STATUS.CANCELLED).toBe('cancelled');
+      expect(constants.BORROW_STATUS.COMPLETED).toBe('completed');
+    });
+
+    it('所有 BORROW_STATUS 常量值应为小写字符串', () => {
+      Object.values(constants.BORROW_STATUS).forEach(value => {
+        expect(value).toBe(value.toLowerCase());
+      });
+    });
+  });
+
+  // ==================== HELP_APPLICATION_STATUS ====================
+
+  describe('HELP_APPLICATION_STATUS', () => {
+    it('应包含全部帮助申请状态', () => {
+      expect(constants.HELP_APPLICATION_STATUS.PENDING).toBe('pending');
+      expect(constants.HELP_APPLICATION_STATUS.APPROVED).toBe('approved');
+      expect(constants.HELP_APPLICATION_STATUS.REJECTED).toBe('rejected');
+      expect(constants.HELP_APPLICATION_STATUS.COMPLETED).toBe('completed');
+    });
+
+    it('所有 HELP_APPLICATION_STATUS 常量值应为小写字符串', () => {
+      Object.values(constants.HELP_APPLICATION_STATUS).forEach(value => {
+        expect(value).toBe(value.toLowerCase());
+      });
+    });
+  });
+
+  // ==================== old STATUS removed ====================
+
+  it('不应再导出旧的混合 STATUS 对象', () => {
+    expect(constants.STATUS).toBeUndefined();
   });
 });

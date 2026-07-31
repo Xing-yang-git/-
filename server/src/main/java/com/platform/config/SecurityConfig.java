@@ -34,6 +34,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/common/**").permitAll()
                 .requestMatchers("/uploads/**").permitAll()
                 .requestMatchers("/ws/**").permitAll()
+                .requestMatchers("/api/ai/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_SUPER_ADMIN")
                 .requestMatchers("/error").permitAll()
                 // 管理端接口仅限物业/超管角色——防止普通住户 token 垂直越权访问管理功能
                 .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_SUPER_ADMIN")

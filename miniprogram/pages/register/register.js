@@ -1,5 +1,5 @@
 const api = require('../../utils/api');
-const { STATUS } = require('../../utils/constants');
+const { AUTH_STATUS } = require('../../utils/constants');
 
 /**
  * 用户注册页 — 多步骤注册流程（微信授权 → 小区选择 → 身份信息 → 完成）。
@@ -289,7 +289,7 @@ Page({
           }
           wx.showToast({ title: '提交成功，请等待物业审核', icon: 'success' });
           setTimeout(() => {
-            wx.redirectTo({ url: '/pages/review-status/review-status?state=' + STATUS.PENDING });
+            wx.redirectTo({ url: '/pages/review-status/review-status?state=' + AUTH_STATUS.PENDING });
           }, 1200);
         })
         .catch((err) => {

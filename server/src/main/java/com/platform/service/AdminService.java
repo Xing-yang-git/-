@@ -4,10 +4,13 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.platform.common.BizStatus;
 import com.platform.common.DamageType;
+import com.platform.common.ModerationStatus;
+import com.platform.common.NotificationType;
 import com.platform.common.PostType;
 import com.platform.common.ReturnStatus;
 import com.platform.common.UserFormatter;
 import com.platform.common.UserType;
+import com.platform.common.VersionConflictException;
 import com.platform.model.dto.AuditRequest;
 import com.platform.model.dto.ContentItemDTO;
 import com.platform.model.dto.ContentOfflineRequest;
@@ -67,6 +70,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -405,7 +409,9 @@ public class AdminService {
      * 获取内容列表，支持按状态页签、类型、楼栋、单元、关键词筛选，按 createdAt 降序分页。
      */
     public PageDTO<ContentItemDTO> getContentList(Long adminId, String statusTab, String type, String building,
-                                                   String unit, String search, int page, int size) {
+                                                   String unit, String search,
+                                                   String moderationStatus, String moderatedBy,
+                                                   int page, int size) {
         requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
 
@@ -417,6 +423,29 @@ public class AdminService {
 
         // 将状态页签映射为数据库状态值列表
         String effectiveTab = (statusTab != null && !statusTab.isEmpty()) ? statusTab : "all";
+
+        // 发布审核 tab：按 moderation 字段筛选
+        if ("moderation".equals(effectiveTab)) {
+            List<ContentItemDTO> allItems = new ArrayList<>();
+            if (type == null || "idle".equals(type)) {
+                fetchModerationIdleItems(tenantId, buildingUserIds, search, moderationStatus, moderatedBy)
+                        .forEach(item -> allItems.add(toContentItemDTO(item)));
+            }
+            if (type == null || "help".equals(type)) {
+                fetchModerationHelpItems(tenantId, buildingUserIds, search, moderationStatus, moderatedBy)
+                        .forEach(item -> allItems.add(toContentItemDTO(item)));
+            }
+            // 审核 tab 按 updatedAt 倒序
+            allItems.sort((a, b) -> {
+                LocalDateTime ta = a.getUpdatedAt();
+                LocalDateTime tb = b.getUpdatedAt();
+                if (ta == null && tb == null) return 0;
+                if (ta == null) return 1;
+                if (tb == null) return -1;
+                return tb.compareTo(ta);
+            });
+            return paginateInMemory(allItems, page, size);
+        }
 
         // 待审批 tab 特殊处理：数据来源为 borrow_requests / help_applications（pending 状态），
         // 而非 idle_items / help_requests 表，与 C端「管理页→审批」数据源一致
@@ -446,9 +475,18 @@ public class AdminService {
                     .forEach(item -> allItems.add(toContentItemDTO(item)));
         }
 
+        // 违规下架tab — 按审核员筛选
+        List<ContentItemDTO> filtered = allItems;
+        if (moderatedBy != null && !moderatedBy.isEmpty()) {
+            boolean isAi = "ai".equals(moderatedBy);
+            filtered = allItems.stream()
+                    .filter(dto -> isAi ? dto.getReviewedByName() == null : dto.getReviewedByName() != null)
+                    .collect(Collectors.toList());
+        }
+
         // 排序并分页
-        sortContentByCreatedAtDesc(allItems);
-        return paginateInMemory(allItems, page, size);
+        sortContentByCreatedAtDesc(filtered);
+        return paginateInMemory(filtered, page, size);
     }
 
     /**
@@ -562,11 +600,11 @@ public class AdminService {
         counts.put("completed", idleCompleted + helpCompleted);
 
         long idleViolation = tenantId != null
-                ? idleItemRepository.countByTenantIdAndStatus(tenantId, BizStatus.DELETED)
-                : idleItemRepository.countByStatus(BizStatus.DELETED);
+                ? idleItemRepository.countByTenantIdAndStatus(tenantId, BizStatus.OFFLINE)
+                : idleItemRepository.countByStatus(BizStatus.OFFLINE);
         long helpViolation = tenantId != null
-                ? helpRequestRepository.countByTenantIdAndStatus(tenantId, BizStatus.DELETED)
-                : helpRequestRepository.countByStatus(BizStatus.DELETED);
+                ? helpRequestRepository.countByTenantIdAndStatus(tenantId, BizStatus.OFFLINE)
+                : helpRequestRepository.countByStatus(BizStatus.OFFLINE);
         counts.put("violation", idleViolation + helpViolation);
 
         long idleAll = idleShowing + idleProgressing + idleCompleted + idleViolation;
@@ -589,12 +627,11 @@ public class AdminService {
      */
     public Map<String, Object> removeContent(Long adminId, Long contentId, ContentOfflineRequest req) {
         requireNotSuperAdmin(findAdmin(adminId));
-        String violationType = buildViolationType(req);
-        String violationReason = buildViolationReason(req, violationType);
+        String delistReason = buildDelistReason(req);
 
         switch (req.getTargetType()) {
-            case "idle" -> removeIdleContent(contentId, adminId, violationType, violationReason);
-            case "help" -> removeHelpContent(contentId, adminId, violationType, violationReason);
+            case "idle" -> removeIdleContent(contentId, adminId, delistReason, req.isFromModeration(), req.getUpdatedAt());
+            case "help" -> removeHelpContent(contentId, adminId, delistReason, req.isFromModeration(), req.getUpdatedAt());
             default -> throw new RuntimeException("不支持的目标类型");
         }
 
@@ -605,36 +642,97 @@ public class AdminService {
     }
 
     /**
-     * 从下架请求中提取违规类型字符串。
+     * AI 内容审核通过 — 管理员人工确认帖子合规，将其上线。
      */
-    private String buildViolationType(ContentOfflineRequest req) {
-        return req.getReasons() != null && !req.getReasons().isEmpty()
-                ? String.join("，", req.getReasons())
-                : "违规";
+    @Transactional
+    public void approveContent(Long adminId, Long contentId, String type, String updatedAt) {
+        requireNotSuperAdmin(findAdmin(adminId));
+        switch (type) {
+            case "idle" -> {
+                IdleItem item = idleItemRepository.findById(contentId)
+                        .orElseThrow(() -> new RuntimeException("物品不存在"));
+                checkVersionConflict(item.getUpdatedAt(), updatedAt);
+                if (ModerationStatus.RED.equals(item.getModerationStatus()) ||
+                    (ModerationStatus.REVIEWED.equals(item.getModerationStatus()) && BizStatus.OFFLINE.equals(item.getStatus()))) {
+                    throw new RuntimeException("该内容已被驳回，无法重新上线");
+                }
+                item.setStatus(BizStatus.ONLINE);
+                item.setDelistReason(null);
+                item.setModerationStatus(ModerationStatus.REVIEWED);
+                item.setReviewedBy(adminId);
+                idleItemRepository.save(item);
+                notificationService.create(item.getUserId(), NotificationType.CONTENT_APPROVED,
+                        "发布内容已通过审核",
+                        "您发布的「" + item.getTitle() + "」经审核已通过，现已上线",
+                        item.getId());
+            }
+            case "help" -> {
+                HelpRequest hr = helpRequestRepository.findById(contentId)
+                        .orElseThrow(() -> new RuntimeException("求助不存在"));
+                checkVersionConflict(hr.getUpdatedAt(), updatedAt);
+                if (ModerationStatus.RED.equals(hr.getModerationStatus()) ||
+                    (ModerationStatus.REVIEWED.equals(hr.getModerationStatus()) && BizStatus.OFFLINE.equals(hr.getStatus()))) {
+                    throw new RuntimeException("该内容已被驳回，无法重新上线");
+                }
+                hr.setStatus(BizStatus.ONLINE);
+                hr.setDelistReason(null);
+                hr.setModerationStatus(ModerationStatus.REVIEWED);
+                hr.setReviewedBy(adminId);
+                helpRequestRepository.save(hr);
+                notificationService.create(hr.getUserId(), NotificationType.CONTENT_APPROVED,
+                        "发布内容已通过审核",
+                        "您发布的「" + hr.getTitle() + "」经审核已通过，现已上线",
+                        hr.getId());
+            }
+            default -> throw new RuntimeException("不支持的类型");
+        }
     }
 
     /**
-     * 从下架请求中提取违规原因字符串。
+     * 从下架请求中构建下架原因字符串。
      */
-    private String buildViolationReason(ContentOfflineRequest req, String fallback) {
-        return req.getCustomReason() != null && !req.getCustomReason().isEmpty()
-                ? req.getCustomReason()
-                : fallback;
+    private String buildDelistReason(ContentOfflineRequest req) {
+        if (req.getCustomReason() != null && !req.getCustomReason().isBlank()) {
+            return req.getCustomReason();
+        }
+        if (req.getReasons() != null && !req.getReasons().isEmpty()) {
+            return String.join("，", req.getReasons());
+        }
+        return "违规";
+    }
+
+    /**
+     * 乐观锁版本检查：若前端传了 updatedAt，与 DB 当前值对比（均截断到秒），不一致则抛出冲突异常。
+     * @param dbUpdatedAt 数据库实体的更新时间
+     * @param clientUpdatedAt 前端传来的更新时间（ISO 字符串，含纳秒精度）
+     * @throws VersionConflictException 数据已被他人修改
+     */
+    private void checkVersionConflict(java.time.LocalDateTime dbUpdatedAt, String clientUpdatedAt) {
+        if (clientUpdatedAt == null || clientUpdatedAt.isBlank()) return;
+        // 两端均截断到秒级比较：避免 DB（LocalDateTime）与 Jackson 序列化精度不一致导致误判
+        String dbStr = dbUpdatedAt != null ? dbUpdatedAt.truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString() : "";
+        String clientStr = clientUpdatedAt.trim();
+        // 截掉客户端时间的小数秒部分（如 .123456 → ""）
+        int dotIdx = clientStr.indexOf('.');
+        if (dotIdx > 0) clientStr = clientStr.substring(0, dotIdx);
+        if (!dbStr.equals(clientStr)) {
+            throw new VersionConflictException("数据已被其他管理员修改，请刷新后重试");
+        }
     }
 
     /**
      * 下架闲置物品：标记违规状态、发送通知、记录操作日志，
      * 并自动拒绝该物品下所有待审批的借入申请，确保待审批列表同步清空。
      */
-    private void removeIdleContent(Long contentId, Long adminId, String violationType, String violationReason) {
+    private void removeIdleContent(Long contentId, Long adminId, String delistReason, boolean fromModeration, String updatedAt) {
         IdleItem item = idleItemRepository.findById(contentId)
                 .orElseThrow(() -> new RuntimeException("物品不存在"));
-        item.setStatus(BizStatus.DELETED);
-        item.setDelistReason("违规下架");
-        item.setViolationType(violationType);
-        item.setViolationReason(violationReason);
-        item.setViolatedBy(adminId);
-        item.setViolatedAt(LocalDateTime.now());
+        checkVersionConflict(item.getUpdatedAt(), updatedAt);
+        item.setStatus(BizStatus.OFFLINE);
+        item.setDelistReason(delistReason);
+        // 审核 tab 驳回：设为 ModerationStatus.REVIEWED，红牌筛选 (REVIEWED + offline) 可匹配；其他 tab 下架：清空审核状态，不参与 moderation 筛选
+        item.setModerationStatus(fromModeration ? ModerationStatus.REVIEWED : null);
+        item.setReviewedBy(adminId);
         idleItemRepository.save(item);
 
         // 拒绝该物品下所有待审批的借入申请，使其从待审批列表中消失
@@ -646,7 +744,7 @@ public class AdminService {
             borrowRequestRepository.save(br);
             createNotification(br.getBorrowerId(), "audit_result",
                     "借入申请已拒绝",
-                    "您的借入申请「" + item.getTitle() + "」因物品被下架而自动拒绝，原因：" + violationReason,
+                    "您的借入申请「" + item.getTitle() + "」因物品被下架而自动拒绝，原因：" + delistReason,
                     br.getId());
         }
 
@@ -664,26 +762,26 @@ public class AdminService {
                     br.getId());
         }
 
-        createNotification(item.getUserId(), "violation",
-                "物品被管理员删除", "您的物品「" + item.getTitle() + "」因违规被删除，原因：" + violationReason,
+        createNotification(item.getUserId(), NotificationType.CONTENT_REJECTED,
+                "发布内容未通过审核", "您发布的「" + item.getTitle() + "」因" + delistReason + "未通过审核",
                 item.getId());
 
-        saveOperationLog(adminId, item.getTenantId(), "remove_content", "idle", contentId, violationReason);
+        saveOperationLog(adminId, item.getTenantId(), "remove_content", "idle", contentId, delistReason);
     }
 
     /**
      * 下架求助信息：标记违规状态、发送通知、记录操作日志，
      * 并自动拒绝该求助下所有待审批的帮助申请，确保待审批列表同步清空。
      */
-    private void removeHelpContent(Long contentId, Long adminId, String violationType, String violationReason) {
+    private void removeHelpContent(Long contentId, Long adminId, String delistReason, boolean fromModeration, String updatedAt) {
         HelpRequest item = helpRequestRepository.findById(contentId)
                 .orElseThrow(() -> new RuntimeException("求助信息不存在"));
-        item.setStatus(BizStatus.DELETED);
-        item.setDelistReason("违规下架");
-        item.setViolationType(violationType);
-        item.setViolationReason(violationReason);
-        item.setViolatedBy(adminId);
-        item.setViolatedAt(LocalDateTime.now());
+        checkVersionConflict(item.getUpdatedAt(), updatedAt);
+        item.setStatus(BizStatus.OFFLINE);
+        item.setDelistReason(delistReason);
+        // 审核 tab 驳回：设为 ModerationStatus.REVIEWED，红牌筛选 (REVIEWED + offline) 可匹配；其他 tab 下架：清空审核状态，不参与 moderation 筛选
+        item.setModerationStatus(fromModeration ? ModerationStatus.REVIEWED : null);
+        item.setReviewedBy(adminId);
         helpRequestRepository.save(item);
 
         // 拒绝该求助下所有待审批的帮助申请，使其从待审批列表中消失
@@ -693,7 +791,7 @@ public class AdminService {
             helpApplicationRepository.save(app);
             createNotification(app.getHelperId(), "audit_result",
                     "帮助申请已拒绝",
-                    "您对「" + item.getTitle() + "」的帮助申请因求助被下架而自动拒绝，原因：" + violationReason,
+                    "您对「" + item.getTitle() + "」的帮助申请因求助被下架而自动拒绝，原因：" + delistReason,
                     app.getId());
         }
 
@@ -709,11 +807,11 @@ public class AdminService {
                     app.getId());
         }
 
-        createNotification(item.getUserId(), "violation",
-                "求助被管理员删除", "您的求助「" + item.getTitle() + "」因违规被删除，原因：" + violationReason,
+        createNotification(item.getUserId(), NotificationType.CONTENT_REJECTED,
+                "发布内容未通过审核", "您发布的「" + item.getTitle() + "」因" + delistReason + "未通过审核",
                 item.getId());
 
-        saveOperationLog(adminId, item.getTenantId(), "remove_content", "help", contentId, violationReason);
+        saveOperationLog(adminId, item.getTenantId(), "remove_content", "help", contentId, delistReason);
     }
 
     /**
@@ -1578,7 +1676,8 @@ public class AdminService {
             IdleItem idleItem = idleItemRepository.findById(br.getIdleId()).orElse(null);
             if (idleItem == null) continue;
             // 排除已下架的物品
-            if (BizStatus.DELETED.equals(idleItem.getStatus())) continue;
+            if (BizStatus.OFFLINE.equals(idleItem.getStatus())
+                    || BizStatus.DRAFT.equals(idleItem.getStatus())) continue;
             // 按物品的发布时间过滤（对齐列标签"发布时间"）
             if (!inRange(idleItem.getCreatedAt(), startDate, endDate)) continue;
 
@@ -1694,7 +1793,8 @@ public class AdminService {
             HelpRequest helpRequest = helpRequestRepository.findById(app.getHelpId()).orElse(null);
             if (helpRequest == null) continue;
             // 排除已下架的求助
-            if (BizStatus.DELETED.equals(helpRequest.getStatus())) continue;
+            if (BizStatus.OFFLINE.equals(helpRequest.getStatus())
+                    || BizStatus.DRAFT.equals(helpRequest.getStatus())) continue;
             // 按求助的发布时间过滤（对齐列标签"发布时间"）
             if (!inRange(helpRequest.getCreatedAt(), startDate, endDate)) continue;
 
@@ -1771,27 +1871,61 @@ public class AdminService {
 
     /**
      * 构建内容下架记录数据：从 operation_logs 中筛选 action='remove_content' 的记录。
+     *
+     * <p>乐观锁上线前，同一内容的单次下架操作可能被重复记录，产生多条仅时间/原因略有差异的日志。
+     * 通过时间窗口（60 秒）区分：间隔 ≤60s 的视为脏重复，仅保留最新一条；
+     * 间隔 >60s 的视为两次独立的下架操作（如 AI 自动驳回后管理员再次下架），均予保留。</p>
      */
     private List<List<Object>> buildRemovalsData(Long tenantId, LocalDate startDate, LocalDate endDate) {
-        List<List<Object>> data = new ArrayList<>();
+        // 去重阈值：同一内容 60 秒内的多条日志视为脏重复
+        final long DEDUP_WINDOW_SECONDS = 60;
+
         List<OperationLog> logs = operationLogRepository.findAll().stream()
                 .filter(l -> tenantMatches(tenantId, l.getTenantId()) && "remove_content".equals(l.getAction()))
+                .filter(l -> inRange(l.getCreatedAt(), startDate, endDate))
+                .sorted(Comparator.comparing(OperationLog::getCreatedAt))
                 .collect(Collectors.toList());
 
+        // 按 (targetType, targetId) 分组，时间窗口内去重
+        Map<String, List<OperationLog>> grouped = new LinkedHashMap<>();
         for (OperationLog log : logs) {
-            if (!inRange(log.getCreatedAt(), startDate, endDate)) continue;
+            String key = log.getTargetType() + "_" + log.getTargetId();
+            grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(log);
+        }
+
+        List<OperationLog> deduped = new ArrayList<>();
+        for (List<OperationLog> group : grouped.values()) {
+            OperationLog last = null;
+            for (OperationLog log : group) {
+                if (last == null) {
+                    last = log;
+                } else if (java.time.Duration.between(last.getCreatedAt(), log.getCreatedAt()).getSeconds() <= DEDUP_WINDOW_SECONDS) {
+                    // 时间窗口内重复：用当前（更新）的替换上一个
+                    last = log;
+                } else {
+                    // 间隔超过阈值：上一条落库，当前作为新起点
+                    deduped.add(last);
+                    last = log;
+                }
+            }
+            if (last != null) {
+                deduped.add(last);
+            }
+        }
+
+        List<List<Object>> data = new ArrayList<>();
+        for (OperationLog log : deduped) {
             User admin = userRepository.findById(log.getAdminId()).orElse(null);
 
             // 查找被下架内容的发布者信息和标题
             String publisherRoom = "";
             String publisherName = "";
-            String contentTitle = "";
             User publisher = findRemovedContentPublisher(log.getTargetType(), log.getTargetId());
             if (publisher != null) {
                 publisherRoom = UserFormatter.formatRoom(publisher);
                 publisherName = publisher.getName();
             }
-            contentTitle = findRemovedContentTitle(log.getTargetType(), log.getTargetId());
+            String contentTitle = findRemovedContentTitle(log.getTargetType(), log.getTargetId());
             String contentDescription = findRemovedContentDescription(log.getTargetType(), log.getTargetId());
 
             List<Object> row = new ArrayList<>();
@@ -1809,7 +1943,7 @@ public class AdminService {
 
         // 按操作时间倒序排列（最新在最上面）
         data.sort((a, b) -> {
-            String ta = (String) a.get(0);  // 操作时间在第 1 列（索引 0）
+            String ta = (String) a.get(0);
             String tb = (String) b.get(0);
             if (ta == null && tb == null) return 0;
             if (ta == null) return 1;
@@ -2105,7 +2239,7 @@ public class AdminService {
             case BizStatus.PENDING             -> "待审批";
             case BizStatus.ACTIVE              -> "进行中";
             case BizStatus.COMPLETED           -> "已完成";
-            case BizStatus.OFFLINE, BizStatus.DELETED  -> "已下架";
+            case BizStatus.OFFLINE -> "已下架";
             // 兼容存量数据中的旧值（迁移后不再出现，兜底）
             case "reserved", "borrowing"       -> "进行中";
             default                            -> "";
@@ -2120,7 +2254,7 @@ public class AdminService {
             case BizStatus.PENDING             -> "待审批";
             case BizStatus.ACTIVE              -> "进行中";
             case BizStatus.COMPLETED           -> "已完成";
-            case BizStatus.OFFLINE, BizStatus.DELETED  -> "已下架";
+            case BizStatus.OFFLINE -> "已下架";
             // 兼容存量数据中的旧值（迁移后不再出现，兜底）
             case "reserved", "helping"         -> "进行中";
             default                            -> "";
@@ -2624,11 +2758,11 @@ public class AdminService {
      */
     private ContentItemDTO toContentItemDTO(IdleItem item) {
         User user = userRepository.findById(item.getUserId()).orElse(null);
-        String violatorName = getViolatorName(item.getViolatedBy());
 
         ContentItemDTO.ContentItemDTOBuilder builder = ContentItemDTO.builder()
                 .id(item.getId())
                 .type("idle")
+                .postType(item.getPostType())
                 .title(item.getTitle())
                 .description(item.getDescription())
                 .images(parseImages(item.getImages()))
@@ -2643,12 +2777,12 @@ public class AdminService {
                 .createdAt(item.getCreatedAt())
                 .maxDuration(item.getMaxDuration())
                 .durationUnit(item.getDurationUnit())
-                .violationType(item.getViolationType())
-                .violationReason(item.getViolationReason())
-                .violatorName(violatorName)
-                .violatedAt(item.getViolatedAt())
                 .applicantName(user != null ? user.getName() : "未知用户")
-                .building(user != null ? getBuildingName(user) : null);
+                .building(user != null ? getBuildingName(user) : null)
+                .moderationStatus(item.getModerationStatus())
+                .delistReason(item.getDelistReason())
+                .reviewedByName(getUserName(item.getReviewedBy()))
+                .updatedAt(item.getUpdatedAt());
 
         // 根据状态填充对方信息、评价和时间线
         if (BizStatus.ACTIVE.equals(item.getStatus())) {
@@ -2737,11 +2871,11 @@ public class AdminService {
      */
     private ContentItemDTO toContentItemDTO(HelpRequest item) {
         User user = userRepository.findById(item.getUserId()).orElse(null);
-        String violatorName = getViolatorName(item.getViolatedBy());
 
         ContentItemDTO.ContentItemDTOBuilder builder = ContentItemDTO.builder()
                 .id(item.getId())
                 .type("help")
+                .postType("HELP")
                 .title(item.getTitle())
                 .description(item.getDescription())
                 .images(parseImages(item.getImages()))
@@ -2755,12 +2889,12 @@ public class AdminService {
                 .createdAt(item.getCreatedAt())
                 .timeStart(item.getTimeStart())
                 .timeEnd(item.getTimeEnd())
-                .violationType(item.getViolationType())
-                .violationReason(item.getViolationReason())
-                .violatorName(violatorName)
-                .violatedAt(item.getViolatedAt())
                 .applicantName(user != null ? user.getName() : "未知用户")
-                .building(user != null ? getBuildingName(user) : null);
+                .building(user != null ? getBuildingName(user) : null)
+                .moderationStatus(item.getModerationStatus())
+                .delistReason(item.getDelistReason())
+                .reviewedByName(getUserName(item.getReviewedBy()))
+                .updatedAt(item.getUpdatedAt());
 
         // 根据状态填充对方信息、评价和时间线
         if (BizStatus.ACTIVE.equals(item.getStatus())) {
@@ -3090,10 +3224,10 @@ public class AdminService {
             case "completed":
                 return java.util.Collections.singletonList(BizStatus.COMPLETED);
             case "violation":
-                return java.util.Collections.singletonList(BizStatus.DELETED);
+                return java.util.Collections.singletonList(BizStatus.OFFLINE);
             case "all":
             default:
-                return java.util.Arrays.asList(BizStatus.ONLINE, BizStatus.ACTIVE, BizStatus.COMPLETED, BizStatus.DELETED);
+                return java.util.Arrays.asList(BizStatus.ONLINE, BizStatus.ACTIVE, BizStatus.COMPLETED, BizStatus.OFFLINE);
         }
     }
 
@@ -3109,10 +3243,10 @@ public class AdminService {
             case "completed":
                 return java.util.Collections.singletonList(BizStatus.COMPLETED);
             case "violation":
-                return java.util.Collections.singletonList(BizStatus.DELETED);
+                return java.util.Collections.singletonList(BizStatus.OFFLINE);
             case "all":
             default:
-                return java.util.Arrays.asList(BizStatus.ONLINE, BizStatus.ACTIVE, BizStatus.COMPLETED, BizStatus.DELETED);
+                return java.util.Arrays.asList(BizStatus.ONLINE, BizStatus.ACTIVE, BizStatus.COMPLETED, BizStatus.OFFLINE);
         }
     }
 
@@ -3130,8 +3264,10 @@ public class AdminService {
                 return "进行中";
             case BizStatus.COMPLETED:
                 return "已完成";
-            case BizStatus.DELETED:
+            case BizStatus.OFFLINE:
                 return "已下架";
+            case BizStatus.PENDING_REVIEW:
+                return "待AI审核";
             default:
                 return rawStatus;
         }
@@ -3199,17 +3335,71 @@ public class AdminService {
         return name;
     }
 
-    /**
-     * 按 ID 查询违规处理人姓名（用于没有 @ManyToOne violator 字段的 HelpRequest）。
-     */
-    private String getViolatorName(Long violatedBy) {
-        if (violatedBy == null) return null;
-        return userRepository.findById(violatedBy).map(User::getName).orElse(null);
-    }
-
     // ==================== 私有辅助方法：通知 ====================
+
+    private String getUserName(Long userId) {
+        if (userId == null) return null;
+        return userRepository.findById(userId).map(User::getName).orElse(null);
+    }
 
     private void createNotification(Long userId, String type, String title, String content, Long relatedId) {
         notificationService.create(userId, type, title, content, relatedId);
+    }
+
+    // ==================== 私有辅助方法：审核查询 ====================
+
+    /** 查询待 AI 审核的闲置物品，按 moderationStatus 和 moderatedBy 筛选。 */
+    private List<IdleItem> fetchModerationIdleItems(Long tenantId, List<Long> buildingUserIds,
+                                                     String search, String moderationStatus, String moderatedBy) {
+        return idleItemRepository.findAll().stream()
+                .filter(i -> tenantMatches(tenantId, i.getTenantId()))
+                .filter(i -> i.getModerationStatus() != null)
+                .filter(i -> matchesModerationStatus(
+                        moderationStatus == null || moderationStatus.isEmpty() ? "yellow,red" : moderationStatus,
+                        i.getModerationStatus(), i.getStatus()))
+                .filter(i -> moderatedBy == null || "".equals(moderatedBy)
+                        || ("ai".equals(moderatedBy) && i.getReviewedBy() == null)
+                        || ("admin".equals(moderatedBy) && i.getReviewedBy() != null))
+                .filter(i -> buildingUserIds == null || buildingUserIds.contains(i.getUserId()))
+                .filter(i -> search == null || search.isEmpty()
+                        || (i.getTitle() != null && i.getTitle().toLowerCase().contains(search.toLowerCase())))
+                .collect(Collectors.toList());
+    }
+
+    /** 查询待 AI 审核的求助信息，按 moderationStatus 和 moderatedBy 筛选。 */
+    private List<HelpRequest> fetchModerationHelpItems(Long tenantId, List<Long> buildingUserIds,
+                                                        String search, String moderationStatus, String moderatedBy) {
+        return helpRequestRepository.findAll().stream()
+                .filter(h -> tenantMatches(tenantId, h.getTenantId()))
+                .filter(h -> h.getModerationStatus() != null)
+                .filter(h -> matchesModerationStatus(
+                        moderationStatus == null || moderationStatus.isEmpty() ? "yellow,red" : moderationStatus,
+                        h.getModerationStatus(), h.getStatus()))
+                .filter(h -> moderatedBy == null || "".equals(moderatedBy)
+                        || ("ai".equals(moderatedBy) && h.getReviewedBy() == null)
+                        || ("admin".equals(moderatedBy) && h.getReviewedBy() != null))
+                .filter(h -> buildingUserIds == null || buildingUserIds.contains(h.getUserId()))
+                .filter(h -> search == null || search.isEmpty()
+                        || (h.getTitle() != null && h.getTitle().toLowerCase().contains(search.toLowerCase())))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 匹配 moderationStatus 筛选条件。
+     * ModerationStatus.RED 匹配 AI 自动驳回 和 管理员驳回(REVIEWED + OFFLINE)。
+     * "green,reviewed" 匹配 AI 通过(green) 和 管理员通过(reviewed + online/其他)。
+     */
+    private boolean matchesModerationStatus(String filter, String actual, String itemStatus) {
+        if (filter.contains(",")) {
+            for (String part : filter.split(",")) {
+                if (matchesModerationStatus(part.trim(), actual, itemStatus)) return true;
+            }
+            return false;
+        }
+        if (ModerationStatus.RED.equals(filter)) {
+            return ModerationStatus.RED.equals(actual)
+                || (ModerationStatus.REVIEWED.equals(actual) && BizStatus.OFFLINE.equals(itemStatus));
+        }
+        return filter.equals(actual);
     }
 }

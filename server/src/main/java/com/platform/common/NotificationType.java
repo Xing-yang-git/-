@@ -27,4 +27,10 @@ public final class NotificationType {
     public static final String RETURN_CONFIRM = "return_confirm";
     /** 通用通知 */
     public static final String NOTIFICATION = "notification";
+    /** 供需匹配通知 — 有人求借时，通知曾出借过类似物品的用户 */
+    public static final String MATCH_DEMAND = "match_demand";
+    /** AI 内容审核驳回通知 */
+    public static final String CONTENT_REJECTED = "content_rejected";
+    /** AI 内容审核通过通知 */
+    public static final String CONTENT_APPROVED = "content_approved";
 }

@@ -42,18 +42,16 @@ public final class IdleItemsColumn {
     public static final String COL_PICKUP_METHOD = "pickup_method";
     /** 状态：online(展示中) / reserved(已预订) / offline(已下架) / deleted(已删除)，引用 {@link com.platform.common.BizStatus} */
     public static final String COL_STATUS = "status";
-    /** 下架原因 */
+    /** 统一下架原因 */
     public static final String COL_DELIST_REASON = "delist_reason";
     /** 是否为代发（管理员代住户发布） */
     public static final String COL_IS_PROXY = "is_proxy";
-    /** 违规类型 */
-    public static final String COL_VIOLATION_TYPE = "violation_type";
-    /** 违规原因描述 */
-    public static final String COL_VIOLATION_REASON = "violation_reason";
-    /** 违规处理人 ID，外键 → users.id */
-    public static final String COL_VIOLATED_BY = "violated_by";
-    /** 违规处理时间 */
-    public static final String COL_VIOLATED_AT = "violated_at";
+    /** 语义向量（pgvector 768 维），用于语义搜索和供需匹配 */
+    public static final String COL_EMBEDDING = "embedding";
+    /** AI 审核状态：pending / green / yellow / red / reviewed */
+    public static final String COL_MODERATION_STATUS = "moderation_status";
+    /** 审核内容的管理员用户ID，NULL=AI自动，非NULL=管理员手动通过或驳回 */
+    public static final String COL_REVIEWED_BY = "reviewed_by";
     /** 创建时间 */
     public static final String COL_CREATED_AT = "created_at";
     /** 更新时间 */
