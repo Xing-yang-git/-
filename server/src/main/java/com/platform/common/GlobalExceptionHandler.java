@@ -22,6 +22,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(Result.error(400, msg));
     }
 
+    @ExceptionHandler(AiGenerationException.class)
+    public ResponseEntity<Result<Void>> handleAiGeneration(AiGenerationException e) {
+        log.error("AI 生成失败: {}", e.getMessage(), e);
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(Result.error(502, "AI 生成失败：" + e.getMessage()));
+    }
+
     @ExceptionHandler(VersionConflictException.class)
     public ResponseEntity<Result<Void>> handleVersionConflict(VersionConflictException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Result.error(409, e.getMessage()));

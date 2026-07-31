@@ -3,6 +3,7 @@ package com.platform.config;
 import com.platform.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -31,6 +32,8 @@ public class SecurityConfig {
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/login", "/api/auth/wx-login", "/api/auth/phone-login", "/api/auth/register").permitAll()
+                // AI 文案生成需认证 — 防止未登录用户消耗付费 API 额度
+                .requestMatchers(HttpMethod.POST, "/api/common/polish").authenticated()
                 .requestMatchers("/api/common/**").permitAll()
                 .requestMatchers("/uploads/**").permitAll()
                 .requestMatchers("/ws/**").permitAll()

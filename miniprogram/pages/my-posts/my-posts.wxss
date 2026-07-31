@@ -1786,3 +1786,34 @@
   align-items: center;
   justify-content: center;
 }
+
+/* --- 互助感想 — 智能生成按钮 --- */
+.feedback-label-row {
+  display: flex;
+  align-items: center;
+}
+
+.feedback-label-row .approval-section-label {
+  margin-bottom: 0;
+  flex: 1;
+}
+
+.feedback-generate-btn {
+  flex-shrink: 0;
+  margin-right: 12rpx;
+  padding-left: 16rpx;
+  padding-right: 16rpx;
+  height: 56rpx;
+  line-height: 56rpx;
+  font-size: var(--text-sm);
+  color: var(--blue);
+  background: transparent;
+  border-radius: 12rpx;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.feedback-generate-btn:active {
+  opacity: 0.6;
+}

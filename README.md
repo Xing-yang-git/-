@@ -8,9 +8,10 @@
 |---|---|
 | C端 | 微信小程序原生 (WXML + WXSS + JS) |
 | B端 | Vue 3 + Vite + Element Plus + ECharts + Pinia (JavaScript) |
-| 后端 | Spring Boot 3.2 + JPA + PostgreSQL |
+| 后端 | Spring Boot 3.2 + JPA + PostgreSQL + pgvector |
 | 实时 | WebSocket 聊天中继（纯转发不落库，握手 JWT 鉴权） |
 | 认证 | JWT（C端 手机号+密码 / B端 账号密码；后端另提供微信 code 登录接口） |
+| AI | 智谱 GLM-4-Flash（文本审核/文案生成）+ GLM-4V-Flash（图片审核）+ embedding-3（语义向量） |
 
 ## 项目结构
 
@@ -20,8 +21,13 @@ community-platform/
 │   ├── pom.xml
 │   └── src/
 │       ├── main/java/com/platform/
-│       │   ├── config/        # CORS, Security, WebSocket, DataInitializer, SchemaMigration
+│       │   ├── config/        # CORS, Security, WebSocket, DataInitializer, SchemaMigration, AiConfig
 │       │   ├── security/      # JwtTokenProvider, JwtAuthenticationFilter, JwtHandshakeInterceptor
+│       │   ├── ai/            # AI 模块（嵌入、审核、匹配、搜索、文案生成）
+│       │   │   ├── embedding/ # EmbeddingClient, EmbeddingService
+│       │   │   ├── moderation/# ModerationClient/Service/Scheduler（内容审核）
+│       │   │   ├── matching/  # MatchingService/Scheduler（供需匹配）
+│       │   │   └── search/    # SemanticSearchService（语义搜索）
 │       │   ├── model/entity/  # 14 JPA 实体（Tenant, Building, Unit, Room, User,
 │       │   │                  #   IdleItem, HelpRequest, HelpApplication,
 │       │   │                  #   BorrowRequest, Message, Notification,
@@ -32,7 +38,7 @@ community-platform/
 │       │   ├── service/       # 11 Service（含 WeChatService）
 │       │   ├── controller/    # 10 Controller
 │       │   ├── websocket/     # ChatWebSocketHandler, DashboardWebSocketHandler
-│       │   └── common/        # Result + Exception + 常量类（BizStatus, PostType, UserType 等）
+│       │   └── common/        # Result + Exception + 16 常量类（BizStatus, PostType, DamageType 等）
 │       ├── main/resources/
 │       │   ├── application.yml
 │       │   └── db/            # schema.sql（14 张表）+ seed-*.sql + alter-*.sql
@@ -42,13 +48,14 @@ community-platform/
 │   ├── app.js / app.json / app.wxss
 │   ├── utils/                 # api.js, auth.js, ws.js
 │   ├── components/            # nav-bar, star-rating, empty-state, image-uploader
-│   └── pages/                 # 14 个页面
+│   └── pages/                 # 15 个页面
 │       ├── login/ register/ review-status/
 │       ├── home/ search/
 │       ├── idle-detail/ help-detail/
 │       ├── publish-idle/      # 双模式表单：闲置发布 + 求助发布
 │       ├── chat/ messages/
 │       ├── return-detail/ rating/
+│       ├── service-notice/
 │       └── my-posts/ profile/
 │
 ├── admin/                     # B端 Vue 3 后台
@@ -85,7 +92,16 @@ cd server
 mvn spring-boot:run
 # 启动在 http://localhost:8080
 # schema.sql 自动建表；DataInitializer 播种管理员账号与小区/楼栋/单元/房号数据
+# 需要在 PostgreSQL 中启用 pgvector 扩展：CREATE EXTENSION IF NOT EXISTS vector;
 ```
+
+**AI 功能配置（可选）**：语义搜索、内容审核、文案润色需要智谱 AI API 密钥：
+
+```bash
+export BIGMODEL_EMBEDDING3_KEY="your-zhipu-api-key"
+```
+
+未配置密钥时，语义搜索会回退到纯关键词搜索，内容审核和文案生成功能不可用。
 
 运行单元测试：
 
@@ -125,9 +141,10 @@ C端用户通过手机号 + 密码注册登录（`register` 页注册，`login` 
 
 | 模块 | 路径 | 说明 |
 |---|---|---|
-| 公共 | GET /api/common/* | 小区/楼栋/单元/房号查询 |
+| 公共 | GET /api/common/* | 小区/楼栋/单元/房号查询；POST upload / upload-voice / polish（文案生成） |
 | 认证 | POST /api/auth/* | wx-login / login / phone-login / register / appeal，GET status |
-| 闲置 | /api/idle-items/** | 发布/列表/详情/搜索/下架 |
+| 闲置 | /api/idle-items/** | 发布/列表/详情/搜索（支持 keyword/semantic/混合三种模式）/下架 |
+| AI | POST /api/ai/* | 管理员批量生成语义向量 |
 | 借入 | /api/borrow-requests/** | 申请/审批/归还确认 |
 | 技能求助 | /api/help-requests/** | 发布/列表/申请/审批 |
 | 评分 | /api/ratings/** | 提交评分/查看评分 |

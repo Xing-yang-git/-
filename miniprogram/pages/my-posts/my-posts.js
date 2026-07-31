@@ -1,6 +1,6 @@
 const api = require("../../utils/api");
 const auth = require("../../utils/auth");
-const { POST_STATUS, POST_TYPE, BORROW_STATUS, RETURN_STATUS } = require("../../utils/constants");
+const { POST_STATUS, POST_TYPE, BORROW_STATUS, RETURN_STATUS, DAMAGE_TYPE } = require("../../utils/constants");
 
 /**
  * 我的帖子页 — 我发布的 / 审批管理 / 进行中 / 已完成 四 Tab 视图。
@@ -72,8 +72,11 @@ Page({
     showCompletedSheet: false,
     completedSheetItem: null,
     completedRating: 0, // 补充评价：本方尚未评分时在已完成页评价对方
-    completedDamageType: "normal",  // 补充物品状况：借出方未填写时在此选择（默认正常损耗）
+    completedDamageType: DAMAGE_TYPE.NORMAL,  // 补充物品状况：借出方未填写时在此选择（默认正常损耗）
     completedFeedback: "",
+
+    // 智能生成评价
+    _generatingFeedback: false,
     // 待评价提示：各角色已完成列表中是否存在本方尚未评分的记录
     pendingRating: {
       borrow: false,
@@ -218,7 +221,7 @@ Page({
               showCompletedSheet: true,
               completedSheetItem: { ...item },
               completedRating: 0,
-              completedDamageType: "normal",
+              completedDamageType: DAMAGE_TYPE.NORMAL,
               completedFeedback: "",
             });
             return;
@@ -1567,6 +1570,85 @@ Page({
 
   onProgressFeedbackInput(e) {
     this.setData({ progressSheetFeedback: e.detail.value });
+  },
+
+  /**
+   * 智能生成互助感想 — 根据互助背景调用 AI 生成口语化评价文本。
+   *
+   * <p>传入角色（借入/借出/求助/帮忙）、物品标题、归还/损坏情况、用户已有草稿，
+   * AI 生成 20-60 字的自然积极评价，直接填入对应输入框。</p>
+   */
+  async onGenerateFeedback(e) {
+    if (this.data._generatingFeedback) return;
+
+    const source = e.currentTarget.dataset.source;
+    const item = source === 'progress'
+      ? this.data.progressSheetItem
+      : this.data.completedSheetItem;
+    const type = source === 'progress'
+      ? this.data.progressSheetType
+      : (item && item.type);
+    const existingText = source === 'progress'
+      ? (this.data.progressSheetFeedback || '').trim()
+      : (this.data.completedFeedback || '').trim();
+
+    if (!item || !type) return;
+
+    // 已有文字时弹确认提示
+    if (existingText) {
+      const confirmRes = await new Promise(resolve => {
+        wx.showModal({
+          title: '智能生成',
+          content: '当前已填写内容将被修改，确认生成？',
+          success: r => resolve(r.confirm)
+        });
+      });
+      if (!confirmRes) return;
+    }
+
+    // 构建背景描述
+    const bgParts = [];
+    if (item.isOverdue) {
+      bgParts.push('逾期归还');
+    } else if (item.remainingDays !== undefined && item.remainingDays >= 0) {
+      bgParts.push('按时归还');
+    }
+    // 物品状况（仅借出场景）
+    if (type === 'lend' && item.condition) {
+      const condMap = {};
+      condMap[DAMAGE_TYPE.NORMAL] = '物品正常损耗';
+      condMap[DAMAGE_TYPE.ABNORMAL] = '物品有非正常损坏';
+      condMap[DAMAGE_TYPE.BROKEN] = '物品完全损坏';
+      if (condMap[item.condition]) bgParts.push(condMap[item.condition]);
+    }
+    let bgDesc = bgParts.join('，');
+    // 已有文字作为参考传给 AI
+    if (existingText) {
+      bgDesc += (bgDesc ? '。' : '') + '用户草稿：' + existingText;
+    }
+
+    this.setData({ _generatingFeedback: true });
+    wx.showLoading({ title: '生成中...', mask: true });
+
+    try {
+      const result = await api.post('/api/common/polish', {
+        mode: 'feedback',
+        role: type,
+        itemTitle: item.itemTitle || '',
+        description: bgDesc
+      });
+      wx.hideLoading();
+      const feedback = result.feedback || '';
+      if (source === 'progress') {
+        this.setData({ progressSheetFeedback: feedback, _generatingFeedback: false });
+      } else {
+        this.setData({ completedFeedback: feedback, _generatingFeedback: false });
+      }
+    } catch (e) {
+      wx.hideLoading();
+      this.setData({ _generatingFeedback: false });
+      wx.showToast({ title: e.message || '生成失败，请重试', icon: 'none' });
+    }
   },
 
   /** 键盘弹起/收起：计算弹框 scroll-view 底部 padding，使 textarea 刚好露出键盘上方 */

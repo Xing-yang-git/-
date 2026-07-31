@@ -1,7 +1,11 @@
 package com.platform.controller;
 
+import com.platform.ai.PolishingClient;
 import com.platform.common.Result;
+import com.platform.model.dto.PolishRequest;
+import com.platform.model.dto.PolishResponse;
 import com.platform.service.CommonService;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -19,9 +23,11 @@ import org.springframework.web.multipart.MultipartFile;
 public class CommonController {
 
     private final CommonService commonService;
+    private final PolishingClient polishingClient;
 
-    public CommonController(CommonService commonService) {
+    public CommonController(CommonService commonService, PolishingClient polishingClient) {
         this.commonService = commonService;
+        this.polishingClient = polishingClient;
     }
 
     /**
@@ -89,5 +95,27 @@ public class CommonController {
     public Result<?> uploadVoice(@RequestParam("file") MultipartFile file) {
         String url = commonService.uploadVoice(file);
         return Result.ok(java.util.Map.of("url", url));
+    }
+
+    /**
+     * AI 文案优化 — 根据场景模式调用大模型生成/润色文本。
+     *
+     * <p>当前支持 mode=feedback（互助感想智能生成），
+     * 根据角色、物品标题和补充背景生成口语化评价。</p>
+     *
+     * @param request 包含 mode、role、itemTitle、description
+     * @return AI 生成的文本
+     */
+    @PostMapping("/polish")
+    public Result<?> polish(@Valid @RequestBody PolishRequest request) {
+        if ("feedback".equals(request.getMode())) {
+            String feedback = polishingClient.generateFeedback(
+                    request.getRole(),
+                    request.getItemTitle(),
+                    request.getDescription()
+            );
+            return Result.ok(new PolishResponse(feedback));
+        }
+        return Result.error(400, "未知的 mode: " + request.getMode());
     }
 }

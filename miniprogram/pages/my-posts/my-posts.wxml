@@ -866,7 +866,10 @@
 
     <!-- 反馈（选填） -->
     <view class="approval-section">
-      <text class="approval-section-label">互助感想（选填）</text>
+      <view class="feedback-label-row">
+        <text class="approval-section-label">互助感想（选填）</text>
+        <view class="feedback-generate-btn {{_generatingFeedback ? 'btn-disabled' : ''}}" bindtap="onGenerateFeedback" data-source="progress">智能生成</view>
+      </view>
       <textarea class="progress-feedback-input" value="{{progressSheetFeedback}}" bindinput="onProgressFeedbackInput" placeholder="分享一下此次互助的感受…" maxlength="200" adjust-position="{{false}}" bindkeyboardheightchange="onKeyboardHeightChange" />
     </view>
     <view style="height:20rpx;"></view>
@@ -957,7 +960,11 @@
         <view class="progress-star {{completedRating >= 4 ? 'active' : ''}}" bindtap="onCompletedRatingTap" data-star="4">★</view>
         <view class="progress-star {{completedRating >= 5 ? 'active' : ''}}" bindtap="onCompletedRatingTap" data-star="5">★</view>
       </view>
-      <textarea class="progress-feedback-input" style="margin-top:12px;" value="{{completedFeedback}}" bindinput="onCompletedFeedbackInput" placeholder="分享一下此次互助的感受…" maxlength="200" adjust-position="{{false}}" bindkeyboardheightchange="onKeyboardHeightChange" />
+      <view class="feedback-label-row" style="margin-top:12px;">
+        <text class="approval-section-label">互助感想</text>
+        <view class="feedback-generate-btn {{_generatingFeedback ? 'btn-disabled' : ''}}" bindtap="onGenerateFeedback" data-source="completed">智能生成</view>
+      </view>
+      <textarea class="progress-feedback-input" style="margin-top:8px;" value="{{completedFeedback}}" bindinput="onCompletedFeedbackInput" placeholder="分享一下此次互助的感受…" maxlength="200" adjust-position="{{false}}" bindkeyboardheightchange="onKeyboardHeightChange" />
       <view class="progress-confirm-btn" style="margin-top:12px;" bindtap="onSubmitCompletedRating">提交评价</view>
     </view>
 
