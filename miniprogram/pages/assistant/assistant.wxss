@@ -1,0 +1,13 @@
+/* 小邻 — AI 智能助手对话页 */
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+.placeholder {
+  font-size: var(--text-md);
+  color: var(--text-tertiary);
+}

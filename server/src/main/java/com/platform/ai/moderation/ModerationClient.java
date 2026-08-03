@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * AI 内容审核客户端，调用智谱 GLM-4V-Flash（图片审核）和 GLM-4-Flash（文本审核）。
+ * AI 内容审核客户端，调用智谱 GLM-4V-Flash（图片审核）和 deepseek-v4-flash（文本审核）。
  *
  * <p>通过 OpenAI 兼容的 /chat/completions 端点发送审核请求，
  * 解析模型返回的 JSON 得到 {@link ModerationResult} 审核等级与原因。</p>
@@ -25,6 +25,7 @@ import java.util.Map;
 public class ModerationClient {
 
     private final RestClient chatRestClient;
+    private final RestClient deepseekRestClient;
     private final AiConfig aiConfig;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -130,7 +131,7 @@ public class ModerationClient {
                     "max_tokens", 200
             );
 
-            return callApi(requestBody);
+            return callApi(requestBody, chatRestClient, aiConfig.getChatApiKey());
         } catch (Exception e) {
             log.error("图片审核失败: imageUrl={}", imageUrl, e);
             throw new RuntimeException("图片审核失败", e);
@@ -138,7 +139,7 @@ public class ModerationClient {
     }
 
     /**
-     * 审核文本内容 — 将标题和描述组合后发送至 GLM-4-Flash 进行文本审核。
+     * 审核文本内容 — 将标题和描述组合后发送至 deepseek-v4-flash 进行文本审核。
      *
      * @param title       内容标题
      * @param description 内容描述
@@ -156,13 +157,13 @@ public class ModerationClient {
             );
 
             Map<String, Object> requestBody = Map.of(
-                    "model", aiConfig.getModelText(),
+                    "model", aiConfig.getDeepseekModel(),
                     "messages", List.of(message),
                     "temperature", 0.1,
                     "max_tokens", 200
             );
 
-            return callApi(requestBody);
+            return callApi(requestBody, deepseekRestClient, aiConfig.getDeepseekApiKey());
         } catch (Exception e) {
             log.error("文本审核失败: title={}", title, e);
             throw new RuntimeException("文本审核失败", e);
@@ -176,10 +177,10 @@ public class ModerationClient {
      * @return 解析后的审核结果
      */
     @SuppressWarnings("unchecked")
-    private ModerationResult callApi(Map<String, Object> requestBody) {
-        Map<String, Object> response = chatRestClient.post()
+    private ModerationResult callApi(Map<String, Object> requestBody, RestClient restClient, String apiKey) {
+        Map<String, Object> response = restClient.post()
                 .uri("/chat/completions")
-                .header("Authorization", "Bearer " + aiConfig.getChatApiKey())
+                .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json")
                 .body(requestBody)
                 .retrieve()

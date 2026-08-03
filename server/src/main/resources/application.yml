@@ -10,6 +10,18 @@ server:
       force: true
 
 spring:
+  # 排除 Spring AI OpenAI 自动配置（模型 Bean 在 AiConfig 手动构建，base-url 区分 deepseek/智谱）
+  # 排除 Redis Repository 自动配置（仅用 StringRedisTemplate 存会话/限流，JPA Repository 不受扫描干扰）
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+
   application:
     name: community-platform
 
@@ -46,6 +58,13 @@ spring:
       max-file-size: 10MB
       max-request-size: 20MB
 
+  # Redis — Agent 热会话 + 限流（Docker community-redis 容器）
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 0
+
 # 微信小程序配置（真机调试 / 生产环境必须配置）
 wechat:
   miniapp:
@@ -68,16 +87,39 @@ logging:
     com.platform: DEBUG
     org.springframework.security: DEBUG
 
-# AI 配置（Embedding API — 智谱 AI）
+# AI 配置
 ai:
+  # 智谱 Embedding — 语义向量（RAG 用 dimensions=1024，与 idle_items 的 2048 区分）
   embedding:
     api-key: ${BIGMODEL_EMBEDDING3_KEY:your-api-key}
     base-url: https://open.bigmodel.cn/api/paas/v4
     model: embedding-3
     similarity-threshold: 0.25
+  # 智谱视觉模型 — 仅图片审核（deepseek 无视觉模型）
   zhipu:
     chat:
       api-key: ${BIGMODEL_EMBEDDING3_KEY:your-api-key}
       base-url: https://open.bigmodel.cn/api/paas/v4
       model-vision: glm-4v-flash
-      model-text: glm-4-flash
+  # DeepSeek 文本模型 — 文本生成/审核/Agent 对话（通用 OpenAI ChatModel 对接）
+  # 注意：禁止引入 spring-ai-starter-model-deepseek（Function Call 会失效），统一走 OpenAI 兼容
+  deepseek:
+    api-key: ${DEEPSEEK_API_KEY:your-api-key}
+    base-url: https://api.deepseek.com
+    model: deepseek-v4-flash
+  # Agent 助手配置（小邻）
+  agent:
+    max-turns: 10            # 会话历史保留轮数
+    max-history-chars: 6000  # 历史序列化最大字符数（约 2k token）
+    max-tool-rounds: 3       # 工具调用最大轮次，超限强制终止防死循环
+    rate-limit-per-minute: 10
+    rate-limit-per-day: 100
+    session-ttl-hours: 24
+    knowledge-top-k: 5
+    knowledge-threshold: 0.25
+    archive-idle-minutes: 15 # 空闲归档阈值
+    archive-message-count: 30 # 消息数归档阈值
+    tool-mode: native        # 工具模式：native(原生 tool calling，PoC 已验证) / json(JSON 意图兜底)
+    max-tokens: 512          # 对话回复最大 token（含思维链需足够大）
+    temperature-knowledge: 0.2  # RAG 精准检索温度
+    temperature-creative: 0.6   # 创意文案温度（PolishingClient 互助感想保持 0.7 不动）

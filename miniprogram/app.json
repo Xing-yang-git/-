@@ -10,6 +10,7 @@
     "pages/publish-idle/publish-idle",
     "pages/chat/chat",
     "pages/messages/messages",
+    "pages/assistant/assistant",
     "pages/service-notice/service-notice",
     "pages/return-detail/return-detail",
     "pages/rating/rating",
@@ -30,6 +31,7 @@
     "list": [
       { "pagePath": "pages/home/home", "text": "首页", "iconPath": "images/tab-home.png", "selectedIconPath": "images/tab-home-active.png" },
       { "pagePath": "pages/my-posts/my-posts", "text": "管理", "iconPath": "images/tab-manage.png", "selectedIconPath": "images/tab-manage-active.png" },
+      { "pagePath": "pages/assistant/assistant", "text": "小邻", "iconPath": "images/tab-assistant.png" },
       { "pagePath": "pages/messages/messages", "text": "消息", "iconPath": "images/tab-msg.png", "selectedIconPath": "images/tab-msg-active.png" },
       { "pagePath": "pages/profile/profile", "text": "我的", "iconPath": "images/tab-me.png", "selectedIconPath": "images/tab-me-active.png" }
     ]

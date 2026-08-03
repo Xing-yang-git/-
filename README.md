@@ -48,12 +48,12 @@ community-platform/
 │   ├── app.js / app.json / app.wxss
 │   ├── utils/                 # api.js, auth.js, ws.js
 │   ├── components/            # nav-bar, star-rating, empty-state, image-uploader
-│   └── pages/                 # 15 个页面
+│   └── pages/                 # 16 个页面
 │       ├── login/ register/ review-status/
 │       ├── home/ search/
 │       ├── idle-detail/ help-detail/
 │       ├── publish-idle/      # 双模式表单：闲置发布 + 求助发布
-│       ├── chat/ messages/
+│       ├── chat/ messages/ assistant/   # assistant 为 AI 助手「小邻」对话页
 │       ├── return-detail/ rating/
 │       ├── service-notice/
 │       └── my-posts/ profile/
@@ -93,15 +93,17 @@ mvn spring-boot:run
 # 启动在 http://localhost:8080
 # schema.sql 自动建表；DataInitializer 播种管理员账号与小区/楼栋/单元/房号数据
 # 需要在 PostgreSQL 中启用 pgvector 扩展：CREATE EXTENSION IF NOT EXISTS vector;
+# 需要 Redis（Agent 热会话/限流）：docker run --name community-redis -p 6379:6379 -d redis
 ```
 
-**AI 功能配置（可选）**：语义搜索、内容审核、文案润色需要智谱 AI API 密钥：
+**AI 功能配置（可选）**：语义搜索、图片审核、文案润色需要智谱 AI API 密钥；文本生成、文本审核、Agent 对话需要 DeepSeek API 密钥：
 
 ```bash
 export BIGMODEL_EMBEDDING3_KEY="your-zhipu-api-key"
+export DEEPSEEK_API_KEY="your-deepseek-api-key"
 ```
 
-未配置密钥时，语义搜索会回退到纯关键词搜索，内容审核和文案生成功能不可用。
+未配置密钥时，语义搜索会回退到纯关键词搜索，内容审核、文案生成和 Agent 对话功能不可用。
 
 运行单元测试：
 

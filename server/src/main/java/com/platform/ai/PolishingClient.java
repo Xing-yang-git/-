@@ -1,31 +1,35 @@
 package com.platform.ai;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.platform.common.AiGenerationException;
-import com.platform.config.AiConfig;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
 
 import java.util.List;
 import java.util.Map;
 
 /**
- * AI 文案优化客户端，调用智谱 GLM-4-Flash 进行文本生成与润色。
+ * AI 文案优化客户端 — 调用 deepseek-v4-flash 进行文本生成与润色。
  *
- * <p>通过 OpenAI 兼容的 /chat/completions 端点发送请求，
+ * <p>基于 Spring AI {@link OpenAiChatModel}（deepseek-v4-flash，OpenAI 兼容端点），
  * 当前支持互助感想智能生成（mode=feedback），未来可扩展标题润色等场景。</p>
+ *
+ * <p>温度 0.7（创意文案场景，保持既有规范）；max_tokens 500 为 reasoning 模型思维链预留空间（300 实测不足）。</p>
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class PolishingClient {
 
-    private final RestClient chatRestClient;
-    private final AiConfig aiConfig;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final OpenAiChatModel deepseekChatModel;
+
+    public PolishingClient(OpenAiChatModel deepseekChatModel) {
+        this.deepseekChatModel = deepseekChatModel;
+    }
 
     /** 角色常量：借入方 */
     public static final String ROLE_BORROW = "borrow";
@@ -85,17 +89,17 @@ public class PolishingClient {
         String userMsgTemplate = ROLE_USER_MSG.getOrDefault(role, "请根据以上背景生成一段互助感想。");
         String userContent = String.format(userMsgTemplate, title);
 
-        Map<String, Object> systemMessage = Map.of("role", "system", "content", systemPrompt);
-        Map<String, Object> userMessage = Map.of("role", "user", "content", userContent);
+        Prompt prompt = new Prompt(
+                List.of(new SystemMessage(systemPrompt), new UserMessage(userContent)),
+                OpenAiChatOptions.builder()
+                        .temperature(0.7)
+                        // reasoning 模型的思维链(reasoning_content)会占用大量 token，太小会导致 content 为空（PoC 实测 300 不够、500 完整）
+                        .maxTokens(500)
+                        .build());
 
-        Map<String, Object> requestBody = Map.of(
-                "model", aiConfig.getModelText(),
-                "messages", List.of(systemMessage, userMessage),
-                "temperature", 0.7,
-                "max_tokens", 200
-        );
+        ChatResponse response = deepseekChatModel.call(prompt);
+        String content = response.getResult().getOutput().getText();
 
-        String content = callApi(requestBody);
         if (content == null || content.isBlank()) {
             throw new AiGenerationException("AI 返回的评价文本为空");
         }
@@ -108,39 +112,5 @@ public class PolishingClient {
         }
 
         return content;
-    }
-
-    /**
-     * 调用智谱 Chat API 并返回模型生成的文本内容。
-     *
-     * @param requestBody 请求体（已包含 model、messages 等字段）
-     * @return 模型生成的文本
-     */
-    @SuppressWarnings("unchecked")
-    private String callApi(Map<String, Object> requestBody) {
-        Map<String, Object> response = chatRestClient.post()
-                .uri("/chat/completions")
-                .header("Authorization", "Bearer " + aiConfig.getChatApiKey())
-                .header("Content-Type", "application/json")
-                .body(requestBody)
-                .retrieve()
-                .body(Map.class);
-
-        if (response == null || !response.containsKey("choices")) {
-            throw new AiGenerationException("Chat API 响应缺少 choices 字段");
-        }
-
-        List<Map<String, Object>> choices = (List<Map<String, Object>>) response.get("choices");
-        if (choices == null || choices.isEmpty()) {
-            throw new AiGenerationException("Chat API 返回的 choices 数组为空");
-        }
-
-        Map<String, Object> choice = choices.get(0);
-        Map<String, Object> msg = (Map<String, Object>) choice.get("message");
-        if (msg == null) {
-            throw new AiGenerationException("Chat API 响应缺少 message 字段");
-        }
-
-        return (String) msg.get("content");
     }
 }

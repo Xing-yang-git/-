@@ -29,6 +29,22 @@ public class GlobalExceptionHandler {
                 .body(Result.error(502, "AI 生成失败：" + e.getMessage()));
     }
 
+    /**
+     * Spring AI 客户端调用失败（deepseek/智谱 API 网络错误、限流、5xx）→ 502。
+     *
+     * <p>迁移 Spring AI 后，上游 AI 调用失败抛 {@code NonTransientAiException}/{@code TransientAiException}，
+     * 若不在此处理会落入 {@link #handleRuntime} 映射为 400（错误语义不符：上游故障应为 502）。</p>
+     */
+    @ExceptionHandler({
+            org.springframework.ai.retry.NonTransientAiException.class,
+            org.springframework.ai.retry.TransientAiException.class
+    })
+    public ResponseEntity<Result<Void>> handleSpringAiClient(Exception e) {
+        log.error("AI 服务调用失败: {}", e.getMessage(), e);
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(Result.error(502, "AI 服务暂时不可用，请稍后重试"));
+    }
+
     @ExceptionHandler(VersionConflictException.class)
     public ResponseEntity<Result<Void>> handleVersionConflict(VersionConflictException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Result.error(409, e.getMessage()));
