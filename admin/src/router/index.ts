@@ -59,6 +59,13 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '互助记录' },
   },
   {
+    /** 知识库管理 — AI 助手「小邻」RAG 数据源管理，需管理员权限 */
+    path: '/knowledge',
+    name: 'Knowledge',
+    component: () => import('../views/KnowledgeView.vue'),
+    meta: { title: '知识库' },
+  },
+  {
     /** 数据导出 — 多维度 Excel 导出 + 导出历史，需高级管理员权限 */
     path: '/export',
     name: 'Export',
@@ -84,7 +91,7 @@ const router = createRouter({
 const SENIOR_ROUTES = ['/settings', '/export'];
 
 /** 超级管理员无权访问的业务数据路由 */
-const DATA_ROUTES = ['/dashboard', '/audit', '/content', '/records', '/export'];
+const DATA_ROUTES = ['/dashboard', '/audit', '/content', '/records', '/knowledge', '/export'];
 
 /** 从 localStorage 读取当前登录用户的 userType，失败时返回 null */
 function getUserType(): string | null {

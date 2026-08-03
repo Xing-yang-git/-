@@ -661,3 +661,110 @@ export async function exportOperationLogs(): Promise<void> {
   document.body.removeChild(a);
   window.URL.revokeObjectURL(url);
 }
+
+
+// ============================================================
+// 知识库（AI 助手「小邻」RAG 数据源）
+// ============================================================
+
+/** 知识条目分类（与后端 KnowledgeCategory 对齐） */
+export const KNOWLEDGE_CATEGORY = {
+  /** 规章制度 */
+  RULES: 'rules',
+  /** 服务手册 */
+  SERVICE: 'service',
+  /** 平台帮助 */
+  HELP: 'help',
+  /** 办事指南 */
+  GUIDE: 'guide'
+} as const;
+
+/** 知识条目分类联合类型 */
+export type KnowledgeCategoryKey = typeof KNOWLEDGE_CATEGORY[keyof typeof KNOWLEDGE_CATEGORY];
+
+/** 知识库列表查询参数 */
+export interface KnowledgeListParams {
+  /** 页码（从 0 开始） */
+  page?: number;
+  /** 每页条数 */
+  size?: number;
+  /** 分类过滤 */
+  category?: string;
+  /** 状态过滤：online/offline */
+  status?: string;
+  /** 关键词（标题/正文/标签） */
+  keyword?: string;
+}
+
+/** 知识条目 DTO（不含 embedding 向量） */
+export interface KnowledgeItemDTO {
+  /** 知识条目 ID */
+  id: number;
+  /** 所属小区 ID */
+  tenantId: number;
+  /** 分类：rules/service/help/guide */
+  category: string;
+  /** 条目标题 */
+  title: string;
+  /** 条目正文 */
+  content: string;
+  /** 来源文档名 */
+  source?: string;
+  /** 逗号分隔标签 */
+  tags?: string;
+  /** 状态：online(启用)/offline(停用) */
+  status: string;
+  /** 创建时间 */
+  createdAt: string;
+  /** 更新时间 */
+  updatedAt: string;
+}
+
+/** 知识条目创建/更新请求体 */
+export interface KnowledgeBody {
+  /** 所属小区 ID（super_admin 创建时必须指定） */
+  tenantId?: number;
+  /** 分类：rules/service/help/guide */
+  category: string;
+  /** 条目标题 */
+  title: string;
+  /** 条目正文 */
+  content: string;
+  /** 来源文档名 */
+  source?: string;
+  /** 逗号分隔标签 */
+  tags?: string;
+  /** 状态：online/offline */
+  status?: string;
+}
+
+/** 分页查询知识条目 */
+export function getKnowledgeList(params: KnowledgeListParams = {}): Promise<AxiosResponse> {
+  return get('/api/admin/knowledge', {
+    page: params.page ?? 0,
+    size: params.size ?? 10,
+    category: params.category,
+    status: params.status,
+    keyword: params.keyword
+  });
+}
+
+/** 创建知识条目（自动生成向量） */
+export function createKnowledge(body: KnowledgeBody): Promise<AxiosResponse> {
+  return post('/api/admin/knowledge', body);
+}
+
+/** 更新知识条目（内容变更后重新生成向量） */
+export function updateKnowledge(id: number, body: KnowledgeBody): Promise<AxiosResponse> {
+  return put(`/api/admin/knowledge/${id}`, body);
+}
+
+/** 软上下架知识条目 */
+export function setKnowledgeStatus(id: number, status: string): Promise<AxiosResponse> {
+  return put(`/api/admin/knowledge/${id}/status`, { status });
+}
+
+/** 批量补齐缺失向量 */
+export function reindexKnowledge(): Promise<AxiosResponse> {
+  return post('/api/admin/knowledge/reindex');
+}
