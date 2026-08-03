@@ -35,6 +35,19 @@
       <view class="sources" wx:if="{{item.sources.length > 0}}">
         <text class="source-item" wx:for="{{item.sources}}" wx:key="id" wx:for-item="src">参考：{{src.source}}</text>
       </view>
+      <!-- 动作卡片（写操作，用户点击跳发布页预填） -->
+      <view
+        class="action-card"
+        wx:if="{{item.actions.length > 0}}"
+        wx:for="{{item.actions}}"
+        wx:for-item="act"
+        wx:key="type"
+        data-action="{{act}}"
+        bindtap="onActionTap"
+      >
+        <text class="action-label">{{act.label}}</text>
+        <text class="action-arrow">去填写 ›</text>
+      </view>
     </block>
 
     <view id="msg-bottom" class="msg-bottom"></view>

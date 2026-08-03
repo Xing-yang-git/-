@@ -1,20 +1,19 @@
 package com.platform.ai.agent;
 
 import com.platform.ai.search.KnowledgeHit;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
-import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Agent 对话 Prompt 组装器 — 构建「小邻」助手的 System Prompt 与用户消息。
  *
- * <p>System Prompt 结构：身份 → 知识库上下文块（检索命中，按相关度排序）→ 回答铁则。
- * 引用来源由后端检索生成（非模型输出），prompt 强制"资料未覆盖必须明说"防幻觉。</p>
+ * <p>System Prompt 结构：身份 → 知识库上下文块（检索命中，按相关度排序）→ 回答铁则 → 写操作指示。
+ * 引用来源由后端检索生成（非模型输出），prompt 强制"资料未覆盖必须明说"防幻觉。
+ * 读工具（search_items 等）由 AgentService 注册 ToolCallback 自动暴露，无需在此描述。</p>
  */
 @Component
 public class AgentPromptBuilder {
@@ -28,7 +27,9 @@ public class AgentPromptBuilder {
             "- 回答只依据以上资料，资料未覆盖时明确说\"知识库暂无相关信息，建议联系物业或查看服务公告\"，禁止编造\n" +
             "- 引用资料时自然带出出处名称（如\"根据《%s》……\"）\n" +
             "- 口语化、简洁（不超过 120 字优先），不用 emoji，不出现住户真实姓名房号\n" +
-            "- 用户打招呼或闲聊时正常寒暄，不强行套用资料";
+            "- 用户打招呼或闲聊时正常寒暄，不强行套用资料\n" +
+            "- 当用户请求发布闲置/求助/借入或发起申请时，不要执行任何操作，直接返回 JSON：\n" +
+            "  {\"intent\":\"publish_help|publish_idle|publish_wanted\",\"params\":{\"title\":\"...\",\"description\":\"...\",\"category\":\"...\"}}";
 
     /** 对话专属系统提示词模板（无知识库命中 / 检索失败时） */
     private static final String SYSTEM_PROMPT_NO_KB =
@@ -37,17 +38,19 @@ public class AgentPromptBuilder {
             "铁则：\n" +
             "- 回答若涉及小区规则/服务/办事指南，知识库暂无相关信息时明确说\"知识库暂无相关信息，建议联系物业或查看服务公告\"，禁止编造\n" +
             "- 口语化、简洁（不超过 120 字优先），不用 emoji，不出现住户真实姓名房号\n" +
-            "- 用户打招呼或闲聊时正常寒暄";
+            "- 用户打招呼或闲聊时正常寒暄\n" +
+            "- 当用户请求发布闲置/求助/借入或发起申请时，不要执行任何操作，直接返回 JSON：\n" +
+            "  {\"intent\":\"publish_help|publish_idle|publish_wanted\",\"params\":{\"title\":\"...\",\"description\":\"...\",\"category\":\"...\"}}";
 
     /**
-     * 构建对话 Prompt（知识问答场景 temperature 0.2）。
+     * 构建对话消息列表（system + user），模型 options 由 AgentService 组装（含工具注册）。
      *
      * @param tenantName 小区名称（用于助手自我介绍）
      * @param message    用户消息
      * @param hits       知识库检索命中（可为空）
-     * @return 组装好的 Spring AI Prompt
+     * @return system + user 消息列表
      */
-    public Prompt build(String tenantName, String message, List<KnowledgeHit> hits) {
+    public List<Message> buildMessages(String tenantName, String message, List<KnowledgeHit> hits) {
         String system;
         if (hits != null && !hits.isEmpty()) {
             String kbBlock = formatKbBlock(hits);
@@ -57,13 +60,7 @@ public class AgentPromptBuilder {
             system = String.format(SYSTEM_PROMPT_NO_KB, tenantName);
         }
 
-        return new Prompt(
-                List.of(new SystemMessage(system), new UserMessage(message)),
-                OpenAiChatOptions.builder()
-                        .temperature(0.2)
-                        // reasoning 模型思维链占用大，512 实测 content 为空（finish_reason=length），1024 预留足够空间
-                        .maxTokens(1024)
-                        .build());
+        return List.of(new SystemMessage(system), new UserMessage(message));
     }
 
     /**

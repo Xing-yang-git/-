@@ -79,6 +79,13 @@ const NOTIFICATION_TYPE = {
   CONTENT_APPROVED: 'content_approved'   // AI 内容审核通过
 };
 
+/**
+ * 本地存储键 — 跨页面共享的 storage key 统一管理，改名安全。
+ */
+const STORAGE_KEY = {
+  AGENT_DRAFT: 'agent_draft'             // AI 助手动作卡片发布草稿（assistant 写入 → publish-idle 读取）
+};
+
 module.exports = {
   POST_STATUS,
   POST_TYPE,
@@ -87,5 +94,6 @@ module.exports = {
   HELP_APPLICATION_STATUS,
   DAMAGE_TYPE,
   RETURN_STATUS,
-  NOTIFICATION_TYPE
+  NOTIFICATION_TYPE,
+  STORAGE_KEY
 };

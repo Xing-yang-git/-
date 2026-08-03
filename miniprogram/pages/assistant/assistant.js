@@ -1,5 +1,6 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
+const { POST_TYPE, STORAGE_KEY } = require('../../utils/constants');
 
 /**
  * 小邻 — AI 智能助手对话页（tabBar 第 3 项）。
@@ -12,7 +13,7 @@ Page({
   data: {
     /** 系统状态栏高度（自定义导航偏移） */
     statusBarHeight: 0,
-    /** 消息列表：{id, role: user|assistant, content, sources, streaming} */
+    /** 消息列表：{id, role: user|assistant, content, sources, actions, streaming} */
     messages: [],
     /** 输入框文本 */
     inputText: '',
@@ -114,6 +115,8 @@ Page({
       this._appendToCurrent(evt.data || '');
     } else if (type === 'sources') {
       this._setSources(evt.data || []);
+    } else if (type === 'action') {
+      this._setActions(evt.data || []);
     } else if (type === 'error') {
       this._appendToCurrent('（出错了：' + (evt.data || '请稍后重试') + '）');
       this._finishStream();
@@ -140,6 +143,37 @@ Page({
       return m;
     });
     this.setData({ messages });
+  },
+
+  /** 为当前 AI 消息设置动作卡片（写操作，需用户确认） */
+  _setActions(actions) {
+    const msgId = this._currentMsgId;
+    const messages = this.data.messages.map((m) => {
+      if (m.id === msgId) return { ...m, actions };
+      return m;
+    });
+    this.setData({ messages });
+  },
+
+  /** 点击动作卡片：暂存发布草稿 → 跳转发布页预填 */
+  onActionTap(e) {
+    const action = e.currentTarget.dataset.action;
+    if (!action || !action.type) return;
+    // 暂存 AI 生成的草稿参数（发布页 onLoad 读取预填，读后清空）
+    try {
+      wx.setStorageSync(STORAGE_KEY.AGENT_DRAFT, { type: action.type, params: action.params || {} });
+    } catch (e) {
+      // 存储写满等异常不阻断跳转（草稿丢失不致命，发布页手填即可）
+      console.warn('[assistant] 暂存发布草稿失败:', e);
+    }
+    // 映射动作类型到发布页 postType 参数
+    const typeMap = {
+      publish_help: POST_TYPE.HELP,
+      publish_idle: POST_TYPE.LEND,
+      publish_wanted: POST_TYPE.WANTED
+    };
+    const t = typeMap[action.type] || POST_TYPE.LEND;
+    wx.navigateTo({ url: '/pages/publish-idle/publish-idle?type=' + t });
   },
 
   /** 流式结束：清除 streaming 标记 */

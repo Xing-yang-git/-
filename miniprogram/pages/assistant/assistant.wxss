@@ -23,12 +23,12 @@
 .assistant-nav-title {
   font-size: var(--text-base);
   font-weight: 600;
-  color: var(--text);
+  color: var(--text);   /* 标题「小邻」主文字色 */
 }
 
 .assistant-nav-sub {
   font-size: var(--text-xs);
-  color: var(--text-tertiary);
+  color: var(--text-tertiary);   /* 「智能助手」副标题弱化 */
 }
 
 /* ─── 消息区 ─── */
@@ -99,13 +99,13 @@
 }
 
 .bubble-user {
-  background: var(--blue);
+  background: var(--blue);   /* 用户气泡品牌蓝底 */
   color: var(--surface);
-  border-bottom-right-radius: 4rpx;
+  border-bottom-right-radius: 4rpx;   /* 仅右下小圆角区分方向 */
 }
 
 .bubble-ai {
-  background: var(--surface);
+  background: var(--surface);   /* AI 气泡白底 + 轻投影 */
   color: var(--text);
   border-bottom-left-radius: 4rpx;
   box-shadow: var(--shadow-sm);
@@ -133,6 +133,31 @@
   border-radius: var(--radius-sm);
 }
 
+/* 动作卡片（写操作确认入口） */
+.action-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 70%;
+  margin: -8rpx 0 16rpx 16rpx;
+  padding: 20rpx 24rpx;
+  background: var(--surface);
+  border: 1rpx solid var(--blue);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.action-label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--blue);
+}
+
+.action-arrow {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
+
 .msg-bottom {
   height: 1px;
 }
@@ -157,9 +182,9 @@
 .assistant-input {
   flex: 1;
   min-height: 72rpx;
-  max-height: 200rpx;
+  max-height: 200rpx;   /* 多行输入自动增高上限 */
   padding: 16rpx 24rpx;
-  background: var(--bg);
+  background: var(--bg);   /* 浅灰底区分于输入栏白底 */
   border-radius: var(--radius-pill);
   font-size: var(--text-md);
   color: var(--text);

@@ -105,6 +105,12 @@ public class AgentController {
 
                 // 引用来源（后端检索结果，非模型输出）
                 emitter.send(SseEmitter.event().name("sources").data(toJson("sources", result.sources())));
+
+                // 动作卡片（写操作，需用户确认；前端渲染确认卡片后跳发布页预填）
+                if (result.actions() != null && !result.actions().isEmpty()) {
+                    emitter.send(SseEmitter.event().name("action").data(toJson("action", result.actions())));
+                }
+
                 emitter.send(SseEmitter.event().name("end").data(toJson("end", Map.of("done", true))));
                 emitter.complete();
             } catch (Exception e) {

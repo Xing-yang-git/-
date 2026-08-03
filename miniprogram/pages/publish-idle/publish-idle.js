@@ -1,6 +1,6 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
-const { POST_TYPE } = require('../../utils/constants');
+const { POST_TYPE, STORAGE_KEY } = require('../../utils/constants');
 
 /**
  * 发布页 — 闲置物品 / 互助求助发布。
@@ -36,6 +36,29 @@ Page({
 
   onLoad(options) {
     if (!auth.ensureAccess()) return;   // 登录/审核门禁：未通过则已跳转
+    // 公共初始化（无条件执行，草稿预填不得跳过——否则 HELP 时间选择器为空选项）
+    // 生成 00:00 ~ 23:00 的小时选项
+    const hours = [];
+    for (let i = 0; i < 24; i++) {
+      hours.push(i < 10 ? '0' + i + ':00' : i + ':00');
+    }
+    this.setData({ hourOptions: hours });
+
+    // AI 助手「小邻」动作卡片预填草稿（读后清空，避免下次误填；优先于 options.type）
+    const draft = wx.getStorageSync(STORAGE_KEY.AGENT_DRAFT);
+    if (draft && draft.params) {
+      wx.removeStorageSync(STORAGE_KEY.AGENT_DRAFT);
+      const patch = {
+        title: draft.params.title || '',
+        description: draft.params.description || ''
+      };
+      if (draft.params.category) patch.category = draft.params.category;
+      if (draft.type === 'publish_wanted') patch.postType = POST_TYPE.WANTED;
+      if (draft.type === 'publish_help') patch.postType = POST_TYPE.HELP;
+      this.setData(patch);
+      return;   // 草稿优先，跳过 options.type
+    }
+
     // 从页面参数接收 postType
     if (options && options.type) {
       const type = options.type;
@@ -45,13 +68,6 @@ Page({
         this.setData({ postType: POST_TYPE.HELP });
       }
     }
-
-    // 生成 00:00 ~ 23:00 的小时选项
-    const hours = [];
-    for (let i = 0; i < 24; i++) {
-      hours.push(i < 10 ? '0' + i + ':00' : i + ':00');
-    }
-    this.setData({ hourOptions: hours });
 
     // 设置求助默认时间范围（HELP 表单：今天 ~ 今天+3 天）
     const now = new Date();
@@ -71,15 +87,18 @@ Page({
     if (!auth.ensureAccess()) return; // 登录/审核门禁：覆盖 tab 切换与后台切回
   },
 
+  /** 切换发布类型（出借/求借/求助），重置分类选择 */
   onPostTypeTap(e) {
     this.setData({ postType: e.currentTarget.dataset.value });
   },
 
+  /** 通用输入同步：按 data-field 动态写入对应表单字段 */
   onInput(e) {
     const field = e.currentTarget.dataset.field;
     this.setData({ [field]: e.detail.value });
   },
 
+  /** 选择分类：「其他」二次点击取消，其余选中并清空自定义类型 */
   onCategoryTap(e) {
     const value = e.currentTarget.dataset.value;
     if (value === '其他') {
@@ -130,6 +149,7 @@ Page({
     this.setData({ pickupMethod: e.currentTarget.dataset.value });
   },
 
+  /** 选择图片：最多 4 张，压缩后追加到 images 列表 */
   onChooseImage() {
     const remaining = 4 - this.data.images.length;
     if (remaining <= 0) {
@@ -180,6 +200,10 @@ Page({
     this.setData({ helpEndHour: parseInt(e.detail.value) });
   },
 
+  /**
+   * 提交发布 — 按发布类型（HELP 求助 / LEND 出借 / WANTED 求借）分别校验必填项，
+   * 组装请求体并调用对应发布接口；失败时展示后端返回的错误信息。
+   */
   async onSubmit() {
     const postType = this.data.postType;
 
