@@ -55,5 +55,8 @@
     "miniprogram": {}
   },
   "simulatorPluginLibVersion": {},
-  "editorSetting": {}
+  "editorSetting": {
+    "tabIndent": "insertSpaces",
+    "tabSize": 2
+  }
 }

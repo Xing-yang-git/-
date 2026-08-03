@@ -10,7 +10,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.client.RestClient;
+
+import java.util.concurrent.ThreadPoolExecutor;
 
 /**
  * AI 相关配置 — 提供三家模型的 Bean 与手写客户端。
@@ -179,6 +182,26 @@ public class AiConfig {
                         .maxTokens(200)
                         .build())
                 .build();
+    }
+
+    /**
+     * Agent 对话 SSE 异步推送线程池（Spring 托管，有界队列 + CallerRuns 拒绝策略）。
+     *
+     * <p>相比裸 Executors.newFixedThreadPool：有界队列避免无限排队占内存，
+     * CallerRuns 拒绝策略在满时由调用线程兜底执行，线程池随容器生命周期管理。</p>
+     *
+     * @return Agent SSE 推送线程池
+     */
+    @Bean
+    public ThreadPoolTaskExecutor agentExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(50);
+        executor.setThreadNamePrefix("agent-sse-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        executor.initialize();
+        return executor;
     }
 
     /**

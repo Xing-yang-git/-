@@ -23,11 +23,12 @@ community-platform/
 │       ├── main/java/com/platform/
 │       │   ├── config/        # CORS, Security, WebSocket, DataInitializer, SchemaMigration, AiConfig
 │       │   ├── security/      # JwtTokenProvider, JwtAuthenticationFilter, JwtHandshakeInterceptor
-│       │   ├── ai/            # AI 模块（嵌入、审核、匹配、搜索、文案生成）
+│       │   ├── ai/            # AI 模块（嵌入、审核、匹配、RAG 检索、文案生成、Agent 对话）
 │       │   │   ├── embedding/ # EmbeddingClient, EmbeddingService
 │       │   │   ├── moderation/# ModerationClient/Service/Scheduler（内容审核）
 │       │   │   ├── matching/  # MatchingService/Scheduler（供需匹配）
-│       │   │   └── search/    # SemanticSearchService（语义搜索）
+│       │   │   ├── search/    # SemanticSearchService, KnowledgeRetrievalService, KnowledgeHit（RAG 检索）
+│       │   │   └── agent/     # AgentController/Service/PromptBuilder/RateLimitService（小邻对话，SSE 流式 + 限流）
 │       │   ├── model/entity/  # 15 JPA 实体（Tenant, Building, Unit, Room, User,
 │       │   │                  #   IdleItem, HelpRequest, HelpApplication,
 │       │   │                  #   BorrowRequest, Message, Notification,
@@ -148,6 +149,7 @@ C端用户通过手机号 + 密码注册登录（`register` 页注册，`login` 
 | 认证 | POST /api/auth/* | wx-login / login / phone-login / register / appeal，GET status |
 | 闲置 | /api/idle-items/** | 发布/列表/详情/搜索（支持 keyword/semantic/混合三种模式）/下架 |
 | AI | POST /api/ai/* | 管理员批量生成语义向量 |
+| AI 助手 | /api/agent/** | 小邻对话（POST chat，SSE 流式 + RAG 检索 + 限流）/ 推荐提问（GET suggestions），需登录 |
 | 借入 | /api/borrow-requests/** | 申请/审批/归还确认 |
 | 技能求助 | /api/help-requests/** | 发布/列表/申请/审批 |
 | 评分 | /api/ratings/** | 提交评分/查看评分 |

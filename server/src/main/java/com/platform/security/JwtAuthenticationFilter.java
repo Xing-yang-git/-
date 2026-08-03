@@ -97,6 +97,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private boolean isAllowedForUnapproved(String uri) {
         return uri.startsWith("/api/auth/")
             || uri.startsWith("/api/common/")
+            || uri.startsWith("/api/agent/")
             || uri.startsWith("/uploads/");
     }
 

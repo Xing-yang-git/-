@@ -120,9 +120,26 @@ function checkLogin() {
   return ensureAccess();
 }
 
+/**
+ * 仅登录门禁 — 只检查是否有 token，不校验审核状态。
+ *
+ * <p>供「小邻」助手页使用（决策：仅登录即可用，审核中新住户也能问小区规则；
+ * 与后端 /api/agent/** 的 unapproved 白名单保持一致）。</p>
+ *
+ * @returns {boolean} true = 放行，false = 已发起跳转登录
+ */
+function ensureLoggedIn() {
+  if (!getToken()) {
+    _guardRedirect('/pages/login/login');
+    return false;
+  }
+  return true;
+}
+
 module.exports = {
   checkLogin,
   ensureAccess,
+  ensureLoggedIn,
   getToken,
   setToken,
   clearToken,

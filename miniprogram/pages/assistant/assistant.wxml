@@ -1,3 +1,59 @@
-<view class="container">
-  <text class="placeholder">小邻助手开发中…</text>
+<!-- 小邻 — AI 智能助手对话页 -->
+<view class="assistant-page">
+
+  <!-- 自定义导航栏 -->
+  <view class="assistant-nav" style="padding-top: {{statusBarHeight}}px;">
+    <view class="assistant-nav-inner">
+      <text class="assistant-nav-title">小邻</text>
+      <text class="assistant-nav-sub">智能助手</text>
+    </view>
+  </view>
+
+  <!-- 消息区 -->
+  <scroll-view class="msg-area" scroll-y scroll-into-view="{{scrollToView}}" scroll-with-animation
+               enhanced show-scrollbar="{{false}}" style="padding-bottom: {{keyboardHeight + 20}}px;">
+
+    <!-- 欢迎态 + 快捷问题（无消息时） -->
+    <view class="welcome" wx:if="{{messages.length === 0}}">
+      <text class="welcome-title">你好，我是小邻</text>
+      <text class="welcome-sub">小区规则、平台使用、物品搜索，都可以问我</text>
+      <view class="suggestion-chips">
+        <view class="chip" wx:for="{{suggestions}}" wx:key="*this" data-msg="{{item}}" bindtap="onSuggestionTap">
+          {{item}}
+        </view>
+      </view>
+    </view>
+
+    <!-- 消息气泡 -->
+    <block wx:for="{{messages}}" wx:key="id">
+      <view class="msg-row {{item.role === 'user' ? 'msg-row-right' : 'msg-row-left'}}">
+        <view class="bubble {{item.role === 'user' ? 'bubble-user' : 'bubble-ai'}}">
+          <text class="bubble-text">{{item.content}}<text class="typing" wx:if="{{item.streaming}}">▍</text></text>
+        </view>
+      </view>
+      <!-- 引用来源（后端检索结果） -->
+      <view class="sources" wx:if="{{item.sources.length > 0}}">
+        <text class="source-item" wx:for="{{item.sources}}" wx:key="id" wx:for-item="src">参考：{{src.source}}</text>
+      </view>
+    </block>
+
+    <view id="msg-bottom" class="msg-bottom"></view>
+  </scroll-view>
+
+  <!-- 输入区（键盘适配与 chat 页一致：keyboardHeight 抬升 + adjust-position:false + hold-keyboard） -->
+  <view class="assistant-input-bar" style="bottom: {{keyboardHeight}}px;">
+    <view class="input-row">
+      <textarea class="assistant-input" placeholder="问小邻点什么…" value="{{inputText}}"
+                placeholder-style="font-size:28rpx;color:rgba(120,120,128,0.6);"
+                bindinput="onInputChange" bindconfirm="onSend"
+                bindkeyboardheightchange="onKeyboardHeightChange"
+                maxlength="500" adjust-position="{{false}}" hold-keyboard="{{true}}"
+                show-confirm-bar="{{false}}" confirm-type="send"
+                disable-default-padding="{{true}}" />
+      <view class="send-btn {{sending ? 'send-btn-disabled' : ''}}" catchtap="onSend">
+        <text>{{sending ? '…' : '发送'}}</text>
+      </view>
+    </view>
+  </view>
+
 </view>

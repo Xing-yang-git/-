@@ -187,12 +187,66 @@ const upload = (url, filePath) => {
   });
 };
 
+/**
+ * 流式请求（SSE）— AI Agent「小邻」对话用。
+ *
+ * @param {string} url - API 路径，如 '/api/agent/chat'
+ * @param {Object} data - POST JSON 数据
+ * @param {Function} onChunk - 每收到 SSE 文本分块的回调（参数为累计原文 chunk）
+ * @param {Function} onError - 网络/请求错误回调
+ * @returns {Function} 中止函数（调用后取消请求，不再触发任何回调）
+ */
+const requestStream = (url, data, onChunk, onError) => {
+  const app = getApp();
+  const baseUrl = app.globalData ? app.globalData.baseUrl : '';
+  const token = wx.getStorageSync('token') || '';
+  let cancelled = false;
+
+  const task = wx.request({
+    method: 'POST',
+    url: baseUrl + url,
+    header: {
+      'content-type': 'application/json',
+      'Authorization': token ? 'Bearer ' + token : ''
+    },
+    data: JSON.stringify(data),
+    // 流式接收：基础库 2.20.1+，responseType text 时 onChunkReceived 的 data 为 string
+    enableChunked: true,
+    responseType: 'text',
+    success: (res) => {
+      if (cancelled) return;
+      if (res.statusCode === 401) {
+        forceRelogin();
+      } else if (res.statusCode !== 200) {
+        // SSE 场景若返回非 SSE 错误响应（@Valid 校验 400 / 意外 500），
+        // 分块事件不会触发，必须在此回调 onError，否则前端永久卡在发送中
+        const msg = (res.data && res.data.message) || '请求失败';
+        onError(new Error(msg));
+      }
+    },
+    fail: (err) => {
+      if (!cancelled) onError(err);
+    },
+    onChunkReceived: (res) => {
+      if (cancelled) return;
+      const chunk = typeof res.data === 'string' ? res.data : '';
+      if (chunk) onChunk(chunk);
+    }
+  });
+
+  return () => {
+    cancelled = true;
+    if (task && task.abort) task.abort();
+  };
+};
+
 const api = {
   get: (url, data) => request('GET', url, data),
   post: (url, data) => request('POST', url, data),
   put: (url, data) => request('PUT', url, data),
   del: (url, data) => request('DELETE', url, data),
   upload: upload,
+  requestStream: requestStream,
   forceRelogin: forceRelogin,
   forceReviewStatus: forceReviewStatus
 };

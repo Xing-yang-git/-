@@ -35,6 +35,8 @@ public class SecurityConfig {
                 // AI 文案生成需认证 — 防止未登录用户消耗付费 API 额度
                 .requestMatchers(HttpMethod.POST, "/api/common/polish").authenticated()
                 .requestMatchers("/api/common/**").permitAll()
+                // AI Agent「小邻」对话需登录（仅 authenticated，不要求认证通过，让审核中新住户也能问规则）
+                .requestMatchers("/api/agent/**").authenticated()
                 .requestMatchers("/uploads/**").permitAll()
                 .requestMatchers("/ws/**").permitAll()
                 .requestMatchers("/api/ai/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_SUPER_ADMIN")

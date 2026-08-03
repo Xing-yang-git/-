@@ -65,6 +65,12 @@ spring:
       port: 6379
       database: 0
 
+  # Security 过滤器仅在 REQUEST/ERROR dispatch 执行，排除 ASYNC——
+  # 否则 SseEmitter 异步写流时 SecurityContext 未传播会导致 AccessDenied（响应已提交无法改状态码）
+  security:
+    filter:
+      dispatcher-types: request, error
+
 # 微信小程序配置（真机调试 / 生产环境必须配置）
 wechat:
   miniapp:
@@ -116,10 +122,11 @@ ai:
     rate-limit-per-day: 100
     session-ttl-hours: 24
     knowledge-top-k: 5
-    knowledge-threshold: 0.25
+    # 语义相似度阈值（余弦距离）：实测相关条目 0.31~0.40、不相关 0.48+，0.45 命中相关 top3 且排除噪声
+    knowledge-threshold: 0.45
     archive-idle-minutes: 15 # 空闲归档阈值
     archive-message-count: 30 # 消息数归档阈值
     tool-mode: native        # 工具模式：native(原生 tool calling，PoC 已验证) / json(JSON 意图兜底)
-    max-tokens: 512          # 对话回复最大 token（含思维链需足够大）
+    max-tokens: 1024         # 对话回复最大 token（reasoning 思维链占用大，512 实测 content 为空）
     temperature-knowledge: 0.2  # RAG 精准检索温度
     temperature-creative: 0.6   # 创意文案温度（PolishingClient 互助感想保持 0.7 不动）
