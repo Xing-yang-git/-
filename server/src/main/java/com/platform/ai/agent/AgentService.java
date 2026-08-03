@@ -1,7 +1,9 @@
 package com.platform.ai.agent;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.platform.ai.search.KnowledgeHit;
 import com.platform.ai.search.KnowledgeRetrievalService;
+import com.platform.common.AgentMessageRole;
 import com.platform.common.AiGenerationException;
 import com.platform.common.BizException;
 import com.platform.model.entity.Tenant;
@@ -9,6 +11,7 @@ import com.platform.model.entity.User;
 import com.platform.repository.TenantRepository;
 import com.platform.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -34,24 +37,37 @@ public class AgentService {
     private final AgentPromptBuilder promptBuilder;
     private final AgentToolDispatcher toolDispatcher;
     private final IntentRouter intentRouter;
+    private final SessionService sessionService;
+    private final ArchiveService archiveService;
     private final OpenAiChatModel deepseekChatModel;
     private final UserRepository userRepository;
     private final TenantRepository tenantRepository;
+    private final ObjectMapper objectMapper;
+
+    /** 消息数归档阈值（达到即触发归档；与 yml 及截断封顶 max-turns×2 一致，防阈值 > 截断上限永不触发） */
+    @Value("${ai.agent.archive-message-count:20}")
+    private int archiveMessageCount;
 
     public AgentService(KnowledgeRetrievalService retrievalService,
                         AgentPromptBuilder promptBuilder,
                         AgentToolDispatcher toolDispatcher,
                         IntentRouter intentRouter,
+                        SessionService sessionService,
+                        ArchiveService archiveService,
                         OpenAiChatModel deepseekChatModel,
                         UserRepository userRepository,
-                        TenantRepository tenantRepository) {
+                        TenantRepository tenantRepository,
+                        ObjectMapper objectMapper) {
         this.retrievalService = retrievalService;
         this.promptBuilder = promptBuilder;
         this.toolDispatcher = toolDispatcher;
         this.intentRouter = intentRouter;
+        this.sessionService = sessionService;
+        this.archiveService = archiveService;
         this.deepseekChatModel = deepseekChatModel;
         this.userRepository = userRepository;
         this.tenantRepository = tenantRepository;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -69,8 +85,11 @@ public class AgentService {
         // RAG 检索（向量优先，关键词兜底）
         List<KnowledgeHit> hits = retrievalService.search(tenantId, message);
 
-        // 组装 Prompt：消息（system + user）+ 读工具注册 + 参数
-        List<Message> messages = promptBuilder.buildMessages(tenantName, message, hits);
+        // 读取多轮历史（Redis 热会话，Redis 不可用降级为空）
+        List<AgentSession.AgentMessageItem> history = sessionService.getHistory(userId);
+
+        // 组装 Prompt：消息（system + 历史 + user）+ 读工具注册 + 参数
+        List<Message> messages = promptBuilder.buildMessages(tenantName, message, hits, history);
         Prompt prompt = new Prompt(messages, OpenAiChatOptions.builder()
                 .temperature(0.2)
                 // reasoning 模型思维链占用大，1024 预留足够空间
@@ -97,6 +116,12 @@ public class AgentService {
                 displayReply = "已为您准备好发布草稿，请点击下方卡片确认填写。";
             }
         }
+
+        // 写入热会话（user + assistant），并触发消息数阈值归档
+        sessionService.append(userId, AgentMessageRole.USER, message, null, null);
+        sessionService.append(userId, AgentMessageRole.ASSISTANT, displayReply,
+                writeJsonOrNull(hits), writeJsonOrNull(actions));
+        archiveIfNeeded(userId);
 
         return new AgentChatResult(displayReply, hits, actions);
     }
@@ -127,6 +152,36 @@ public class AgentService {
                         .inputType(FeedbackParams.class)
                         .build()
         };
+    }
+
+    /**
+     * 触发消息数阈值归档（达到 archive-message-count 即归档到 PG）。
+     *
+     * @param userId 住户用户 ID
+     */
+    private void archiveIfNeeded(Long userId) {
+        AgentSession session = sessionService.getSession(userId);
+        if (session != null && session.getMessages().size() >= archiveMessageCount) {
+            archiveService.archive(userId);
+        }
+    }
+
+    /**
+     * 序列化为 JSON 字符串（归档 sources/actions 用），失败返回 null。
+     *
+     * @param data 数据对象（可为空列表）
+     * @return JSON 字符串，或 null
+     */
+    private String writeJsonOrNull(Object data) {
+        try {
+            if (data == null) {
+                return null;
+            }
+            String json = objectMapper.writeValueAsString(data);
+            return "[]".equals(json) ? null : json;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**

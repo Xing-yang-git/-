@@ -9,13 +9,19 @@ import com.platform.model.dto.AgentChatRequest;
 import com.platform.model.dto.AgentStreamEvent;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -31,6 +37,9 @@ import java.util.Map;
  * <ul>
  *   <li>POST /chat — 流式对话（SSE 伪流式：决策轮非流式生成全文，后端分块播放）</li>
  *   <li>GET /suggestions — 快捷问题（常量，后续可 B端配置）</li>
+ *   <li>GET /history — 历史会话列表（分页，排除软删）</li>
+ *   <li>POST /history/{id}/resume — 恢复归档会话（回填最近 N 轮，先归档当前热会话防丢失）</li>
+ *   <li>DELETE /history — 批量软删历史会话（保留审计）</li>
  * </ul>
  *
  * <p>安全：内存限流防刷 API 额度；SSE error 事件只透出白名单业务文案，内部细节仅记日志。</p>
@@ -41,15 +50,18 @@ import java.util.Map;
 public class AgentController {
 
     private final AgentService agentService;
+    private final ArchiveService archiveService;
     private final ObjectMapper objectMapper;
     private final RateLimitService rateLimitService;
     private final ThreadPoolTaskExecutor agentExecutor;
 
     public AgentController(AgentService agentService,
+                           ArchiveService archiveService,
                            ObjectMapper objectMapper,
                            RateLimitService rateLimitService,
                            ThreadPoolTaskExecutor agentExecutor) {
         this.agentService = agentService;
+        this.archiveService = archiveService;
         this.objectMapper = objectMapper;
         this.rateLimitService = rateLimitService;
         this.agentExecutor = agentExecutor;
@@ -130,6 +142,82 @@ public class AgentController {
         });
 
         return emitter;
+    }
+
+    /**
+     * 历史会话列表（排除软删，分页）。
+     *
+     * @param page 页码（从 0 开始）
+     * @param size 每页条数
+     * @param auth 当前认证用户
+     * @return 历史会话分页（id/title/messageCount/status/updatedAt）
+     */
+    @GetMapping("/history")
+    public Result<?> history(@RequestParam(defaultValue = "0") int page,
+                             @RequestParam(defaultValue = "20") int size,
+                             Authentication auth) {
+        Long userId = Long.valueOf(auth.getName());
+        // size 钳制上限，防超大分页拖垮查询
+        size = Math.min(size, 50);
+        size = Math.max(size, 1);
+        Page<Map<String, Object>> result = archiveService.list(userId,
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt")));
+        return Result.ok(Map.of(
+                "content", result.getContent(),
+                "totalElements", result.getTotalElements(),
+                "totalPages", result.getTotalPages(),
+                "currentPage", result.getNumber(),
+                "size", result.getSize()));
+    }
+
+    /**
+     * 恢复归档会话到热会话（回填最近 N 轮，供继续对话）。
+     *
+     * @param id   归档会话 ID
+     * @param auth 当前认证用户
+     * @return 恢复结果
+     */
+    @PostMapping("/history/{id}/resume")
+    public Result<?> resume(@PathVariable Long id, Authentication auth) {
+        Long userId = Long.valueOf(auth.getName());
+        archiveService.resume(userId, id);
+        return Result.ok(Map.of("conversationId", id, "resumed", true));
+    }
+
+    /**
+     * 批量软删历史会话（保留审计）。
+     *
+     * @param body 请求体：{"ids":[1,2,3]}
+     * @param auth 当前认证用户
+     * @return 实际删除的会话数
+     */
+    @DeleteMapping("/history")
+    public Result<?> deleteHistory(@RequestBody(required = false) Map<String, Object> body, Authentication auth) {
+        Long userId = Long.valueOf(auth.getName());
+        // 安全解析 ids：兼容 Number / 数字字符串，非数组/空 body 不抛异常
+        List<Long> ids = new ArrayList<>();
+        if (body == null) {
+            return Result.error(400, "ids 不能为空");
+        }
+        Object raw = body.get("ids");
+        if (raw instanceof List<?> list) {
+            for (Object o : list) {
+                if (o instanceof Number n) {
+                    ids.add(n.longValue());
+                } else if (o instanceof String s) {
+                    try {
+                        ids.add(Long.valueOf(s));
+                    } catch (NumberFormatException ignored) {
+                        // 非法 id 跳过
+                    }
+                }
+            }
+        }
+        if (ids.isEmpty()) {
+            return Result.error(400, "ids 不能为空");
+        }
+        int deleted = archiveService.softDelete(userId, ids);
+        return Result.ok(Map.of("deleted", deleted));
     }
 
     /**

@@ -31,6 +31,131 @@
   color: var(--text-tertiary);   /* 「智能助手」副标题弱化 */
 }
 
+.nav-spacer {
+  flex: 1;
+}
+
+.nav-history-btn {
+  font-size: var(--text-sm);
+  color: var(--blue);
+  padding: 8rpx 16rpx;
+}
+
+/* ─── 历史会话弹层 ─── */
+.history-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 90;
+}
+
+.history-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 70vh;
+  background: var(--surface);
+  border-top-left-radius: var(--radius-xl);
+  border-top-right-radius: var(--radius-xl);
+  z-index: 91;
+  display: flex;
+  flex-direction: column;
+}
+
+.history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28rpx 32rpx;
+  border-bottom: 1rpx solid var(--separator);
+}
+
+.history-title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.history-actions {
+  display: flex;
+  gap: 24rpx;
+}
+
+.history-action {
+  font-size: var(--text-sm);
+  color: var(--blue);
+}
+
+.history-action.danger {
+  color: var(--red);
+}
+
+.history-list {
+  flex: 1;
+  padding: 8rpx 0;
+  max-height: 55vh;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 24rpx 32rpx;
+  border-bottom: 1rpx solid var(--separator);   /* 列表分隔线 */
+}
+
+.history-check {
+  width: 40rpx;
+}
+
+.checkbox {
+  width: 36rpx;
+  height: 36rpx;
+  border: 2rpx solid var(--text-quaternary);
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.checkbox.checked {
+  background: var(--blue);
+  border-color: var(--blue);
+}
+
+.history-info {
+  flex: 1;
+  min-width: 0;   /* 允许标题超长省略 */
+}
+
+.history-item-title {
+  display: block;
+  font-size: var(--text-md);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-item-meta {
+  display: block;
+  margin-top: 6rpx;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.history-item-status {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.history-empty {
+  text-align: center;
+  padding: 80rpx 0;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
+
 /* ─── 消息区 ─── */
 .msg-area {
   flex: 1;

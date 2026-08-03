@@ -28,7 +28,7 @@ community-platform/
 │       │   │   ├── moderation/# ModerationClient/Service/Scheduler（内容审核）
 │       │   │   ├── matching/  # MatchingService/Scheduler（供需匹配）
 │       │   │   ├── search/    # SemanticSearchService, KnowledgeRetrievalService, KnowledgeHit（RAG 检索）
-│       │   │   └── agent/     # AgentController/Service/ToolDispatcher/IntentRouter/PromptBuilder/RateLimitService（小邻对话，SSE 流式 + 读工具调用 + 写操作动作卡片 + 限流）
+│       │   │   └── agent/     # AgentController/Service/SessionService/ArchiveService/ArchiveScheduler/RateLimitService/PromptBuilder/ToolDispatcher/IntentRouter（小邻对话，Redis 会话记忆 + 归档 + 恢复 + SSE 流式 + 读工具调用 + 写操作动作卡片 + 限流）
 │       │   ├── model/entity/  # 15 JPA 实体（Tenant, Building, Unit, Room, User,
 │       │   │                  #   IdleItem, HelpRequest, HelpApplication,
 │       │   │                  #   BorrowRequest, Message, Notification,
@@ -149,7 +149,7 @@ C端用户通过手机号 + 密码注册登录（`register` 页注册，`login` 
 | 认证 | POST /api/auth/* | wx-login / login / phone-login / register / appeal，GET status |
 | 闲置 | /api/idle-items/** | 发布/列表/详情/搜索（支持 keyword/semantic/混合三种模式）/下架 |
 | AI | POST /api/ai/* | 管理员批量生成语义向量 |
-| AI 助手 | /api/agent/** | 小邻对话（POST chat，SSE 流式 + RAG 检索 + 读工具调用 + 写操作动作卡片 + 限流）/ 推荐提问（GET suggestions），需登录 |
+| AI 助手 | /api/agent/** | 小邻对话（POST chat，SSE 流式 + RAG 检索 + 读工具调用 + 写操作动作卡片 + Redis 会话记忆 + 限流）/ 推荐提问（GET suggestions）/ 历史会话（GET history 分页、POST history/{id}/resume 恢复、DELETE history 批量软删），需登录 |
 | 借入 | /api/borrow-requests/** | 申请/审批/归还确认 |
 | 技能求助 | /api/help-requests/** | 发布/列表/申请/审批 |
 | 评分 | /api/ratings/** | 提交评分/查看评分 |

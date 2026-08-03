@@ -6,7 +6,42 @@
     <view class="assistant-nav-inner">
       <text class="assistant-nav-title">小邻</text>
       <text class="assistant-nav-sub">智能助手</text>
+      <view class="nav-spacer"></view>
+      <view class="nav-history-btn" bindtap="onHistoryTap">历史</view>
     </view>
+  </view>
+
+  <!-- 历史会话弹层 -->
+  <view class="history-mask" wx:if="{{historyVisible}}" bindtap="onCloseHistory"></view>
+  <view class="history-sheet" wx:if="{{historyVisible}}">
+    <view class="history-header">
+      <text class="history-title">历史对话</text>
+      <view class="history-actions">
+        <text wx:if="{{selecting}}" class="history-action danger" bindtap="onBatchDelete">删除所选</text>
+        <text class="history-action" bindtap="onCloseHistory">关闭</text>
+      </view>
+    </view>
+    <scroll-view class="history-list" scroll-y bindscrolltolower="onHistoryScrollLower" lower-threshold="50">
+      <view
+        wx:for="{{historyList}}"
+        wx:key="id"
+        class="history-item"
+        data-id="{{item.id}}"
+        data-item="{{item}}"
+        bindtap="onHistoryItemTap"
+        bindlongpress="onHistoryLongPress"
+      >
+        <view class="history-check" wx:if="{{selecting}}">
+          <view class="checkbox {{selectedIds.indexOf(item.id) > -1 ? 'checked' : ''}}"></view>
+        </view>
+        <view class="history-info">
+          <text class="history-item-title">{{item.title}}</text>
+          <text class="history-item-meta">{{item.messageCount}} 条 · {{item.updatedAtText}}</text>
+        </view>
+        <text wx:if="{{!selecting}}" class="history-item-status">归档</text>
+      </view>
+      <view class="history-empty" wx:if="{{historyList.length === 0}}">暂无历史对话</view>
+    </scroll-view>
   </view>
 
   <!-- 消息区 -->

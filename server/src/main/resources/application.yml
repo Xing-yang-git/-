@@ -125,7 +125,7 @@ ai:
     # 语义相似度阈值（余弦距离）：实测相关条目 0.31~0.40、不相关 0.48+，0.45 命中相关 top3 且排除噪声
     knowledge-threshold: 0.45
     archive-idle-minutes: 15 # 空闲归档阈值
-    archive-message-count: 30 # 消息数归档阈值
+    archive-message-count: 20 # 消息数归档阈值（= max-turns×2，截断封顶一致，防止阈值 > 截断上限导致永不触发）
     tool-mode: native        # 工具模式：native(原生 tool calling，PoC 已验证) / json(JSON 意图兜底)
     max-tokens: 1024         # 对话回复最大 token（reasoning 思维链占用大，512 实测 content 为空）
     temperature-knowledge: 0.2  # RAG 精准检索温度

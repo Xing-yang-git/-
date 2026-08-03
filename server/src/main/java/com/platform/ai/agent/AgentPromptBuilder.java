@@ -1,11 +1,14 @@
 package com.platform.ai.agent;
 
 import com.platform.ai.search.KnowledgeHit;
+import com.platform.common.AgentMessageRole;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -43,14 +46,16 @@ public class AgentPromptBuilder {
             "  {\"intent\":\"publish_help|publish_idle|publish_wanted\",\"params\":{\"title\":\"...\",\"description\":\"...\",\"category\":\"...\"}}";
 
     /**
-     * 构建对话消息列表（system + user），模型 options 由 AgentService 组装（含工具注册）。
+     * 构建对话消息列表（system + 历史 + user），模型 options 由 AgentService 组装（含工具注册）。
      *
      * @param tenantName 小区名称（用于助手自我介绍）
      * @param message    用户消息
      * @param hits       知识库检索命中（可为空）
-     * @return system + user 消息列表
+     * @param history    多轮历史（Redis 热会话，可为空）
+     * @return system + 历史 + user 消息列表
      */
-    public List<Message> buildMessages(String tenantName, String message, List<KnowledgeHit> hits) {
+    public List<Message> buildMessages(String tenantName, String message, List<KnowledgeHit> hits,
+                                       List<AgentSession.AgentMessageItem> history) {
         String system;
         if (hits != null && !hits.isEmpty()) {
             String kbBlock = formatKbBlock(hits);
@@ -60,7 +65,21 @@ public class AgentPromptBuilder {
             system = String.format(SYSTEM_PROMPT_NO_KB, tenantName);
         }
 
-        return List.of(new SystemMessage(system), new UserMessage(message));
+        List<Message> messages = new ArrayList<>();
+        messages.add(new SystemMessage(system));
+        // 多轮历史：仅 user/assistant（tool 为工具中间产物，跳过避免上下文噪声）
+        if (history != null) {
+            for (AgentSession.AgentMessageItem h : history) {
+                if (AgentMessageRole.USER.equals(h.role())) {
+                    messages.add(new UserMessage(h.content() == null ? "" : h.content()));
+                } else if (AgentMessageRole.ASSISTANT.equals(h.role())
+                        && h.content() != null && !h.content().isBlank()) {
+                    messages.add(new AssistantMessage(h.content()));
+                }
+            }
+        }
+        messages.add(new UserMessage(message));
+        return messages;
     }
 
     /**
