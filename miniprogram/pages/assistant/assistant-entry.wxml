@@ -1,0 +1,2 @@
+<!-- 小邻 tab 中转页：承接 tabBar 点击，立即重定向到独立的对话页（无底栏单页） -->
+<view class="entry-page"></view>

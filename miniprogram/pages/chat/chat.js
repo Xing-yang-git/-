@@ -25,21 +25,17 @@ Page({
     userId: '',
     messages: [],
     inputText: '',
-    inputFocus: 0,
     scrollToView: '',
     keyboardHeight: 0,
-    chatPaddingBottom: 70,
+    chatPaddingBottom: 90,
     oldestId: null,
     hasMore: true,
     loadingHistory: false,
     loadingOlder: false,
-    // 输入模式
-    inputMode: 'text',
     // 录音状态
     recording: false,
     recordDuration: 0,
     recordCancelling: false,
-    vN: 0, vNE: 0, vE: 0, vSE: 0, vS: 0, vSW: 0, vW: 0, vNW: 0,
     // 播放状态
     playingId: null,
     // 悬浮菜单
@@ -124,9 +120,8 @@ Page({
       clearTimeout(this._recordDelayTimer);
       this._recordDelayTimer = null;
       clearInterval(this._recordTimer);
-      clearInterval(this._waveTimer);
       this._recordingStarting = false;
-      this.setData({ recording: false, recordDuration: 0, recordCancelling: false, vN: 0, vNE: 0, vE: 0, vSE: 0, vS: 0, vSW: 0, vW: 0, vNW: 0 });
+      this.setData({ recording: false, recordDuration: 0, recordCancelling: false });
       // 权限问题 → 引导用户
       if (err && err.errMsg && err.errMsg.indexOf('permission') >= 0) {
         wx.showModal({
@@ -159,9 +154,8 @@ Page({
       }
       if (this.data.recording) {
         clearInterval(this._recordTimer);
-        clearInterval(this._waveTimer);
         try { this._recorder.stop(); } catch (e) {}
-        this.setData({ recording: false, recordDuration: 0, recordCancelling: false, vN: 0, vNE: 0, vE: 0, vSE: 0, vS: 0, vSW: 0, vW: 0, vNW: 0 });
+        this.setData({ recording: false, recordDuration: 0, recordCancelling: false });
       }
       if (this._audioCtx && this.data.playingId) {
         this._audioCtx.stop();
@@ -187,7 +181,6 @@ Page({
     if (this.data.recording) {
       clearTimeout(this._recordDelayTimer);
       clearInterval(this._recordTimer);
-      clearInterval(this._waveTimer);
       try { this._recorder.stop(); } catch (e) {}
     }
     if (this._audioCtx) {
@@ -385,11 +378,7 @@ Page({
     };
 
     const updated = [...messages, optimistic];
-    this._justSent = true;
-    if (this._justSentTimer) clearTimeout(this._justSentTimer);
-    this._justSentTimer = setTimeout(() => { this._justSent = false; }, 150);
-    const focusKey = Date.now();
-    this.setData({ messages: updated, inputText: '', inputFocus: focusKey });
+    this.setData({ messages: updated, inputText: '' });
     this.saveCache(updated);
     this.scrollToBottom();
 
@@ -422,26 +411,14 @@ Page({
   },
 
   // ============================================================
-  // 模式切换
-  // ============================================================
-
-  onSwitchToVoice() {
-    this.setData({ inputMode: 'voice', inputFocus: 0 });
-  },
-
-  onSwitchToText() {
-    this.setData({ inputMode: 'text', inputFocus: Date.now() });
-  },
-
-  // ============================================================
-  // 录音
+  // 录音（输入模式切换已内聚到共享组件 chat-input-bar 内部）
   // ============================================================
 
   onRecordStart(e) {
     // 防止重复启动录音（Android touch 事件偶现重复触发）
     if (this.data.recording || this._recordingStarting) return;
 
-    const touch = e.touches[0];
+    const touch = e.detail.touches[0];
     this._recordStartY = touch.clientY;
     this._recordCancelled = false;
     this._recordingStarting = true;
@@ -458,18 +435,15 @@ Page({
         encodeBitRate: 96000,
         format: 'mp3'
       });
-      this.setData({ recording: true, recordDuration: 0, recordCancelling: false, vN: 0.15, vNE: 0.12, vE: 0.18, vSE: 0.10, vS: 0.14, vSW: 0.11, vW: 0.16, vNW: 0.13 });
+      this.setData({ recording: true, recordDuration: 0, recordCancelling: false });
       this._recordTimer = setInterval(() => {
         const d = this.data.recordDuration + 1;
         if (d >= 60) {
           this._recorder.stop();
           clearInterval(this._recordTimer);
-          clearInterval(this._waveTimer);
         }
         this.setData({ recordDuration: d });
       }, 1000);
-      // 模拟音量波动 — 果冻流体形变驱动
-      this._startWaveSimulation();
     }, 200);
   },
 
@@ -483,14 +457,13 @@ Page({
     }
     if (!this.data.recording) return;
     clearInterval(this._recordTimer);
-    clearInterval(this._waveTimer);
 
-    const touch = e.changedTouches[0];
+    const touch = e.detail.changedTouches[0];
     const slideDistance = this._recordStartY - touch.clientY;
     if (slideDistance > 80 || this._recordCancelled) {
       this._recordCancelled = true;
       this._recorder.stop();
-      this.setData({ recording: false, recordDuration: 0, recordCancelling: false, vN: 0, vNE: 0, vE: 0, vSE: 0, vS: 0, vSW: 0, vW: 0, vNW: 0 });
+      this.setData({ recording: false, recordDuration: 0, recordCancelling: false });
       return;
     }
     this._recorder.stop();
@@ -506,14 +479,13 @@ Page({
     }
     this._recordCancelled = true;
     clearInterval(this._recordTimer);
-    clearInterval(this._waveTimer);
     try { this._recorder.stop(); } catch (e) {}
-    this.setData({ recording: false, recordDuration: 0, recordCancelling: false, vN: 0, vNE: 0, vE: 0, vSE: 0, vS: 0, vSW: 0, vW: 0, vNW: 0 });
+    this.setData({ recording: false, recordDuration: 0, recordCancelling: false });
   },
 
   onRecordTouchMove(e) {
     if (!this.data.recording) return;
-    const touch = e.touches[0];
+    const touch = e.detail.touches[0];
     const cancelling = (this._recordStartY - touch.clientY) > 80;
     if (cancelling !== this.data.recordCancelling) {
       this.setData({ recordCancelling: cancelling });
@@ -521,40 +493,10 @@ Page({
     }
   },
 
-  /** 8 方位独立音量模拟 → 360° 方向性不对称果冻形变 */
-  _startWaveSimulation() {
-    // 8 个独立通道，各自随机游走 + 偶尔尖峰
-    const channels = [
-      { v: 0.15, t: 0 },  // N
-      { v: 0.12, t: 0 },  // NE
-      { v: 0.18, t: 0 },  // E
-      { v: 0.10, t: 0 },  // SE
-      { v: 0.14, t: 0 },  // S
-      { v: 0.11, t: 0 },  // SW
-      { v: 0.16, t: 0 },  // W
-      { v: 0.13, t: 0 },  // NW
-    ];
-    const keys = ['vN', 'vNE', 'vE', 'vSE', 'vS', 'vSW', 'vW', 'vNW'];
-    this._waveTimer = setInterval(() => {
-      const data = {};
-      for (let i = 0; i < 8; i++) {
-        const c = channels[i];
-        const spike = Math.random() < 0.10 ? (Math.random() * 0.55 + 0.25) : 0;
-        c.t += (Math.random() - 0.5) * 0.22;
-        c.t = Math.max(-0.35, Math.min(0.35, c.t));
-        c.v = c.v * 0.68 + (0.22 + c.t + spike) * 0.32;
-        c.v = Math.max(0.04, Math.min(1.0, c.v));
-        data[keys[i]] = Math.round(c.v * 100) / 100;
-      }
-      this.setData(data);
-    }, 110);
-  },
-
   _handleRecordComplete(res) {
     this._recordingStarting = false;
-    this.setData({ recording: false, recordCancelling: false, vN: 0, vNE: 0, vE: 0, vSE: 0, vS: 0, vSW: 0, vW: 0, vNW: 0 });
+    this.setData({ recording: false, recordCancelling: false });
     clearInterval(this._recordTimer);
-    clearInterval(this._waveTimer);
     if (this._recordCancelled) { this._recordCancelled = false; return; }
     if (res.duration < 1000) {
       wx.showToast({ title: '录音时间太短', icon: 'none' });
@@ -992,21 +934,15 @@ Page({
     this.setData({ inputText: value });
   },
 
-  onInputLineChange() {},
-
   onKeyboardHeightChange(e) {
     const h = e.detail.height;
-    this.setData({ keyboardHeight: h, chatPaddingBottom: 70 + h });
+    this.setData({ keyboardHeight: h, chatPaddingBottom: 90 + h });
     if (h > 0) this.scrollToBottom();
   },
 
   onInputBlur() {
-    if (this._justSent) {
-      this._justSent = false;
-      this.setData({ inputFocus: Date.now() });
-      return;
-    }
-    this.setData({ keyboardHeight: 0, chatPaddingBottom: 70 });
+    // 组件内部已处理"发送后立即失焦需重聚焦"（_justSent 机制），此处仅收起键盘
+    this.setData({ keyboardHeight: 0, chatPaddingBottom: 90 });
   },
 
   onChatAreaTap() {
@@ -1014,7 +950,7 @@ Page({
     if (this._menuJustShown && Date.now() - this._menuJustShown < 300) return;
     wx.hideKeyboard();
     this.onMsgMenuDismiss();
-    this.setData({ keyboardHeight: 0, chatPaddingBottom: 70 });
+    this.setData({ keyboardHeight: 0, chatPaddingBottom: 90 });
   },
 
   preventTouchMove() {},

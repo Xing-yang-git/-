@@ -1,10 +1,13 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
 const { POST_TYPE, STORAGE_KEY } = require('../../utils/constants');
+// 微信同声传译插件（语音转文字），需在 app.json plugins 注册 + 小程序后台添加插件
+const speechManager = requirePlugin('WechatSI').getRecordRecognitionManager();
 
 /**
- * 小邻 — AI 智能助手对话页（tabBar 第 3 项）。
+ * 小邻 — AI 智能助手对话页（独立单页面，无底部导航栏，对齐聊天页）。
  *
+ * 入口：tabBar「小邻」经中转页 pages/assistant/assistant-entry 重定向进入。
  * 功能：小区知识问答（RAG）、流式对话（SSE 伪流式）、快捷问题、引用来源展示。
  * 鉴权：仅登录即可用（后端 /api/agent/** authenticated，不要求认证通过），
  * 审核中新住户也能问小区规则。
@@ -38,7 +41,15 @@ Page({
     /** 历史总数（分页判断） */
     historyTotal: 0,
     /** 历史加载中（防重复请求） */
-    loadingHistory: false
+    loadingHistory: false,
+    /** 录音识别中（按住说话；输入模式切换已内聚到共享组件 chat-input-bar 内部） */
+    recording: false,
+    /** 上滑取消录音中 */
+    recordCancelling: false,
+    /** 录音时长（秒） */
+    recordDuration: 0,
+    /** 输入消息最大长度（对齐后端 @Size 校验；textarea maxlength 与语音转文字共用） */
+    msgMaxLength: 500
   },
 
   /** 消息自增 id */
@@ -49,16 +60,146 @@ Page({
   _abortStream: null,
   /** 当前正在接收回复的消息 id */
   _currentMsgId: null,
+  /** 上滑取消/手势中断的丢弃标记（置位后 onStop 丢弃识别结果，不发送） */
+  _recordCancelled: false,
 
   onLoad() {
+    // 主动进入对话页：清除"从对话页返回"标记，避免中转页误判为返回
+    if (getApp().globalData) getApp().globalData.assistantReturning = false;
     if (!auth.ensureLoggedIn()) return;   // 仅登录门禁（审核中新住户也能用，与后端 unapproved 白名单一致）
     const sysInfo = wx.getSystemInfoSync();
     this.setData({ statusBarHeight: sysInfo.statusBarHeight || 20 });
     this.loadSuggestions();
+    this.initSpeech();
+  },
+
+  // ==================== 语音输入（WechatSI 转文字） ====================
+
+  /** 初始化语音识别回调（只注册一次） */
+  initSpeech() {
+    if (this._speechInited) return;
+    this._speechInited = true;
+    speechManager.onStop = (res) => {
+      // 识别完成：文字直接发送（不进输入框）；截断到输入上限，避免后端 @Size 拒绝
+      this.setData({ recording: false });
+      // 上滑取消/手势中断置位后丢弃识别结果（对齐 chat 页 _recordCancelled），避免取消后仍误发
+      if (this._recordCancelled) {
+        this._recordCancelled = false;
+        return;
+      }
+      const text = (res && res.result) || '';
+      if (text && text.trim()) {
+        this.sendMessage(text.trim().slice(0, this.data.msgMaxLength));
+      } else {
+        wx.showToast({ title: '未识别到内容', icon: 'none' });
+      }
+    };
+    speechManager.onError = (err) => {
+      // 记录错误码/信息便于定位（如 -2 未授权录音、-30003 数据传输失败等）
+      console.error('[assistant] 语音识别失败:', err && err.retcode, err && err.msg);
+      this.setData({ recording: false });
+      wx.showToast({ title: '语音识别失败，请重试', icon: 'none' });
+    };
+  },
+
+  /** 输入框失焦（键盘收起；组件内部已处理"发送后立即失焦需重聚焦"） */
+  onInputBlur() {
+    this.setData({ keyboardHeight: 0 });
+  },
+
+  /** 点消息区空白处：收起键盘 + 输入栏回落（对齐聊天页 onChatAreaTap） */
+  onMsgAreaTap() {
+    wx.hideKeyboard();
+    this.setData({ keyboardHeight: 0 });
+  },
+
+  /** 按住开始录音识别（voice 模式按压区） */
+  onVoiceStart(e) {
+    if (this.data.sending) return;
+    // 防重复触发录音（对齐 chat 页 onRecordStart；Android touch 事件偶现重复触发）
+    if (this.data.recording) return;
+    // 记录起始触摸 Y（上滑取消判断基准；触摸信息由组件透传在 e.detail）
+    this._recordStartY = (e.detail.touches && e.detail.touches[0]) ? e.detail.touches[0].clientY : 0;
+    this._recordCancelled = false;
+    this.setData({ recording: true, recordCancelling: false, recordDuration: 0 });
+    // start() 在多数 WechatSI 版本返回 Promise，但官方文档类型为 void（报错走 onError）；
+    // 防御式处理两种返回类型：返回 Promise 时 catch 拒绝兜底，返回 void 时跳过链式调用避免 TypeError
+    // 失败即无录音任务，不可再调 stop()（会报 -30012 当前无识别任务）
+    const startResult = speechManager.start({ lang: 'zh_CN', duration: 60000 });
+    if (startResult && typeof startResult.catch === 'function') {
+      startResult.catch((err) => {
+        console.warn('[assistant] 语音识别 start 被拒绝:', err && err.retcode, err && err.msg);
+        clearInterval(this._recordTimer);
+        this.setData({ recording: false, recordCancelling: false, recordDuration: 0 });
+      });
+    }
+    // 录音计时（浮层显示秒数）
+    this._recordTimer = setInterval(() => {
+      this.setData({ recordDuration: this.data.recordDuration + 1 });
+    }, 1000);
+  },
+
+  /** 松开停止录音：上滑取消则丢弃，否则识别并发送 */
+  onVoiceEnd() {
+    // 发送中被拦截未开启录音时（recording 为 false）不可调 stop()，否则报 -30012 无识别任务 → onError 弹"识别失败"提示（对齐 chat 页 onRecordEnd）
+    if (!this.data.recording) return;
+    clearInterval(this._recordTimer);
+    const cancelled = this.data.recordCancelling;
+    if (cancelled) {
+      // 上滑取消：置丢弃标记 + 调 stop() 结束识别任务。只弹提示不调 stop() 会拖到 60s 超时，
+      // 且 onStop 仍会把已识别文字误发（对齐 chat 页 onRecordEnd 的 _recordCancelled 丢弃机制）
+      this._recordCancelled = true;
+      this.setData({ recording: false, recordCancelling: false });
+      wx.showToast({ title: '已取消', icon: 'none' });
+      speechManager.stop();
+      return;
+    }
+    this.setData({ recording: false, recordCancelling: false });
+    speechManager.stop();   // 触发 onStop → 识别 → 直接发送
+  },
+
+  /** 取消（手势中断） */
+  onVoiceCancel() {
+    // 同 onVoiceEnd：未真正录音时跳过 stop()，避免无识别任务报错弹提示
+    if (!this.data.recording) return;
+    // 手势中断同样置丢弃标记，防止 onStop 误发（对齐 chat 页 onRecordCancel）
+    this._recordCancelled = true;
+    clearInterval(this._recordTimer);
+    this.setData({ recording: false, recordCancelling: false });
+    speechManager.stop();
+  },
+
+  /** 录音中移动：上滑超过阈值进入取消态（参考 chat 页；触摸信息由组件透传在 e.detail） */
+  onVoiceTouchMove(e) {
+    if (!this.data.recording) return;
+    const y = (e.detail.touches && e.detail.touches[0]) ? e.detail.touches[0].clientY : 0;
+    const cancelling = this._recordStartY > 0 && (this._recordStartY - y) > 80;
+    if (cancelling !== this.data.recordCancelling) {
+      this.setData({ recordCancelling: cancelling });
+      // 进入取消态即置位丢弃标记（对齐 chat 页 onRecordTouchMove），松手时据此丢弃
+      if (cancelling) this._recordCancelled = true;
+    }
   },
 
   onShow() {
-    if (!auth.ensureLoggedIn()) return; // 覆盖 tab 切换与后台切回
+    if (!auth.ensureLoggedIn()) return; // 后台切回时兜底鉴权
+    // 重新回到对话页（跳发布页返回等）：清除返回标记
+    if (getApp().globalData) getApp().globalData.assistantReturning = false;
+  },
+
+  onHide() {
+    // 对话页被覆盖/弹出（手势返回、‹ 按钮、跳发布页）：标记"从对话页返回"，让中转页决定去向
+    if (getApp().globalData) getApp().globalData.assistantReturning = true;
+  },
+
+  /** 返回按钮：退回中转页（中转页据此回首页 tab），无栈时兜底直接切首页 */
+  onNavBack() {
+    wx.navigateBack({
+      fail() {
+        if (getApp().globalData) getApp().globalData.assistantReturning = false;
+        wx.switchTab({ url: '/pages/home/home' });
+      }
+    });
   },
 
   /** 加载快捷问题 */
@@ -87,6 +228,24 @@ Page({
     this.sendMessage(msg);
   },
 
+  /** 点击终止图标：中止进行中的助手回复流 */
+  onAbort() {
+    if (!this.data.sending) return;   // 防连点重复触发
+    if (this._streamWatchdog) { clearTimeout(this._streamWatchdog); this._streamWatchdog = null; }
+    if (this._abortStream) {
+      this._abortStream();
+      this._abortStream = null;
+    }
+    this._sseBuffer = '';
+    const msgId = this._currentMsgId;
+    const messages = this.data.messages.map((m) => {
+      // aborted 标记由 WXML 渲染成灰色"（已终止）"行，不污染正文
+      if (m.id === msgId) return { ...m, streaming: false, aborted: true };
+      return m;
+    });
+    this.setData({ messages, sending: false });
+  },
+
   /**
    * 发送消息并建立 SSE 流式接收。
    * @param {string} msg 用户消息
@@ -99,14 +258,29 @@ Page({
     this._sseBuffer = '';
     this.setData({ messages, inputText: '', sending: true, scrollToView: aiMsg.id });
 
+    // 兜底看门狗：60s 内未收到 end/error 则强制结束流，避免后端挂起时永久卡在"回复中"
+    if (this._streamWatchdog) clearTimeout(this._streamWatchdog);
+    this._streamWatchdog = setTimeout(() => {
+      if (!this.data.sending) return;
+      if (this._abortStream) { this._abortStream(); this._abortStream = null; }
+      const messages = this.data.messages.map((m) => {
+        if (m.id === this._currentMsgId) {
+          return { ...m, content: (m.content || '') + '\n（回复超时，请点击重试）', streaming: false };
+        }
+        return m;
+      });
+      this.setData({ messages, sending: false });
+    }, 60000);
+
     this._abortStream = api.requestStream('/api/agent/chat', { message: msg },
       (chunk) => this._onSseChunk(chunk),
       () => this._onStreamError());
   },
 
-  /** SSE 分块累积 + 按事件边界切分 */
+  /** SSE 分块累积 + 按事件边界切分（兼容 \r\n 行尾，统一归一化） */
   _onSseChunk(chunk) {
-    this._sseBuffer += chunk;
+    // 部分环境/代理用 \r\n 行尾，不归一化则 '\n\n' 分隔永远匹配不到
+    this._sseBuffer += (chunk || '').replace(/\r\n/g, '\n');
     let idx;
     while ((idx = this._sseBuffer.indexOf('\n\n')) !== -1) {
       const event = this._sseBuffer.slice(0, idx);
@@ -190,8 +364,9 @@ Page({
     wx.navigateTo({ url: '/pages/publish-idle/publish-idle?type=' + t });
   },
 
-  /** 流式结束：清除 streaming 标记 */
+  /** 流式结束：清除 streaming 标记 + 停用看门狗 */
   _finishStream() {
+    if (this._streamWatchdog) { clearTimeout(this._streamWatchdog); this._streamWatchdog = null; }
     const msgId = this._currentMsgId;
     const messages = this.data.messages.map((m) => {
       if (m.id === msgId) return { ...m, streaming: false };
@@ -203,6 +378,7 @@ Page({
   /** 流式错误：断线提示重试（不自动重发，防重复扣费） */
   _onStreamError() {
     if (!this.data.sending) return;
+    if (this._streamWatchdog) { clearTimeout(this._streamWatchdog); this._streamWatchdog = null; }
     const msgId = this._currentMsgId;
     const messages = this.data.messages.map((m) => {
       if (m.id === msgId) return { ...m, content: m.content + '\n（网络中断，请点击重试）', streaming: false };
@@ -333,11 +509,18 @@ Page({
     });
   },
 
-  /** 页面卸载时中止未完成流 */
+  /** 页面卸载时中止未完成流 + 清理看门狗与录音计时器 + 标记"从对话页返回" */
   onUnload() {
+    // 对话页被关闭（手势返回 / ‹ 按钮返回中转页）：中转页据此回首页 tab
+    if (getApp().globalData) getApp().globalData.assistantReturning = true;
+    if (this._streamWatchdog) { clearTimeout(this._streamWatchdog); this._streamWatchdog = null; }
     if (this._abortStream) {
       this._abortStream();
       this._abortStream = null;
+    }
+    if (this._recordTimer) {
+      clearInterval(this._recordTimer);
+      this._recordTimer = null;
     }
   }
 });

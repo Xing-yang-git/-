@@ -1,0 +1,94 @@
+/* ─── 共享录音浮层 — 居中白底圆 + 8 方位果冻流体波纹（对齐聊天页原样式） ─── */
+
+/* 全屏固定浮层：作为页面直接子元素，z-index 在页面层生效，可盖过导航栏 */
+.record-overlay {
+  position: fixed;
+  left: 0; top: 0; right: 0; bottom: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.record-mask {
+  position: absolute;
+  left: 0; top: 0; right: 0; bottom: 0;
+  background: rgba(242, 242, 247, 0.92);
+}
+
+/* blob 容器 — 绝对居中，与中心圆同心 */
+.record-blobs {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 320rpx;
+  height: 320rpx;
+  margin-left: -160rpx;
+  margin-top: -160rpx;
+}
+
+/* 单个果冻 blob — 填充圆，偏位 + 独立缩放 → 合成不对称有机轮廓 */
+.r-blob {
+  position: absolute;
+  width: 220rpx;
+  height: 220rpx;
+  border-radius: 50%;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+              opacity 0.3s ease-out;
+  will-change: transform, opacity;
+  /* 柔和外发光光晕 */
+  filter: blur(8rpx);
+  -webkit-filter: blur(8rpx);
+}
+
+/* 中心白底圆 */
+.record-circle {
+  position: relative;
+  z-index: 2;
+  width: 240rpx;
+  height: 240rpx;
+  border-radius: 50%;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4rpx 32rpx rgba(0, 0, 0, 0.06),
+              0 0 80rpx rgba(52, 199, 89, 0.08);
+  transition: box-shadow 0.3s, transform 0.25s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.record-circle.record-cancelling {
+  box-shadow: 0 4rpx 32rpx rgba(0, 0, 0, 0.06),
+              0 0 80rpx rgba(255, 59, 48, 0.15);
+}
+
+/* 麦克风图标 */
+.record-mic-icon {
+  width: 80rpx;
+  height: 80rpx;
+  opacity: 0.7;
+}
+
+/* 底部文字区 */
+.record-label {
+  position: relative;
+  z-index: 2;
+  margin-top: 56rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.record-time {
+  font-size: 32rpx;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  margin-bottom: 8rpx;
+}
+
+.record-hint {
+  font-size: 24rpx;
+  color: var(--text-quaternary-solid);
+}

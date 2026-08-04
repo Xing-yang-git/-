@@ -1,0 +1,37 @@
+{
+  "id": "TC-36",
+  "cat": "05-help-flow",
+  "title": "申请自己的求助——防止自申交互",
+  "tags": [
+    "help",
+    "security"
+  ],
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "/pages/home/home",
+      "method": "switchTab"
+    },
+    {
+      "action": "wait",
+      "condition": "2000"
+    },
+    {
+      "action": "tap",
+      "selector": ".segment-item[data-tab=\"2\"]"
+    },
+    {
+      "action": "wait",
+      "condition": "1500"
+    },
+    {
+      "action": "tap",
+      "selector": ".list-card:first-child"
+    },
+    {
+      "action": "wait",
+      "condition": "2000"
+    }
+  ],
+  "assertions": []
+}

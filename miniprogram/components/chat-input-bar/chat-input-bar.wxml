@@ -1,0 +1,61 @@
+<!-- 共享聊天输入栏：对齐原型 chat.html 输入区（文字模式 + 语音模式） -->
+<view class="chat-input-bar" style="bottom: {{keyboardHeight}}px;">
+
+  <!-- 文字模式：mic + 输入框(含发送/终止图标) + 可选附件按钮 -->
+  <view class="chat-input-row" wx:if="{{inputMode === 'text'}}">
+    <view class="chat-mic-btn {{sending ? 'chat-btn-disabled' : ''}}" bindtap="onSwitchToVoice">
+      <image src="../../images/icon-mic.svg" mode="aspectFit"></image>
+    </view>
+    <view class="chat-input-wrapper {{focused ? 'chat-input-wrapper-focused' : ''}}">
+      <textarea
+        class="chat-input"
+        placeholder="输入消息..."
+        placeholder-style="font-size:30rpx;color:rgba(120,120,128,0.6);"
+        value="{{value}}"
+        focus="{{focusKey}}"
+        disabled="{{sending}}"
+        bindinput="onInputChange"
+        bindconfirm="onSendTap"
+        bindkeyboardheightchange="onKeyboardHeightChange"
+        bindfocus="onFocus"
+        bindblur="onBlur"
+        bindlinechange="onLineChange"
+        maxlength="{{maxlength}}"
+        auto-height
+        adjust-position="{{false}}"
+        hold-keyboard="{{true}}"
+        show-confirm-bar="{{false}}"
+        confirm-type="send"
+        disable-default-padding="{{true}}"
+      />
+      <!-- 发送/终止：发送中换成纯红方块终止按钮（小邻流式可中止，聊天页恒为发送） -->
+      <view class="chat-send-icon" catchtap="{{sending ? 'onStopTap' : 'onSendTap'}}">
+        <image wx:if="{{!sending}}" class="send-icon-plane" src="../../images/icon-send.svg" mode="aspectFit"></image>
+        <view wx:else class="chat-stop-inner"></view>
+      </view>
+    </view>
+    <view class="chat-plus-btn" wx:if="{{showPlus}}" bindtap="onPlus">
+      <image src="../../images/plus-icon-gray.svg" mode="aspectFit"></image>
+    </view>
+  </view>
+
+  <!-- 语音模式：键盘切换 + 按住说话 + 附件按钮 / 发送中终止按钮（右侧同位） -->
+  <view class="chat-input-row" wx:if="{{inputMode === 'voice'}}">
+    <view class="chat-keyboard-toggle" bindtap="onSwitchToText">
+      <image src="../../images/icon-keyboard.svg" mode="aspectFit"></image>
+    </view>
+    <view class="chat-hold-to-talk {{sending ? 'chat-hold-to-talk-disabled' : ''}}"
+      bindtouchstart="onVoiceStart"
+      bindtouchend="onVoiceEnd"
+      bindtouchcancel="onVoiceCancel"
+      bindtouchmove="onVoiceTouchMove">
+      <text>{{recording ? '松开发送' : (sending ? '回复生成中…' : '按住说话')}}</text>
+    </view>
+    <view class="chat-plus-btn" wx:if="{{showPlus}}" bindtap="onPlus">
+      <image src="../../images/plus-icon-gray.svg" mode="aspectFit"></image>
+    </view>
+    <view class="chat-stop-btn" wx:elif="{{sending}}" bindtap="onStopTap">
+      <view class="chat-stop-inner"></view>
+    </view>
+  </view>
+</view>

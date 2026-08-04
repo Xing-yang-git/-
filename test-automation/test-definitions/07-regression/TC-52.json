@@ -1,0 +1,29 @@
+{
+  "id": "TC-52",
+  "cat": "07-regression",
+  "title": "操作冲突检测——物品被抢先申请提示",
+  "tags": [
+    "regression",
+    "concurrency"
+  ],
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "/pages/home/home",
+      "method": "switchTab"
+    },
+    {
+      "action": "wait",
+      "condition": "2000"
+    },
+    {
+      "action": "tap",
+      "selector": ".list-card:first-child"
+    },
+    {
+      "action": "wait",
+      "condition": "2000"
+    }
+  ],
+  "assertions": []
+}

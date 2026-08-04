@@ -1,0 +1,83 @@
+{
+  "id": "TC-REG-03",
+  "cat": "01-registration-login",
+  "title": "注册流程各步骤\"上一步\"返回——数据保持",
+  "tags": [
+    "registration",
+    "navigation"
+  ],
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "/pages/register/register",
+      "method": "navigateTo"
+    },
+    {
+      "action": "wait",
+      "condition": "1500"
+    },
+    {
+      "action": "tap",
+      "selector": ".list-row:first-child"
+    },
+    {
+      "action": "wait",
+      "condition": "300"
+    },
+    {
+      "action": "tap",
+      "selector": ".btn-primary"
+    },
+    {
+      "action": "wait",
+      "condition": "500"
+    },
+    {
+      "action": "input",
+      "selector": "input[placeholder*='栋']",
+      "value": "3"
+    },
+    {
+      "action": "input",
+      "selector": "input[placeholder*='单元']",
+      "value": "2"
+    },
+    {
+      "action": "input",
+      "selector": "input[placeholder*='房']",
+      "value": "1501"
+    },
+    {
+      "action": "wait",
+      "condition": "300"
+    },
+    {
+      "action": "tap",
+      "selector": ".btn-secondary"
+    },
+    {
+      "action": "wait",
+      "condition": "500"
+    },
+    {
+      "action": "tap",
+      "selector": ".btn-primary"
+    },
+    {
+      "action": "wait",
+      "condition": "500"
+    }
+  ],
+  "assertions": [
+    {
+      "type": "data",
+      "path": "building",
+      "equals": "3"
+    },
+    {
+      "type": "data",
+      "path": "unit",
+      "equals": "2"
+    }
+  ]
+}

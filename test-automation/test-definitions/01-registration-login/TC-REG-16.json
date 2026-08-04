@@ -1,0 +1,78 @@
+{
+  "id": "TC-REG-16",
+  "cat": "01-registration-login",
+  "title": "手机号格式边界校验",
+  "tags": [
+    "registration",
+    "validation"
+  ],
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "/pages/register/register",
+      "method": "navigateTo"
+    },
+    {
+      "action": "wait",
+      "condition": "1500"
+    },
+    {
+      "action": "tap",
+      "selector": ".list-row:first-child"
+    },
+    {
+      "action": "wait",
+      "condition": "300"
+    },
+    {
+      "action": "tap",
+      "selector": ".btn-primary"
+    },
+    {
+      "action": "wait",
+      "condition": "500"
+    },
+    {
+      "action": "tap",
+      "selector": ".btn-primary"
+    },
+    {
+      "action": "wait",
+      "condition": "500"
+    },
+    {
+      "action": "input",
+      "selector": "input[placeholder*='手机号']",
+      "value": "1234"
+    },
+    {
+      "action": "input",
+      "selector": "input[placeholder*='8-20位']",
+      "value": "pass1234"
+    },
+    {
+      "action": "input",
+      "selector": "input[placeholder*='再次输入']",
+      "value": "pass1234"
+    },
+    {
+      "action": "tap",
+      "selector": ".btn-primary"
+    },
+    {
+      "action": "wait",
+      "condition": "1000"
+    }
+  ],
+  "assertions": [
+    {
+      "type": "page",
+      "contains": "register"
+    },
+    {
+      "type": "data",
+      "path": "currentStep",
+      "equals": 2
+    }
+  ]
+}

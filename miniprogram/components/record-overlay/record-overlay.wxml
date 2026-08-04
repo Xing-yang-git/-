@@ -1,0 +1,24 @@
+<!-- 共享录音浮层：8 方位果冻形变 + 中心圆 + 时长提示（聊天页与小邻一致） -->
+<view class="record-overlay" wx:if="{{recording}}">
+  <view class="record-mask"></view>
+  <!-- 8 方位 blob 完美对称分布 · 各自独立音量 → 360° 均匀方向性突起 -->
+  <view class="record-blobs">
+    <view class="r-blob" style="transform: translate(0, -32rpx) scale({{1 + vN * 2.3}}); opacity: {{0.04 + vN * 0.08}}; background: {{recordCancelling ? 'rgba(255,59,48,0.50)' : 'rgba(52,199,89,0.50)'}};"></view>
+    <view class="r-blob" style="transform: translate(23rpx, -23rpx) scale({{1 + vNE * 2.0}}); opacity: {{0.04 + vNE * 0.07}}; background: {{recordCancelling ? 'rgba(255,59,48,0.45)' : 'rgba(52,199,89,0.45)'}};"></view>
+    <view class="r-blob" style="transform: translate(32rpx, 0) scale({{1 + vE * 2.3}}); opacity: {{0.04 + vE * 0.08}}; background: {{recordCancelling ? 'rgba(255,59,48,0.50)' : 'rgba(52,199,89,0.50)'}};"></view>
+    <view class="r-blob" style="transform: translate(23rpx, 23rpx) scale({{1 + vSE * 2.0}}); opacity: {{0.04 + vSE * 0.07}}; background: {{recordCancelling ? 'rgba(255,59,48,0.45)' : 'rgba(52,199,89,0.45)'}};"></view>
+    <view class="r-blob" style="transform: translate(0, 32rpx) scale({{1 + vS * 2.3}}); opacity: {{0.04 + vS * 0.08}}; background: {{recordCancelling ? 'rgba(255,59,48,0.50)' : 'rgba(52,199,89,0.50)'}};"></view>
+    <view class="r-blob" style="transform: translate(-23rpx, 23rpx) scale({{1 + vSW * 2.0}}); opacity: {{0.04 + vSW * 0.07}}; background: {{recordCancelling ? 'rgba(255,59,48,0.45)' : 'rgba(52,199,89,0.45)'}};"></view>
+    <view class="r-blob" style="transform: translate(-32rpx, 0) scale({{1 + vW * 2.3}}); opacity: {{0.04 + vW * 0.08}}; background: {{recordCancelling ? 'rgba(255,59,48,0.50)' : 'rgba(52,199,89,0.50)'}};"></view>
+    <view class="r-blob" style="transform: translate(-23rpx, -23rpx) scale({{1 + vNW * 2.0}}); opacity: {{0.04 + vNW * 0.07}}; background: {{recordCancelling ? 'rgba(255,59,48,0.45)' : 'rgba(52,199,89,0.45)'}};"></view>
+  </view>
+  <!-- 中心白底圆 -->
+  <view class="record-circle {{recordCancelling ? 'record-cancelling' : ''}}">
+    <image class="record-mic-icon" src="../../images/icon-mic.svg" mode="aspectFit"></image>
+  </view>
+  <!-- 提示文字 -->
+  <view class="record-label">
+    <text class="record-time">{{recordDuration}}″</text>
+    <text class="record-hint">{{recordCancelling ? '松开取消' : '松开发送，上滑取消'}}</text>
+  </view>
+</view>

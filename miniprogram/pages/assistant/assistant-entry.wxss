@@ -1,0 +1,5 @@
+/* 中转页：纯占位，重定向前不产生视觉噪音 */
+.entry-page {
+  height: 100vh;
+  background: var(--bg);
+}

@@ -1,0 +1,29 @@
+{
+  "id": "TC-27",
+  "cat": "04-borrow-lend",
+  "title": "借自己的物品——防止自借交互",
+  "tags": [
+    "borrow",
+    "security"
+  ],
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "/pages/home/home",
+      "method": "switchTab"
+    },
+    {
+      "action": "wait",
+      "condition": "2000"
+    },
+    {
+      "action": "tap",
+      "selector": ".list-card:first-child"
+    },
+    {
+      "action": "wait",
+      "condition": "2000"
+    }
+  ],
+  "assertions": []
+}

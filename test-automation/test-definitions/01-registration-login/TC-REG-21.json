@@ -1,0 +1,44 @@
+{
+  "id": "TC-REG-21",
+  "cat": "01-registration-login",
+  "title": "Step 1 小区搜索功能",
+  "tags": [
+    "registration",
+    "search",
+    "ui"
+  ],
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "/pages/register/register",
+      "method": "navigateTo"
+    },
+    {
+      "action": "wait",
+      "condition": "1500"
+    },
+    {
+      "action": "input",
+      "selector": ".search-input",
+      "value": "测试"
+    },
+    {
+      "action": "wait",
+      "condition": "1000"
+    },
+    {
+      "action": "tap",
+      "selector": ".search-clear"
+    },
+    {
+      "action": "wait",
+      "condition": "500"
+    }
+  ],
+  "assertions": [
+    {
+      "type": "visible",
+      "selector": ".list-row"
+    }
+  ]
+}

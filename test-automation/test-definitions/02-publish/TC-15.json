@@ -1,0 +1,30 @@
+{
+  "id": "TC-15",
+  "cat": "02-publish",
+  "title": "发布——空字段提交（测试后端校验缺口）",
+  "tags": [
+    "publish",
+    "validation",
+    "security"
+  ],
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "/pages/publish-idle/publish-idle?type=LEND",
+      "method": "navigateTo"
+    },
+    {
+      "action": "wait",
+      "condition": "1500"
+    },
+    {
+      "action": "tap",
+      "selector": ".btn-primary.btn-block"
+    },
+    {
+      "action": "wait",
+      "condition": "1500"
+    }
+  ],
+  "assertions": []
+}

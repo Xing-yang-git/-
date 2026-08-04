@@ -1,0 +1,43 @@
+{
+  "id": "TC-LOGIN-06",
+  "cat": "01-registration-login",
+  "title": "密码显隐切换",
+  "tags": [
+    "login",
+    "ui"
+  ],
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "/pages/login/login",
+      "method": "reLaunch"
+    },
+    {
+      "action": "wait",
+      "condition": "1500"
+    },
+    {
+      "action": "input",
+      "selector": ".password-input input",
+      "value": "test1234"
+    },
+    {
+      "action": "wait",
+      "condition": "300"
+    },
+    {
+      "action": "tap",
+      "selector": ".toggle-password"
+    },
+    {
+      "action": "wait",
+      "condition": "500"
+    }
+  ],
+  "assertions": [
+    {
+      "type": "visible",
+      "selector": ".toggle-password"
+    }
+  ]
+}

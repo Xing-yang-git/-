@@ -1,4 +1,7 @@
 {
-  "usingComponents": {},
+  "usingComponents": {
+    "chat-input-bar": "/components/chat-input-bar/chat-input-bar",
+    "record-overlay": "/components/record-overlay/record-overlay"
+  },
   "navigationStyle": "custom"
 }

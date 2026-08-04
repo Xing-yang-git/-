@@ -1,0 +1,35 @@
+{
+  "id": "TC-21",
+  "cat": "03-browse",
+  "title": "搜索——特殊字符和 SQL 注入安全",
+  "tags": [
+    "search",
+    "security"
+  ],
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "/pages/search/search",
+      "method": "navigateTo"
+    },
+    {
+      "action": "wait",
+      "condition": "1500"
+    },
+    {
+      "action": "input",
+      "selector": ".search-input",
+      "value": "'; DROP TABLE users; --"
+    },
+    {
+      "action": "wait",
+      "condition": "2000"
+    }
+  ],
+  "assertions": [
+    {
+      "type": "visible",
+      "selector": ".empty-state"
+    }
+  ]
+}

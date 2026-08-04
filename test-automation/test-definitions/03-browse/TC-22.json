@@ -1,0 +1,29 @@
+{
+  "id": "TC-22",
+  "cat": "03-browse",
+  "title": "物品详情——查看完整信息",
+  "tags": [
+    "detail",
+    "ui"
+  ],
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "/pages/home/home",
+      "method": "switchTab"
+    },
+    {
+      "action": "wait",
+      "condition": "2000"
+    },
+    {
+      "action": "tap",
+      "selector": ".list-card:first-child"
+    },
+    {
+      "action": "wait",
+      "condition": "2000"
+    }
+  ],
+  "assertions": []
+}

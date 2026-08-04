@@ -1,0 +1,43 @@
+{
+  "id": "TC-51",
+  "cat": "07-regression",
+  "title": "价格/标题/描述长度限制——回归验证",
+  "tags": [
+    "regression",
+    "validation"
+  ],
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "/pages/publish-idle/publish-idle?type=LEND",
+      "method": "navigateTo"
+    },
+    {
+      "action": "wait",
+      "condition": "1500"
+    },
+    {
+      "action": "input",
+      "selector": "input[type=digit]",
+      "value": "100000000"
+    },
+    {
+      "action": "wait",
+      "condition": "300"
+    },
+    {
+      "action": "tap",
+      "selector": ".btn-primary.btn-block"
+    },
+    {
+      "action": "wait",
+      "condition": "2000"
+    }
+  ],
+  "assertions": [
+    {
+      "type": "page",
+      "contains": "publish-idle"
+    }
+  ]
+}

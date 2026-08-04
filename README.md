@@ -6,7 +6,7 @@
 
 | 层 | 技术 |
 |---|---|
-| C端 | 微信小程序原生 (WXML + WXSS + JS) |
+| C端 | 微信小程序原生 (WXML + WXSS + JS)（含 WechatSI 语音转文字插件） |
 | B端 | Vue 3 + Vite + Element Plus + ECharts + Pinia (JavaScript) |
 | 后端 | Spring Boot 3.2 + JPA + PostgreSQL + pgvector |
 | 实时 | WebSocket 聊天中继（纯转发不落库，握手 JWT 鉴权） |
@@ -48,13 +48,13 @@ community-platform/
 ├── miniprogram/               # C端微信小程序
 │   ├── app.js / app.json / app.wxss
 │   ├── utils/                 # api.js, auth.js, ws.js
-│   ├── components/            # nav-bar, star-rating, empty-state, image-uploader
-│   └── pages/                 # 16 个页面
+│   ├── components/            # nav-bar, star-rating, empty-state, image-uploader, chat-input-bar, record-overlay
+│   └── pages/                 # 17 个页面
 │       ├── login/ register/ review-status/
 │       ├── home/ search/
 │       ├── idle-detail/ help-detail/
 │       ├── publish-idle/      # 双模式表单：闲置发布 + 求助发布
-│       ├── chat/ messages/ assistant/   # assistant 为 AI 助手「小邻」对话页
+│       ├── chat/ messages/ assistant/   # assistant 为小邻对话页（无底栏单页）；assistant/assistant-entry 为 tab 中转页
 │       ├── return-detail/ rating/
 │       ├── service-notice/
 │       └── my-posts/ profile/

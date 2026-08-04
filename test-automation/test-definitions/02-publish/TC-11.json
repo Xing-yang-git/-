@@ -1,0 +1,54 @@
+{
+  "id": "TC-11",
+  "cat": "02-publish",
+  "title": "技能求助——完整发布流程",
+  "tags": [
+    "publish"
+  ],
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "/pages/publish-idle/publish-idle?type=HELP",
+      "method": "navigateTo"
+    },
+    {
+      "action": "wait",
+      "condition": "1500"
+    },
+    {
+      "action": "input",
+      "selector": "input[placeholder*='标题']",
+      "value": "帮忙搬家"
+    },
+    {
+      "action": "wait",
+      "condition": "300"
+    },
+    {
+      "action": "tap",
+      "selector": ".pill:nth-child(4)"
+    },
+    {
+      "action": "wait",
+      "condition": "300"
+    },
+    {
+      "action": "input",
+      "selector": ".textarea",
+      "value": "从3栋搬到5栋，大件家具有沙发和床"
+    },
+    {
+      "action": "wait",
+      "condition": "300"
+    },
+    {
+      "action": "tap",
+      "selector": ".btn-primary.btn-block"
+    },
+    {
+      "action": "wait",
+      "condition": "3000"
+    }
+  ],
+  "assertions": []
+}

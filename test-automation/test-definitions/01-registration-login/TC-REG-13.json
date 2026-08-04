@@ -1,0 +1,70 @@
+{
+  "id": "TC-REG-13",
+  "cat": "01-registration-login",
+  "title": "栋号边界值校验（0和100拦截，1和99通过）",
+  "tags": [
+    "registration",
+    "validation"
+  ],
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "/pages/register/register",
+      "method": "navigateTo"
+    },
+    {
+      "action": "wait",
+      "condition": "1500"
+    },
+    {
+      "action": "tap",
+      "selector": ".list-row:first-child"
+    },
+    {
+      "action": "wait",
+      "condition": "300"
+    },
+    {
+      "action": "tap",
+      "selector": ".btn-primary"
+    },
+    {
+      "action": "wait",
+      "condition": "500"
+    },
+    {
+      "action": "input",
+      "selector": "input[placeholder*='栋']",
+      "value": "0"
+    },
+    {
+      "action": "input",
+      "selector": "input[placeholder*='单元']",
+      "value": "1"
+    },
+    {
+      "action": "input",
+      "selector": "input[placeholder*='房']",
+      "value": "101"
+    },
+    {
+      "action": "tap",
+      "selector": ".btn-primary"
+    },
+    {
+      "action": "wait",
+      "condition": "1000"
+    }
+  ],
+  "assertions": [
+    {
+      "type": "page",
+      "contains": "register"
+    },
+    {
+      "type": "data",
+      "path": "currentStep",
+      "equals": 1
+    }
+  ]
+}

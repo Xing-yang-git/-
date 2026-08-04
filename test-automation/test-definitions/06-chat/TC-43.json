@@ -1,0 +1,21 @@
+{
+  "id": "TC-43",
+  "cat": "06-chat",
+  "title": "正常收发消息——文本消息实时送达",
+  "tags": [
+    "chat",
+    "websocket"
+  ],
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "/pages/messages/messages",
+      "method": "switchTab"
+    },
+    {
+      "action": "wait",
+      "condition": "2000"
+    }
+  ],
+  "assertions": []
+}

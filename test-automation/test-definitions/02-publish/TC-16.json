@@ -1,0 +1,49 @@
+{
+  "id": "TC-16",
+  "cat": "02-publish",
+  "title": "发布——图片边界（LEND无图片应提示）",
+  "tags": [
+    "publish",
+    "validation",
+    "ui"
+  ],
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "/pages/publish-idle/publish-idle?type=LEND",
+      "method": "navigateTo"
+    },
+    {
+      "action": "wait",
+      "condition": "1500"
+    },
+    {
+      "action": "input",
+      "selector": "input[placeholder*='标题']",
+      "value": "无图片测试"
+    },
+    {
+      "action": "tap",
+      "selector": ".pill:nth-child(1)"
+    },
+    {
+      "action": "input",
+      "selector": "input[type=digit]",
+      "value": "100"
+    },
+    {
+      "action": "input",
+      "selector": ".textarea",
+      "value": "测试无图片发布"
+    },
+    {
+      "action": "tap",
+      "selector": ".btn-primary.btn-block"
+    },
+    {
+      "action": "wait",
+      "condition": "2000"
+    }
+  ],
+  "assertions": []
+}

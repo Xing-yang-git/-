@@ -1,0 +1,37 @@
+{
+  "id": "TC-23",
+  "cat": "03-browse",
+  "title": "求助详情——查看完整信息",
+  "tags": [
+    "detail",
+    "ui"
+  ],
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "/pages/home/home",
+      "method": "switchTab"
+    },
+    {
+      "action": "wait",
+      "condition": "2000"
+    },
+    {
+      "action": "tap",
+      "selector": ".segment-item[data-tab=\"2\"]"
+    },
+    {
+      "action": "wait",
+      "condition": "1500"
+    },
+    {
+      "action": "tap",
+      "selector": ".list-card:first-child"
+    },
+    {
+      "action": "wait",
+      "condition": "2000"
+    }
+  ],
+  "assertions": []
+}

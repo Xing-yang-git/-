@@ -1,0 +1,30 @@
+{
+  "id": "TC-20",
+  "cat": "03-browse",
+  "title": "搜索——空结果展示",
+  "tags": [
+    "search",
+    "ui"
+  ],
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "/pages/search/search",
+      "method": "navigateTo"
+    },
+    {
+      "action": "wait",
+      "condition": "1500"
+    },
+    {
+      "action": "input",
+      "selector": ".search-input",
+      "value": "xyznonexistent999"
+    },
+    {
+      "action": "wait",
+      "condition": "2000"
+    }
+  ],
+  "assertions": []
+}

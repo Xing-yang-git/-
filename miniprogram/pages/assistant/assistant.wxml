@@ -4,6 +4,9 @@
   <!-- 自定义导航栏 -->
   <view class="assistant-nav" style="padding-top: {{statusBarHeight}}px;">
     <view class="assistant-nav-inner">
+      <view class="assistant-nav-back" bindtap="onNavBack">
+        <text class="assistant-nav-back-icon">‹</text>
+      </view>
       <text class="assistant-nav-title">小邻</text>
       <text class="assistant-nav-sub">智能助手</text>
       <view class="nav-spacer"></view>
@@ -46,7 +49,8 @@
 
   <!-- 消息区 -->
   <scroll-view class="msg-area" scroll-y scroll-into-view="{{scrollToView}}" scroll-with-animation
-               enhanced show-scrollbar="{{false}}" style="padding-bottom: {{keyboardHeight + 20}}px;">
+               enhanced show-scrollbar="{{false}}" style="padding-bottom: {{keyboardHeight + 90}}px;"
+               bindtap="onMsgAreaTap">
 
     <!-- 欢迎态 + 快捷问题（无消息时） -->
     <view class="welcome" wx:if="{{messages.length === 0}}">
@@ -64,6 +68,7 @@
       <view class="msg-row {{item.role === 'user' ? 'msg-row-right' : 'msg-row-left'}}">
         <view class="bubble {{item.role === 'user' ? 'bubble-user' : 'bubble-ai'}}">
           <text class="bubble-text">{{item.content}}<text class="typing" wx:if="{{item.streaming}}">▍</text></text>
+          <text class="abort-marker" wx:if="{{item.aborted}}">（已终止）</text>
         </view>
       </view>
       <!-- 引用来源（后端检索结果） -->
@@ -88,20 +93,30 @@
     <view id="msg-bottom" class="msg-bottom"></view>
   </scroll-view>
 
-  <!-- 输入区（键盘适配与 chat 页一致：keyboardHeight 抬升 + adjust-position:false + hold-keyboard） -->
-  <view class="assistant-input-bar" style="bottom: {{keyboardHeight}}px;">
-    <view class="input-row">
-      <textarea class="assistant-input" placeholder="问小邻点什么…" value="{{inputText}}"
-                placeholder-style="font-size:28rpx;color:rgba(120,120,128,0.6);"
-                bindinput="onInputChange" bindconfirm="onSend"
-                bindkeyboardheightchange="onKeyboardHeightChange"
-                maxlength="500" adjust-position="{{false}}" hold-keyboard="{{true}}"
-                show-confirm-bar="{{false}}" confirm-type="send"
-                disable-default-padding="{{true}}" />
-      <view class="send-btn {{sending ? 'send-btn-disabled' : ''}}" catchtap="onSend">
-        <text>{{sending ? '…' : '发送'}}</text>
-      </view>
-    </view>
-  </view>
+  <!-- 输入区（共享组件 chat-input-bar：与聊天页完全一致；小邻无 + 附件按钮） -->
+  <chat-input-bar
+    value="{{inputText}}"
+    keyboardHeight="{{keyboardHeight}}"
+    showPlus="{{false}}"
+    sending="{{sending}}"
+    recording="{{recording}}"
+    maxlength="{{msgMaxLength}}"
+    bindinput="onInputChange"
+    bind:send="onSend"
+    bind:stop="onAbort"
+    bind:keyboardheightchange="onKeyboardHeightChange"
+    bind:blur="onInputBlur"
+    bind:voicestart="onVoiceStart"
+    bind:voiceend="onVoiceEnd"
+    bind:voicecancel="onVoiceCancel"
+    bind:voicetouchmove="onVoiceTouchMove"
+  />
+
+  <!-- 录音浮层（共享组件 record-overlay：与聊天页完全一致的果冻波纹） -->
+  <record-overlay
+    recording="{{recording}}"
+    recordCancelling="{{recordCancelling}}"
+    recordDuration="{{recordDuration}}"
+  />
 
 </view>

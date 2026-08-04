@@ -41,6 +41,20 @@
   padding: 8rpx 16rpx;
 }
 
+/* 返回按钮（对齐聊天页 nav-back 样式） */
+.assistant-nav-back {
+  display: flex;
+  align-items: center;
+  padding: 8rpx 16rpx 8rpx 0;
+}
+
+.assistant-nav-back-icon {
+  font-size: 56rpx;
+  line-height: 1;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
 /* ─── 历史会话弹层 ─── */
 .history-mask {
   position: fixed;
@@ -241,6 +255,14 @@
   animation: blink 1s step-end infinite; /* blink 定义在 app.wxss 全局 keyframes（铁律：@keyframes 不入页面 WXSS） */
 }
 
+/* 终止标记：灰色小字（用户点击终止后追加在正文下方，不污染正文） */
+.abort-marker {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: var(--text-tertiary);
+}
+
 /* 引用来源 */
 .sources {
   display: flex;
@@ -287,49 +309,3 @@
   height: 1px;
 }
 
-/* ─── 输入区 ─── */
-.assistant-input-bar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: var(--surface);
-  border-top: 1rpx solid var(--separator);
-  padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom));
-}
-
-.input-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 16rpx;
-}
-
-.assistant-input {
-  flex: 1;
-  min-height: 72rpx;
-  max-height: 200rpx;   /* 多行输入自动增高上限 */
-  padding: 16rpx 24rpx;
-  background: var(--bg);   /* 浅灰底区分于输入栏白底 */
-  border-radius: var(--radius-pill);
-  font-size: var(--text-md);
-  color: var(--text);
-  box-sizing: border-box;
-}
-
-.send-btn {
-  flex-shrink: 0;
-  height: 72rpx;
-  padding: 0 32rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--blue);
-  color: var(--surface);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  border-radius: var(--radius-pill);
-}
-
-.send-btn-disabled {
-  opacity: 0.5;
-}

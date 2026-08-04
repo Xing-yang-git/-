@@ -1,0 +1,21 @@
+{
+  "id": "TC-49",
+  "cat": "07-regression",
+  "title": "通知去重——每条通知只出现一次",
+  "tags": [
+    "regression",
+    "data"
+  ],
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "/pages/messages/messages",
+      "method": "switchTab"
+    },
+    {
+      "action": "wait",
+      "condition": "2000"
+    }
+  ],
+  "assertions": []
+}

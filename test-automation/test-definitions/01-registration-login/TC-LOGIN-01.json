@@ -1,0 +1,39 @@
+{
+  "id": "TC-LOGIN-01",
+  "cat": "01-registration-login",
+  "title": "登录——空字段与格式校验",
+  "tags": [
+    "login",
+    "validation"
+  ],
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "/pages/login/login",
+      "method": "reLaunch"
+    },
+    {
+      "action": "wait",
+      "condition": "2000"
+    },
+    {
+      "action": "input",
+      "selector": ".phone-input input",
+      "value": "1234"
+    },
+    {
+      "action": "tap",
+      "selector": ".login-btn button"
+    },
+    {
+      "action": "wait",
+      "condition": "1500"
+    }
+  ],
+  "assertions": [
+    {
+      "type": "page",
+      "contains": "login"
+    }
+  ]
+}
