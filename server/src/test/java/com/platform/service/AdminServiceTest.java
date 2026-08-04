@@ -5,6 +5,7 @@ import com.platform.model.entity.*;
 import com.platform.repository.*;
 import com.platform.websocket.ChatWebSocketHandler;
 import com.platform.common.BizStatus;
+import com.platform.common.UserType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -74,11 +75,11 @@ class AdminServiceTest {
         helpId = 200L;
         tenantId = 10L;
 
-        // 管理员账号：多数方法先通过 adminId 解析所属小区（tenantId）
+        // 管理员账号：高级管理员可访问本小区业务数据 + 操作日志/导出（super_admin 仅管理系统设置，无业务数据权限）
         admin = User.builder()
                 .id(adminId)
                 .name("管理员")
-                .userType("super_admin")
+                .userType(UserType.SENIOR_ADMIN)
                 .tenantId(tenantId)
                 .authStatus("approved")
                 .createdAt(LocalDateTime.now())
@@ -253,7 +254,8 @@ class AdminServiceTest {
     @Test
     @DisplayName("审核用户 - 用户不存在时抛出异常")
     void should_throwException_when_userNotFound() {
-        // 准备
+        // 准备：先校验管理员身份（requireNotSuperAdmin），再查目标用户
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
         when(userRepository.findById(userId)).thenReturn(Optional.empty());
 
         // 执行 & 断言
@@ -591,9 +593,10 @@ class AdminServiceTest {
         // 准备
         ContentOfflineRequest req = new ContentOfflineRequest();
         req.setTargetType("idle");
+        // 仅设置原因列表（customReason 为空，buildDelistReason 走原因拼接）
         req.setReasons(List.of("违规内容"));
-        req.setCustomReason("包含广告信息");
 
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
         when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(idleItem));
         when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
         when(operationLogRepository.save(any(OperationLog.class))).thenReturn(new OperationLog());
@@ -617,6 +620,7 @@ class AdminServiceTest {
         req.setTargetType("help");
         req.setReasons(List.of("虚假信息"));
 
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
         when(helpRequestRepository.save(any(HelpRequest.class))).thenReturn(helpRequest);
         when(operationLogRepository.save(any(OperationLog.class))).thenReturn(new OperationLog());
@@ -630,13 +634,13 @@ class AdminServiceTest {
     }
 
     @Test
-    @DisplayName("删除内容 - reasons为null时默认使用'违规'")
+    @DisplayName("删除内容 - 自定义原因与原因列表均为空时默认使用'违规'")
     void should_useDefaultViolationType_when_reasonsNull() {
-        // 准备
+        // 准备：customReason 与 reasons 均未设置 → buildDelistReason 走默认"违规"
         ContentOfflineRequest req = new ContentOfflineRequest();
         req.setTargetType("idle");
-        req.setCustomReason("自定义原因");
 
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
         when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(idleItem));
         when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
         when(operationLogRepository.save(any(OperationLog.class))).thenReturn(new OperationLog());
@@ -651,7 +655,8 @@ class AdminServiceTest {
     @Test
     @DisplayName("删除内容 - 不支持的目标类型抛出异常")
     void should_throwException_when_unsupportedTargetType() {
-        // 准备
+        // 准备：removeContent 先校验管理员身份（requireNotSuperAdmin），再校验目标类型
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
         ContentOfflineRequest req = new ContentOfflineRequest();
         req.setTargetType("unknown");
 

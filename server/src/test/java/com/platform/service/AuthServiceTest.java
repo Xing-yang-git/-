@@ -329,7 +329,8 @@ class AuthServiceTest {
         when(userRepository.findByRoomIdAndUserType(room.getId(), "业主")).thenReturn(Optional.empty());
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenReturn(user);
-        when(jwtTokenProvider.generateToken(userId.toString(), "业主", 1)).thenReturn("mock-token");
+        // 注册不递增 tokenVersion（保持默认 0）
+        when(jwtTokenProvider.generateToken(userId.toString(), "业主", 0)).thenReturn("mock-token");
 
         // 执行
         Map<String, Object> result = authService.register(req, userId);
@@ -371,7 +372,8 @@ class AuthServiceTest {
         when(userRepository.findByRoomIdAndUserType(room.getId(), "租客")).thenReturn(Optional.empty());
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenReturn(user);
-        when(jwtTokenProvider.generateToken(userId.toString(), "租客", 1)).thenReturn("mock-token");
+        // 注册不递增 tokenVersion（保持默认 0）
+        when(jwtTokenProvider.generateToken(userId.toString(), "租客", 0)).thenReturn("mock-token");
 
         // 执行
         Map<String, Object> result = authService.register(req, userId);
@@ -468,7 +470,8 @@ class AuthServiceTest {
         when(userRepository.findByRoomIdAndUserType(room.getId(), "业主")).thenReturn(Optional.of(user));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenReturn(user);
-        when(jwtTokenProvider.generateToken(userId.toString(), "业主", 1)).thenReturn("mock-token");
+        // 注册不递增 tokenVersion（保持默认 0）
+        when(jwtTokenProvider.generateToken(userId.toString(), "业主", 0)).thenReturn("mock-token");
 
         // 执行
         Map<String, Object> result = authService.register(req, userId);
@@ -568,7 +571,8 @@ class AuthServiceTest {
         when(roomRepository.save(any(Room.class))).thenReturn(newRoom);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenReturn(user);
-        when(jwtTokenProvider.generateToken(userId.toString(), "业主", 1)).thenReturn("mock-token");
+        // 注册不递增 tokenVersion（保持默认 0）
+        when(jwtTokenProvider.generateToken(userId.toString(), "业主", 0)).thenReturn("mock-token");
 
         // 执行
         Map<String, Object> result = authService.register(req, userId);

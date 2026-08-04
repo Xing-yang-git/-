@@ -5,6 +5,11 @@ import com.platform.model.dto.IdleItemRequest;
 import com.platform.model.dto.PageDTO;
 import com.platform.model.entity.IdleItem;
 import com.platform.model.entity.User;
+import com.platform.ai.embedding.EmbeddingService;
+import com.platform.ai.matching.MatchingScheduler;
+import com.platform.ai.moderation.ModerationService;
+import com.platform.ai.search.SemanticSearchService;
+import com.platform.repository.BorrowRequestRepository;
 import com.platform.repository.IdleItemRepository;
 import com.platform.repository.RatingRepository;
 import com.platform.repository.RoomRepository;
@@ -45,6 +50,16 @@ class IdleServiceTest {
     private UserActivityService userActivityService;
     @Mock
     private RatingRepository ratingRepository;
+    @Mock
+    private BorrowRequestRepository borrowRequestRepository;
+    @Mock
+    private EmbeddingService embeddingService;
+    @Mock
+    private MatchingScheduler matchingScheduler;
+    @Mock
+    private SemanticSearchService semanticSearchService;
+    @Mock
+    private ModerationService moderationService;
 
     @InjectMocks
     private IdleService idleService;
@@ -111,11 +126,11 @@ class IdleServiceTest {
         // 执行
         IdleItemDTO result = idleService.publish(userId, req);
 
-        // 断言
+        // 断言：发布后挂起等待 AI 异步审核（pending_review）
         assertThat(result).isNotNull();
         assertThat(result.getTitle()).isEqualTo("闲置手机");
         assertThat(result.getPostType()).isEqualTo("LEND");
-        assertThat(result.getStatus()).isEqualTo("online");
+        assertThat(result.getStatus()).isEqualTo(BizStatus.PENDING_REVIEW);
         assertThat(result.getPrice()).isEqualByComparingTo(new BigDecimal("50"));
         verify(idleItemRepository).save(any(IdleItem.class));
     }
@@ -387,7 +402,7 @@ class IdleServiceTest {
     }
 
     @Test
-    @DisplayName("更新物品 - completed状态自动恢复为online")
+    @DisplayName("更新物品 - completed状态编辑后退回 pending_review 重新审核")
     void should_autoRelist_when_statusIsCompleted() {
         // 准备
         idleItem.setStatus("completed");
@@ -401,8 +416,8 @@ class IdleServiceTest {
         // 执行
         IdleItemDTO result = idleService.update(userId, itemId, req);
 
-        // 断言
-        assertThat(result.getStatus()).isEqualTo("online");
+        // 断言：重新发布走 AI 审核流程，先挂起而非直接上线
+        assertThat(result.getStatus()).isEqualTo(BizStatus.PENDING_REVIEW);
     }
 
     @Test

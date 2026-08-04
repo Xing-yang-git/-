@@ -1,5 +1,7 @@
 package com.platform.service;
 
+import com.platform.ai.moderation.ModerationService;
+import com.platform.common.BizStatus;
 import com.platform.model.dto.ApproveRequest;
 import com.platform.model.dto.HelpRequestDTO;
 import com.platform.model.dto.HelpResponseDTO;
@@ -50,6 +52,8 @@ class HelpServiceTest {
     private RoomRepository roomRepository;
     @Mock
     private RatingRepository ratingRepository;
+    @Mock
+    private ModerationService moderationService;
 
     @InjectMocks
     private HelpService helpService;
@@ -128,10 +132,10 @@ class HelpServiceTest {
         // 执行
         HelpResponseDTO result = helpService.publish(userId, req);
 
-        // 断言
+        // 断言：发布后挂起等待 AI 异步审核（pending_review）
         assertThat(result).isNotNull();
         assertThat(result.getTitle()).isEqualTo("需要帮忙");
-        assertThat(result.getStatus()).isEqualTo("online");
+        assertThat(result.getStatus()).isEqualTo(BizStatus.PENDING_REVIEW);
         assertThat(result.getIsUrgent()).isTrue();
         verify(helpRequestRepository).save(any(HelpRequest.class));
     }
@@ -466,7 +470,7 @@ class HelpServiceTest {
     }
 
     @Test
-    @DisplayName("更新求助 - completed状态自动恢复为online")
+    @DisplayName("更新求助 - completed状态编辑后退回 pending_review 重新审核")
     void should_autoRelist_when_statusCompleted() {
         // 准备
         helpRequest.setStatus("completed");
@@ -480,8 +484,8 @@ class HelpServiceTest {
         // 执行
         HelpResponseDTO result = helpService.update(userId, helpId, req);
 
-        // 断言
-        assertThat(result.getStatus()).isEqualTo("online");
+        // 断言：重新发布走 AI 审核流程，先挂起而非直接上线
+        assertThat(result.getStatus()).isEqualTo(BizStatus.PENDING_REVIEW);
     }
 
     // ==================== getMyApplications ====================
