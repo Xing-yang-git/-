@@ -61,7 +61,14 @@ public class WeChatService {
                 throw new RuntimeException("微信登录失败: " + errmsg + " (" + errcode + ")");
             }
 
-            String openid = json.get("openid").asText();
+            // 微信偶发返回缺少 openid 的异常响应（如 {}）：直接 asText() 会 NPE，且 NPE 属 RuntimeException 会被原样透传
+            // 绕过下方友好错误分支，故用 hasNonNull 校验字段存在且非 null（避免 "openid":null 被 asText() 转成字面量 "null"）
+            String openid = json.hasNonNull("openid") ? json.get("openid").asText() : null;
+            if (openid == null || openid.isEmpty()) {
+                // 不打印完整响应体：异常响应偶发携带 session_key 等敏感字段（可解密用户数据），只记录长度便于定位
+                log.error("微信 code2Session 响应缺少 openid, 响应长度: {}", response == null ? 0 : response.length());
+                throw new RuntimeException("微信登录服务暂不可用，请稍后重试");
+            }
             log.debug("微信 code2Session 成功: openid={}", openid);
             return openid;
         } catch (RuntimeException e) {
