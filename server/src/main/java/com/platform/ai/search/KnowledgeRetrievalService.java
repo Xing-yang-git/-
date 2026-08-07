@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
  *   <li>查询文本 → 智谱 embedding-3（1024 维）→ pgvector 余弦距离（命中 HNSW 表达式索引），取 recall-top-k 条</li>
  *   <li>关键词 LIKE（标题/正文/标签）同取 recall-top-k 条</li>
  *   <li>向量 ∪ 关键词按 id 去重合并</li>
- *   <li>{@code rerank-enabled} 时用 DeepSeek LLM 重排取 top-M（失败降级原序）</li>
+ *   <li>用 rerank-service 重排取 top-M（失败降级原序），再按知识相关性分数关卡过滤</li>
  * </ol>
  *
  * <p>返回的 {@link KnowledgeHit} 由后端直接生成 sources（非模型输出），防幻觉引用。</p>
@@ -43,16 +43,16 @@ public class KnowledgeRetrievalService {
     private double threshold;
 
     /** 混合召回条数（向量与关键词各自召回上限） */
-    @Value("${ai.doc.recall-top-k:10}")
+    @Value("${ai.doc.recall-top-k:8}")
     private int recallTopK;
 
     /** 重排后注入 prompt 条数 */
-    @Value("${ai.doc.rerank-top-m:5}")
+    @Value("${ai.doc.rerank-top-m:3}")
     private int rerankTopM;
 
-    /** DeepSeek LLM 重排开关 */
-    @Value("${ai.doc.rerank-enabled:true}")
-    private boolean rerankEnabled;
+    /** 重排相关性分数关卡（工具专用检索 searchForAgent 用，低于此分数过滤） */
+    @Value("${ai.agent.knowledge-min-score:0.3}")
+    private double knowledgeMinScore;
 
     /**
      * 构造器注入。
@@ -73,13 +73,20 @@ public class KnowledgeRetrievalService {
     }
 
     /**
-     * 检索与查询相关的知识条目（混合召回 + LLM 重排）。
+     * 知识检索工具专用检索 — 召回 top-8（向量 ∪ 关键词）→ 必走重排 top-3 → 重排分数关卡过滤。
      *
-     * @param tenantId  当前用户所在小区 ID
-     * @param queryText 用户提问文本
-     * @return 按相关度排序的知识命中列表，可能为空
+     * <p>合并结果非空即必须重排——关键词召回的不相关内容若不经过分数把关就会直接注入工具结果，
+     * 破坏防幻觉的分数关卡。</p>
+     *
+     * <p>关卡链路：向量 ∪ 关键词按 id 去重合并 → 合并为空直接返回空（零命中不进重排）；
+     * 非空则调 {@code rerankerService.rerank(query, merged, rerankTopM, knowledgeMinScore)}，
+     * 内部按相关性分数降序并过滤低于 knowledge-min-score 的条目；重排失败降级原序返回前 topM（接受轻微风险）。</p>
+     *
+     * @param tenantId  当前用户所在小区 ID（无 tenantId 时调用方已拦截，此处兜底返回空）
+     * @param queryText 检索关键词
+     * @return 重排+分数过滤后的命中列表（实际条数 ≤ 3），可能为空
      */
-    public List<KnowledgeHit> search(Long tenantId, String queryText) {
+    public List<KnowledgeHit> searchForAgent(Long tenantId, String queryText) {
         if (queryText == null || queryText.isBlank()) {
             return List.of();
         }
@@ -92,12 +99,11 @@ public class KnowledgeRetrievalService {
                 : List.of();
         List<KnowledgeHit> merged = unionById(vectorHits, keywordHits);
         if (merged.isEmpty()) {
+            // 召回零命中关卡：向量全部被阈值过滤且关键词零命中 → 直接返回空，不进入重排
             return List.of();
         }
-        if (rerankEnabled) {
-            return rerankerService.rerank(queryText, merged, rerankTopM);
-        }
-        return merged.size() > rerankTopM ? merged.subList(0, rerankTopM) : merged;
+        // 合并结果非空 → 必须走重排，用分数关卡过滤不相关内容
+        return rerankerService.rerank(queryText, merged, rerankTopM, knowledgeMinScore);
     }
 
     /**

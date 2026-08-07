@@ -69,7 +69,7 @@ class RerankerServiceTest {
     }
 
     @Test
-    @DisplayName("重排 - 按相关性分数降序重排")
+    @DisplayName("重排4参 - 按相关性分数降序重排（minScore=0 不过滤）")
     void should_rerankByScore_when_validResponse() {
         stubInvokeRunsAction();
         stubRerankResults(List.of(
@@ -77,13 +77,13 @@ class RerankerServiceTest {
                 Map.of("index", 0, "relevance_score", 0.5),
                 Map.of("index", 1, "relevance_score", 0.3)));
 
-        List<KnowledgeHit> result = service.rerank("问题", List.of(hit(1, "A"), hit(2, "B"), hit(3, "C")), 10);
+        List<KnowledgeHit> result = service.rerank("问题", List.of(hit(1, "A"), hit(2, "B"), hit(3, "C")), 10, 0.0);
 
         assertThat(result).extracting(KnowledgeHit::title).containsExactly("C", "A", "B");
     }
 
     @Test
-    @DisplayName("重排 - 重排结果超过 topM 时截断")
+    @DisplayName("重排4参 - 重排结果超过 topM 时截断（minScore=0 不过滤）")
     void should_truncateToTopM_when_resultExceeds() {
         stubInvokeRunsAction();
         stubRerankResults(List.of(
@@ -91,50 +91,91 @@ class RerankerServiceTest {
                 Map.of("index", 0, "relevance_score", 0.5),
                 Map.of("index", 1, "relevance_score", 0.3)));
 
-        List<KnowledgeHit> result = service.rerank("问题", List.of(hit(1, "A"), hit(2, "B"), hit(3, "C")), 2);
+        List<KnowledgeHit> result = service.rerank("问题", List.of(hit(1, "A"), hit(2, "B"), hit(3, "C")), 2, 0.0);
 
         assertThat(result).extracting(KnowledgeHit::title).containsExactly("C", "A");
     }
 
     @Test
-    @DisplayName("重排 - 响应缺少 results 时降级原序")
+    @DisplayName("重排4参 - 响应缺少 results 时降级原序")
     void should_degradeToOriginal_when_missingResults() {
         stubInvokeRunsAction();
         when(responseSpec.body(Map.class)).thenReturn(Map.of());
 
-        List<KnowledgeHit> result = service.rerank("问题", List.of(hit(1, "A"), hit(2, "B"), hit(3, "C")), 10);
+        List<KnowledgeHit> result = service.rerank("问题", List.of(hit(1, "A"), hit(2, "B"), hit(3, "C")), 10, 0.5);
 
         assertThat(result).extracting(KnowledgeHit::title).containsExactly("A", "B", "C");
     }
 
     @Test
-    @DisplayName("重排 - results 为空时降级原序")
+    @DisplayName("重排4参 - results 为空时降级原序")
     void should_degradeToOriginal_when_emptyResults() {
         stubInvokeRunsAction();
         stubRerankResults(List.of());
 
-        List<KnowledgeHit> result = service.rerank("问题", List.of(hit(1, "A"), hit(2, "B")), 10);
+        List<KnowledgeHit> result = service.rerank("问题", List.of(hit(1, "A"), hit(2, "B")), 10, 0.5);
 
         assertThat(result).extracting(KnowledgeHit::title).containsExactly("A", "B");
     }
 
     @Test
-    @DisplayName("重排 - 外部调用异常时降级原序")
+    @DisplayName("重排4参 - 外部调用异常时降级原序")
     void should_degradeToOriginal_when_invokeThrows() {
         when(aiApiInvoker.invoke(anyString(), anyInt(), any())).thenThrow(new RuntimeException("rerank-service down"));
 
-        List<KnowledgeHit> result = service.rerank("问题", List.of(hit(1, "A"), hit(2, "B")), 10);
+        List<KnowledgeHit> result = service.rerank("问题", List.of(hit(1, "A"), hit(2, "B")), 10, 0.9);
 
         assertThat(result).extracting(KnowledgeHit::title).containsExactly("A", "B");
     }
 
+    // ==================== 重排 4 参（分数关卡，3b 新增） ====================
+
     @Test
-    @DisplayName("重排 - 候选为 1 条或 null 时直接返回，不调用服务")
-    void should_returnAsIs_when_tooFewCandidates() {
+    @DisplayName("重排4参 - 按相关性分数过滤低于 minScore 的条目")
+    void should_filterBelowMinScore_when_fourArg() {
+        stubInvokeRunsAction();
+        stubRerankResults(List.of(
+                Map.of("index", 2, "relevance_score", 0.9),
+                Map.of("index", 0, "relevance_score", 0.5),
+                Map.of("index", 1, "relevance_score", 0.2)));
+
+        List<KnowledgeHit> result = service.rerank("问题", List.of(hit(1, "A"), hit(2, "B"), hit(3, "C")), 10, 0.4);
+
+        assertThat(result).extracting(KnowledgeHit::title).containsExactly("C", "A");
+    }
+
+    @Test
+    @DisplayName("重排4参 - 分数过滤后按 topM 截断")
+    void should_truncateAfterFilter_when_fourArg() {
+        stubInvokeRunsAction();
+        stubRerankResults(List.of(
+                Map.of("index", 2, "relevance_score", 0.9),
+                Map.of("index", 0, "relevance_score", 0.5),
+                Map.of("index", 1, "relevance_score", 0.2)));
+
+        List<KnowledgeHit> result = service.rerank("问题", List.of(hit(1, "A"), hit(2, "B"), hit(3, "C")), 1, 0.4);
+
+        assertThat(result).extracting(KnowledgeHit::title).containsExactly("C");
+    }
+
+    @Test
+    @DisplayName("重排4参 - 重排失败降级原序并截断 topM（无分数不过滤）")
+    void should_degradeOriginalTruncated_when_fourArgInvokeThrows() {
+        when(aiApiInvoker.invoke(anyString(), anyInt(), any())).thenThrow(new RuntimeException("rerank-service down"));
+
+        List<KnowledgeHit> result = service.rerank("问题", List.of(hit(1, "A"), hit(2, "B"), hit(3, "C")), 2, 0.9);
+
+        // 降级路径无分数可用，不过滤（即使 minScore 较高），仅截断 topM
+        assertThat(result).extracting(KnowledgeHit::title).containsExactly("A", "B");
+    }
+
+    @Test
+    @DisplayName("重排4参 - 候选为 1 条或 null 时直接返回，不调用服务")
+    void should_returnAsIs_when_tooFewCandidatesFourArg() {
         List<KnowledgeHit> single = List.of(hit(1, "A"));
 
-        assertThat(service.rerank("问题", single, 10)).isSameAs(single);
-        assertThat(service.rerank("问题", null, 10)).isNull();
+        assertThat(service.rerank("问题", single, 10, 0.5)).isSameAs(single);
+        assertThat(service.rerank("问题", null, 10, 0.5)).isNull();
         verify(aiApiInvoker, never()).invoke(anyString(), anyInt(), any());
     }
 }

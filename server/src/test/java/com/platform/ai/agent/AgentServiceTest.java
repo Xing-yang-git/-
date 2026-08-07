@@ -2,7 +2,6 @@ package com.platform.ai.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.platform.ai.search.KnowledgeHit;
-import com.platform.ai.search.KnowledgeRetrievalService;
 import com.platform.common.AgentMessageRole;
 import com.platform.common.AiGenerationException;
 import com.platform.common.BizException;
@@ -16,12 +15,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.model.Generation;
-import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -36,18 +35,22 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * AgentService 小邻对话编排单元测试 — 覆盖 RAG 检索 → 回复生成 → 意图解析全链路。
+ * AgentService 小邻对话编排单元测试 — 覆盖 消息过滤 → Prompt 组装 → 回复生成 → 意图解析全链路。
+ *
+ * <p>知识检索工具化（3b）后：AgentService 不再无条件检索知识库，检索由模型按需调用
+ * search_knowledge 工具（AgentToolDispatcher 承担，见 AgentToolDispatcherTest）；
+ * 本类验证 requestId 工具状态生命周期（reset / takeHits）与「放行不检索」的新行为。</p>
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("AgentService 对话编排单元测试")
 class AgentServiceTest {
 
-    @Mock
-    private KnowledgeRetrievalService retrievalService;
     @Mock
     private AgentPromptBuilder promptBuilder;
     @Mock
@@ -74,7 +77,7 @@ class AgentServiceTest {
 
     @BeforeEach
     void setUp() {
-        agentService = new AgentService(retrievalService, promptBuilder, toolDispatcher, intentRouter,
+        agentService = new AgentService(promptBuilder, toolDispatcher, intentRouter,
                 sessionService, archiveService, deepseekChatModel, userRepository, tenantRepository,
                 new ObjectMapper(), preFilter);
         // 前置过滤器默认放行（清洗后消息 = 原消息），问候类测试不触达过滤器，故用 lenient 避免误报
@@ -94,10 +97,11 @@ class AgentServiceTest {
     private void stubCommon(String message) {
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(userWithTenant()));
         when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(Tenant.builder().id(TENANT_ID).name("阳光花园").build()));
-        when(retrievalService.search(TENANT_ID, message)).thenReturn(hits());
         when(sessionService.getHistory(USER_ID)).thenReturn(List.of());
-        when(promptBuilder.buildMessages(any(), any(), any(), any()))
+        when(promptBuilder.buildMessages(any(), any(), any()))
                 .thenReturn(List.<Message>of(new UserMessage(message)));
+        // 部分用例（模型异常/空回复）在取回命中前即返回，命中缓存取回桩用 lenient 避免误报
+        lenient().when(toolDispatcher.takeHits(anyString())).thenReturn(hits());
     }
 
     private ChatResponse response(String text) {
@@ -206,7 +210,7 @@ class AgentServiceTest {
 
         agentService.chat(USER_ID, "物业几点下班");
 
-        verify(archiveService, org.mockito.Mockito.never()).archive(USER_ID);
+        verify(archiveService, never()).archive(USER_ID);
     }
 
     @Test
@@ -219,38 +223,37 @@ class AgentServiceTest {
 
         agentService.chat(USER_ID, "物业几点下班");
 
-        verify(promptBuilder).buildMessages(eq("本小区"), eq("物业几点下班"), any(), any());
+        verify(promptBuilder).buildMessages(eq("本小区"), eq("物业几点下班"), any());
     }
 
     @Test
     @DisplayName("对话 - 用户未绑定小区时兜底使用「本小区」")
     void should_useDefaultTenantName_when_userHasNoTenant() {
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(User.builder().id(USER_ID).tenantId(null).build()));
-        when(retrievalService.search(null, "物业几点下班")).thenReturn(hits());
         when(sessionService.getHistory(USER_ID)).thenReturn(List.of());
-        when(promptBuilder.buildMessages(any(), any(), any(), any()))
+        when(promptBuilder.buildMessages(any(), any(), any()))
                 .thenReturn(List.<Message>of(new UserMessage("物业几点下班")));
         when(deepseekChatModel.call(any(Prompt.class))).thenReturn(response("回复内容"));
         when(intentRouter.parse(any())).thenReturn(null);
 
         agentService.chat(USER_ID, "物业几点下班");
 
-        verify(promptBuilder).buildMessages(eq("本小区"), eq("物业几点下班"), any(), any());
+        verify(promptBuilder).buildMessages(eq("本小区"), eq("物业几点下班"), any());
         // 未绑定小区不解析租户名
-        verify(tenantRepository, org.mockito.Mockito.never()).findById(any());
+        verify(tenantRepository, never()).findById(any());
     }
 
     @Test
-    @DisplayName("对话 - 纯问候走快速通道：不查用户/不调 RAG/不调 LLM，秒回固定文案")
+    @DisplayName("对话 - 纯问候走快速通道：不查用户/不调 LLM，秒回固定文案")
     void should_shortCircuit_greeting() {
         AgentChatResult result = agentService.chat(USER_ID, "你好");
 
         assertThat(result.reply()).isNotBlank();
         assertThat(result.actions()).isEmpty();
-        // 问候不触发任何外部依赖（不查库、不检索、不调模型）
-        verify(userRepository, org.mockito.Mockito.never()).findById(any());
-        verify(retrievalService, org.mockito.Mockito.never()).search(any(), any());
-        verify(deepseekChatModel, org.mockito.Mockito.never()).call(any(Prompt.class));
+        // 问候不触发任何外部依赖（不查库、不进入工具状态生命周期、不调模型）
+        verify(userRepository, never()).findById(any());
+        verify(toolDispatcher, never()).reset(anyString());
+        verify(deepseekChatModel, never()).call(any(Prompt.class));
         // 用户消息 + AI 回复各写入一次热会话，保证历史连贯
         verify(sessionService).append(eq(USER_ID), eq(AgentMessageRole.USER), eq("你好"), eq(null), eq(null));
         verify(sessionService).append(eq(USER_ID), eq(AgentMessageRole.ASSISTANT), eq(result.reply()), any(), any());
@@ -289,7 +292,7 @@ class AgentServiceTest {
         AgentChatResult result = agentService.chat(USER_ID, "你好呀");
 
         assertThat(result.reply()).isNotBlank();
-        verify(deepseekChatModel, org.mockito.Mockito.never()).call(any(Prompt.class));
+        verify(deepseekChatModel, never()).call(any(Prompt.class));
     }
 
     @Test
@@ -299,13 +302,14 @@ class AgentServiceTest {
 
         assertThat(stream.isGreeting()).isTrue();
         assertThat(stream.greetingReply()).isNotBlank();
-        verify(deepseekChatModel, org.mockito.Mockito.never()).stream(any(Prompt.class));
-        // 问候同样写入热会话，保持历史连贯
+        verify(deepseekChatModel, never()).stream(any(Prompt.class));
+        // 问候同样写入热会话，保持历史连贯；不进入工具状态生命周期
         verify(sessionService).append(eq(USER_ID), eq(AgentMessageRole.USER), eq("你好"), eq(null), eq(null));
+        verify(toolDispatcher, never()).reset(anyString());
     }
 
     @Test
-    @DisplayName("对话流 - 普通对话返回模型内容流与引用来源")
+    @DisplayName("对话流 - 普通对话返回模型内容流并生成请求上下文")
     void chatStream_shouldReturnContentFlux_when_normal() {
         stubCommon("物业几点下班");
         when(deepseekChatModel.stream(any(Prompt.class)))
@@ -314,7 +318,9 @@ class AgentServiceTest {
         AgentService.AgentChatStream stream = agentService.chatStream(USER_ID, "物业几点下班");
 
         assertThat(stream.isGreeting()).isFalse();
-        assertThat(stream.sources()).hasSize(1);
+        assertThat(stream.requestId()).isNotBlank();
+        // 请求开始即 reset 工具状态（计数 + 命中缓存），流结束由 Controller takeHits/reset
+        verify(toolDispatcher).reset(anyString());
         // 订阅内容流能按序拿到每个分块
         List<String> texts = stream.contentFlux()
                 .map(cr -> cr.getResult().getOutput().getText())
@@ -335,10 +341,11 @@ class AgentServiceTest {
         assertThat(result.reply()).isEqualTo("请勿重复发送相同消息");
         assertThat(result.sources()).isEmpty();
         assertThat(result.actions()).isEmpty();
-        // 拦截命中不写会话历史、不触达 RAG 与 LLM
-        verify(sessionService, org.mockito.Mockito.never()).append(any(), any(), any(), any(), any());
-        verify(retrievalService, org.mockito.Mockito.never()).search(any(), any());
-        verify(deepseekChatModel, org.mockito.Mockito.never()).call(any(Prompt.class));
+        // 拦截命中不写会话历史、不触达知识工具与 LLM、不进入工具状态生命周期
+        verify(sessionService, never()).append(any(), any(), any(), any(), any());
+        verify(toolDispatcher, never()).searchKnowledge(any(), any(), any());
+        verify(toolDispatcher, never()).reset(anyString());
+        verify(deepseekChatModel, never()).call(any(Prompt.class));
     }
 
     @Test
@@ -352,7 +359,7 @@ class AgentServiceTest {
         assertThat(result.reply()).isEqualTo("已清空对话上下文，我们可以重新开始啦");
         verify(sessionService).clearSession(USER_ID);
         // 拦截命中不写入会话历史
-        verify(sessionService, org.mockito.Mockito.never()).append(any(), any(), any(), any(), any());
+        verify(sessionService, never()).append(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -363,8 +370,8 @@ class AgentServiceTest {
             assertThat(result.reply()).isNotBlank();
             assertThat(result.actions()).isEmpty();
         }
-        verify(preFilter, org.mockito.Mockito.never()).process(any(), anyString());
-        verify(deepseekChatModel, org.mockito.Mockito.never()).call(any(Prompt.class));
+        verify(preFilter, never()).process(any(), anyString());
+        verify(deepseekChatModel, never()).call(any(Prompt.class));
     }
 
     @Test
@@ -381,7 +388,7 @@ class AgentServiceTest {
     }
 
     @Test
-    @DisplayName("放行 - 前置过滤器清洗后的消息进入 RAG 检索")
+    @DisplayName("放行 - 前置过滤器清洗后的消息进入 Prompt 组装")
     void should_useCleanedMessage_when_filterPasses() {
         stubCommon("清洗后的消息");
         when(preFilter.process(USER_ID, "物业  几点 下班"))
@@ -392,8 +399,9 @@ class AgentServiceTest {
         AgentChatResult result = agentService.chat(USER_ID, "物业  几点 下班");
 
         assertThat(result.reply()).isEqualTo("物业工作日 8:00 下班");
-        // 清洗后的消息进入检索；用户原文写入会话历史
-        verify(retrievalService).search(TENANT_ID, "清洗后的消息");
+        // 清洗后的消息进入 Prompt 组装；用户原文写入会话历史；放行后不再无条件调用知识检索
+        verify(promptBuilder).buildMessages(eq("阳光花园"), eq("清洗后的消息"), any());
+        verify(toolDispatcher, never()).searchKnowledge(any(), any(), any());
         verify(sessionService).append(eq(USER_ID), eq(AgentMessageRole.USER), eq("物业  几点 下班"), eq(null), eq(null));
     }
 
@@ -410,6 +418,107 @@ class AgentServiceTest {
 
         assertThat(result.reply()).isEqualTo("我不能执行该指令");
         // 注入特征提示拼接进送入模型的用户消息
-        verify(promptBuilder).buildMessages(eq("阳光花园"), contains("提示注入特征"), any(), any());
+        verify(promptBuilder).buildMessages(eq("阳光花园"), contains("提示注入特征"), any());
+    }
+
+    // ==================== 知识工具化（3b）新行为 ====================
+
+    @Test
+    @DisplayName("工具 - 普通对话放行后不再无条件检索，知识检索由 search_knowledge 工具按需承担")
+    void should_notRetrieveKnowledge_unconditionally() {
+        stubCommon("物业几点下班");
+        when(deepseekChatModel.call(any(Prompt.class))).thenReturn(response("物业工作日 8:00 下班"));
+        when(intentRouter.parse(any())).thenReturn(null);
+
+        agentService.chat(USER_ID, "物业几点下班");
+
+        // AgentService 不再直接调知识检索，检索改由模型按需调 search_knowledge 工具（工具执行见 AgentToolDispatcherTest）
+        verify(toolDispatcher, never()).searchKnowledge(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("工具 - 正常对话生成 requestId 并维护工具状态生命周期（reset + takeHits）")
+    void should_manageToolState_when_chatCompletes() {
+        stubCommon("物业几点下班");
+        when(deepseekChatModel.call(any(Prompt.class))).thenReturn(response("物业工作日 8:00 下班"));
+        when(intentRouter.parse(any())).thenReturn(null);
+
+        agentService.chat(USER_ID, "物业几点下班");
+
+        // 请求开始 reset 一次 + finally 兜底清理 reset 一次；正常结束 takeHits 取回命中
+        verify(toolDispatcher, times(2)).reset(anyString());
+        verify(toolDispatcher).takeHits(anyString());
+    }
+
+    @Test
+    @DisplayName("工具 - 模型异常时 finally 兜底清理工具状态")
+    void should_cleanupToolState_when_chatThrows() {
+        stubCommon("物业几点下班");
+        when(deepseekChatModel.call(any(Prompt.class))).thenThrow(new RuntimeException("模型超时"));
+
+        assertThatThrownBy(() -> agentService.chat(USER_ID, "物业几点下班"))
+                .isInstanceOf(RuntimeException.class);
+
+        // 异常路径 finally 兜底清理（请求开始 + finally 各一次 reset，不泄漏命中缓存/计数）
+        verify(toolDispatcher, times(2)).reset(anyString());
+    }
+
+    // ==================== 防幻觉（applyHallucinationGuard 直接单测） ====================
+
+    @Test
+    @DisplayName("防幻觉 - 超出注入条数或小于 1 的非法引用 [N] 被移除，合法引用保留")
+    void should_stripInvalidCitations_when_outOfRange() {
+        // 注入 1 条资料：[2] 超出条数 → 移除；[1] 合法 → 保留
+        String result = agentService.applyHallucinationGuard(USER_ID, "请查看[2]规定与[1]说明", hits());
+        assertThat(result).isEqualTo("请查看规定与[1]说明");
+
+        // [0] 小于 1 → 移除
+        assertThat(agentService.applyHallucinationGuard(USER_ID, "见[0]", hits())).isEqualTo("见");
+
+        // [-1] 非合法引用格式（CITATION_PATTERN 只匹配 [\d+]，负号不匹配）→ 文本原样保留
+        assertThat(agentService.applyHallucinationGuard(USER_ID, "注意[-1]", hits())).isEqualTo("注意[-1]");
+    }
+
+    @Test
+    @DisplayName("防幻觉 - 条数范围内的合法引用 [N] 原样保留")
+    void should_keepValidCitations_when_inRange() {
+        List<KnowledgeHit> twoSources = List.of(
+                new KnowledgeHit(1L, "装修时间规定", "工作日 8:00-12:00", "rules", "小区规章制度", 0.1, null, null),
+                new KnowledgeHit(2L, "物业电话", "客服电话 400-168-6688", "service", "服务手册", 0.1, null, null));
+
+        String result = agentService.applyHallucinationGuard(USER_ID, "根据[1]与[2]办理", twoSources);
+
+        assertThat(result).isEqualTo("根据[1]与[2]办理");
+    }
+
+    @Test
+    @DisplayName("防幻觉 - 资料中不存在的数字/电话只记日志不篡改回复文本")
+    void should_notAlterText_when_numberNotInSources() {
+        // 注入资料为「工作日 8:00-12:00」等，不含 138-1234-5678
+        String reply = "如有疑问请致电 138-1234-5678 咨询";
+        String result = agentService.applyHallucinationGuard(USER_ID, reply, hits());
+        // 数字校验只记 WARN 日志（checkNumbersAgainstSources 为私有方法，本类测试未 mock 日志，
+        // 主断言为「文本不被篡改」；如需严格断言日志可对 LoggerFactory.getLogger(AgentService.class)
+        // 使用 mockStatic 并捕获 WARN，但会引入静态 mock，权衡后以文本不变为验收指标）
+        assertThat(result).isEqualTo(reply);
+    }
+
+    @Test
+    @DisplayName("防幻觉 - 相对量词后的数字（如「2天后」「138天后」）不判为幻觉")
+    void should_skipNumbersFollowedByRelativeQuantifier() {
+        // 「138」命中 1\d{2} 数字模式但紧跟中文量词「天」→ 被相对量词排除，不记幻觉日志；文本始终不变
+        String reply = "2天后或138天后会有结果";
+        String result = agentService.applyHallucinationGuard(USER_ID, reply, hits());
+        assertThat(result).isEqualTo(reply);
+    }
+
+    @Test
+    @DisplayName("防幻觉 - 无工具命中时任何 [N] 引用都被移除")
+    void should_stripAllCitations_when_noSources() {
+        // 空列表：条数为 0，任何 [N] 都超出范围 → 全部移除
+        assertThat(agentService.applyHallucinationGuard(USER_ID, "参见[1]与[2]的说明", List.of()))
+                .isEqualTo("参见与的说明");
+        // null 来源同样按 0 条处理
+        assertThat(agentService.applyHallucinationGuard(USER_ID, "见[1]", null)).isEqualTo("见");
     }
 }

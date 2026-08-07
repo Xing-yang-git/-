@@ -2,6 +2,7 @@ package com.platform.ai.agent;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.platform.ai.search.KnowledgeHit;
 import com.platform.common.AiGenerationException;
 import com.platform.common.BizException;
 import com.platform.common.Result;
@@ -57,19 +58,22 @@ public class AgentController {
     private final RateLimitService rateLimitService;
     private final ThreadPoolTaskExecutor agentExecutor;
     private final IntentRouter intentRouter;
+    private final AgentToolDispatcher toolDispatcher;
 
     public AgentController(AgentService agentService,
                            ArchiveService archiveService,
                            ObjectMapper objectMapper,
                            RateLimitService rateLimitService,
                            ThreadPoolTaskExecutor agentExecutor,
-                           IntentRouter intentRouter) {
+                           IntentRouter intentRouter,
+                           AgentToolDispatcher toolDispatcher) {
         this.agentService = agentService;
         this.archiveService = archiveService;
         this.objectMapper = objectMapper;
         this.rateLimitService = rateLimitService;
         this.agentExecutor = agentExecutor;
         this.intentRouter = intentRouter;
+        this.toolDispatcher = toolDispatcher;
     }
 
     /**
@@ -77,7 +81,7 @@ public class AgentController {
      *
      * @param req  用户消息
      * @param auth 当前认证用户
-     * @return SSE 流（start → answer 分块 → sources → end / error）
+     * @return SSE 流（start → answer 分块 → action/replace → sources → end / error；sources 在流结束后取回发出）
      */
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chat(@Valid @RequestBody AgentChatRequest req, Authentication auth) {
@@ -124,10 +128,8 @@ public class AgentController {
                     return;
                 }
 
-                // 引用来源（RAG 完成即发，用户等待回复时即可看到参考）
-                safeSend(emitter, "sources", stream.sources());
-
-                // 真流式：模型内容分块直发。
+                // 真流式：模型内容分块直发（引用来源在流结束时取回发出，见 doOnComplete——
+                // 工具调用在流内完成，来源仅在流结束可知）。
                 // 写操作意图 JSON（模型按要求直接返回 {"intent":...}）会混进内容流——
                 // 若首个分块以 { 开头（纯 JSON 意图），暂缓转发，等流结束解析后替换为友好文案，
                 // 避免用户看到裸 JSON。
@@ -154,27 +156,39 @@ public class AgentController {
                         .doOnComplete(() -> {
                             String fullText = full.toString();
                             AgentAction action = intentRouter.parse(fullText);
-                            String displayReply = agentService.cleanReply(fullText, action);
+                            String cleanReply = agentService.cleanReply(fullText, action);
                             if (jsonHeldBack.get()) {
                                 // 纯 JSON：是意图则替换为友好文案 + 动作卡片；否则原样补发
                                 if (action != null) {
-                                    safeSend(emitter, "answer", displayReply);
+                                    safeSend(emitter, "answer", cleanReply);
                                     safeSend(emitter, "action", List.of(action));
                                 } else {
                                     safeSend(emitter, "answer", held.toString());
                                 }
                             } else if (action != null) {
                                 // 文本 + JSON：replace 事件用剔除 JSON 后的文案刷新气泡
-                                safeSend(emitter, "replace", displayReply);
+                                safeSend(emitter, "replace", cleanReply);
                                 safeSend(emitter, "action", List.of(action));
                             }
-                            // 回填会话（user + assistant 展示文案）并触发归档
-                            agentService.completeStream(userId, req.getMessage(), displayReply, stream.sources(), action);
+                            // 运行时取回引用来源（requestId 缓存的工具命中；工具调用在流内完成，流结束才可知）
+                            List<KnowledgeHit> sources = toolDispatcher.takeHits(stream.requestId());
+                            // 防幻觉：移除非法 [N] 引用、检测资料外数字（仅记日志）
+                            String display = agentService.applyHallucinationGuard(userId, cleanReply, sources);
+                            // 移除非法引用后文本有变化 → replace 事件刷新前端气泡为校验后文本
+                            if (!display.equals(cleanReply)) {
+                                safeSend(emitter, "replace", display);
+                            }
+                            // sources 事件在 answer 分块之后发出（无命中发空列表）
+                            safeSend(emitter, "sources", sources);
+                            // 回填会话（user + assistant 展示文案，含防幻觉校验结果）并触发归档
+                            agentService.completeStream(userId, req.getMessage(), display, sources, action, stream.requestId());
                             safeSend(emitter, "end", Map.of("done", true));
                             emitter.complete();
                         })
                         .doOnError(e -> {
                             log.error("Agent 流式对话失败: userId={}", userId, e);
+                            // 流失败同样清理请求级工具状态（计数 + 命中缓存），避免泄漏
+                            toolDispatcher.reset(stream.requestId());
                             String safeMessage = toSafeMessage(e);
                             safeSend(emitter, "error", safeMessage);
                             emitter.completeWithError(e);

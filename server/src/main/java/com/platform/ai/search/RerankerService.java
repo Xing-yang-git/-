@@ -45,20 +45,24 @@ public class RerankerService {
     }
 
     /**
-     * 重排候选，返回 topM 条（失败降级原序截断）。
+     * 重排候选并按相关性分数关卡过滤，返回 topM 条。
+     *
+     * <p>重排成功后按 relevance_score 降序，过滤 score &lt; minScore 的条目后再取 topM；
+     * 重排失败降级为原序截断 topM（无分数可用，不过滤，接受轻微风险）。</p>
      *
      * @param query      用户问题
      * @param candidates 混合召回候选（已去重）
      * @param topM       重排后保留条数
-     * @return 重排后的列表（不超过 topM 条）
+     * @param minScore   相关性分数关卡，低于此分数的条目被过滤（失败降级时不生效）
+     * @return 重排+分数过滤后的列表（不超过 topM 条）
      */
-    public List<KnowledgeHit> rerank(String query, List<KnowledgeHit> candidates, int topM) {
+    public List<KnowledgeHit> rerank(String query, List<KnowledgeHit> candidates, int topM, double minScore) {
         if (candidates == null || candidates.size() <= 1) {
             return candidates;
         }
         try {
             // 本地服务也可能瞬时不可用：重试 2 次，失败降级原序
-            List<KnowledgeHit> ranked = aiApiInvoker.invoke("rerank", 2, () -> doRerank(query, candidates));
+            List<KnowledgeHit> ranked = aiApiInvoker.invoke("rerank", 2, () -> doRerank(query, candidates, minScore));
             if (ranked.size() > topM) {
                 return ranked.subList(0, topM);
             }
@@ -69,9 +73,9 @@ public class RerankerService {
         }
     }
 
-    /** 调用本地 rerank-service 重排接口，按相关性分数降序返回候选 */
+    /** 调用本地 rerank-service 重排接口，按相关性分数降序返回候选，并过滤低于 minScore 的条目 */
     @SuppressWarnings("unchecked")
-    private List<KnowledgeHit> doRerank(String query, List<KnowledgeHit> candidates) {
+    private List<KnowledgeHit> doRerank(String query, List<KnowledgeHit> candidates, double minScore) {
         List<String> documents = candidates.stream()
                 .map(h -> truncate(h.title(), 50) + " | " + truncate(h.content(), 200))
                 .toList();
@@ -97,12 +101,16 @@ public class RerankerService {
             throw new RuntimeException("重排响应 results 为空");
         }
 
-        // 按 relevance_score 降序，index 映射回候选
+        // 按 relevance_score 降序；index 映射回候选，同时用分数做关卡过滤（score < minScore 丢弃）
         List<Map<String, Object>> sorted = new ArrayList<>(results);
         sorted.sort(Comparator.comparingDouble(
                 r -> -((Number) r.get("relevance_score")).doubleValue()));
         List<KnowledgeHit> ranked = new ArrayList<>();
         for (Map<String, Object> r : sorted) {
+            double score = ((Number) r.get("relevance_score")).doubleValue();
+            if (score < minScore) {
+                continue;
+            }
             int idx = ((Number) r.get("index")).intValue();
             if (idx >= 0 && idx < candidates.size()) {
                 ranked.add(candidates.get(idx));

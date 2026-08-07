@@ -1,6 +1,6 @@
 package com.platform.ai.agent;
 
-import com.platform.ai.search.KnowledgeHit;
+import com.platform.ai.common.PromptRepository;
 import com.platform.common.AgentMessageRole;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -14,53 +14,48 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * AgentPromptBuilder Prompt 组装单元测试 — 覆盖知识库命中/未命中与历史消息过滤。
+ * AgentPromptBuilder Prompt 组装单元测试 — 覆盖 System Prompt 占位符渲染、知识库工具化描述与历史消息过滤。
+ *
+ * <p>知识检索工具化（3b）后：System Prompt 从 {@code prompts/agent/system.md} 读取，运行时只替换
+ * {@code {小区名}} 与 {@code {历史记忆}} 占位符，不再拼接知识库命中块（检索改由模型按需调工具）。</p>
  */
 @DisplayName("AgentPromptBuilder Prompt 组装单元测试")
 class AgentPromptBuilderTest {
 
-    private final AgentPromptBuilder builder = new AgentPromptBuilder();
-
-    private List<KnowledgeHit> hits() {
-        return List.of(
-                new KnowledgeHit(1L, "装修时间规定", "工作日 8:00-12:00", "rules", "小区规章制度", 0.1, "装修施工 / 施工时间", 3),
-                new KnowledgeHit(2L, "垃圾投放", "分类投放", "service", "小区服务手册", 0.2, null, null));
-    }
+    // 与 PromptRepositoryTest 同一假设：classpath 下存在 prompts 提示词文件，构造期加载
+    private final AgentPromptBuilder builder = new AgentPromptBuilder(new PromptRepository());
 
     @Test
-    @DisplayName("组装 - 知识库命中时注入上下文块与来源")
-    void should_buildSystemPrompt_when_hitsPresent() {
-        List<Message> messages = builder.buildMessages("阳光花园", "装修几点？", hits(), List.of());
+    @DisplayName("组装 - System Prompt 渲染小区名并包含知识库能力与安全规则描述")
+    void should_buildSystemPrompt_when_validTenantName() {
+        List<Message> messages = builder.buildMessages("阳光花园", "装修几点？", List.of());
 
         assertThat(messages).hasSize(2);   // system + user
         assertThat(messages.get(0)).isInstanceOf(SystemMessage.class);
         String system = messages.get(0).getText();
-        assertThat(system).contains("你是阳光花园小区的智能助手「小邻」");
-        assertThat(system).contains("[1] 来源：《小区规章制度》 | 分类：rules");
-        assertThat(system).contains("| 章节：装修施工 / 施工时间");
-        assertThat(system).contains("| 第 3 页");
-        assertThat(system).contains("工作日 8:00-12:00");
-        assertThat(system).contains("根据《小区规章制度》");
+        // {小区名} 占位符被渲染为租户名（模板为「{小区名}小区」，渲染后为「阳光花园小区」）
+        assertThat(system).contains("你是「小邻」，阳光花园小区的智能助手");
+        // 知识库工具化能力描述（决策路由场景 B）
+        assertThat(system).contains("检索小区知识库");
+        // 安全规则（注入防护，MessagePreFilter 注入特征提示也引用此节）
+        assertThat(system).contains("【8. 安全规则】");
+        // {历史记忆} 占位符固定渲染为「无」（本期无记忆注入）
+        assertThat(system).doesNotContain("{历史记忆}");
+        // 不再有「知识库命中/未命中」双分支痕迹：hits 不再拼入 System Prompt
+        assertThat(system).doesNotContain("以下是知识库检索到的资料");
+        assertThat(system).doesNotContain("知识库暂无相关信息时明确说");
+        assertThat(system).doesNotContain("[1] 来源：《");
+        assertThat(system).doesNotContain("根据《小区规章制度》");
         assertThat(messages.get(1)).isInstanceOf(UserMessage.class);
         assertThat(messages.get(1).getText()).isEqualTo("装修几点？");
     }
 
     @Test
-    @DisplayName("组装 - 无知识库命中时使用无 KB 提示词")
-    void should_buildNoKbPrompt_when_noHits() {
-        List<Message> messages = builder.buildMessages("阳光花园", "你好", List.of(), List.of());
+    @DisplayName("组装 - 小区名为 null 时兜底渲染「本小区」")
+    void should_renderDefaultTenantName_when_tenantNull() {
+        List<Message> messages = builder.buildMessages(null, "你好", List.of());
 
-        String system = messages.get(0).getText();
-        assertThat(system).contains("知识库暂无相关信息时明确说");
-        assertThat(system).doesNotContain("以下是知识库检索到的资料");
-    }
-
-    @Test
-    @DisplayName("组装 - 命中列表为空（null）时按无 KB 处理")
-    void should_buildNoKbPrompt_when_hitsNull() {
-        List<Message> messages = builder.buildMessages("阳光花园", "你好", null, List.of());
-
-        assertThat(messages.get(0).getText()).doesNotContain("以下是知识库检索到的资料");
+        assertThat(messages.get(0).getText()).contains("你是「小邻」，本小区小区的智能助手");
     }
 
     @Test
@@ -72,7 +67,7 @@ class AgentPromptBuilderTest {
                 new AgentSession.AgentMessageItem(AgentMessageRole.ASSISTANT, "好的，为您查询", null, null),
                 new AgentSession.AgentMessageItem(AgentMessageRole.ASSISTANT, "   ", null, null));
 
-        List<Message> messages = builder.buildMessages("阳光花园", "还有吗？", List.of(), history);
+        List<Message> messages = builder.buildMessages("阳光花园", "还有吗？", history);
 
         // system + 2 条历史（user + assistant）+ 最新 user
         assertThat(messages).hasSize(4);
@@ -87,17 +82,16 @@ class AgentPromptBuilderTest {
     @Test
     @DisplayName("组装 - 历史为 null 时仅 system + user")
     void should_buildWithoutHistory_when_historyNull() {
-        List<Message> messages = builder.buildMessages("阳光花园", "你好", List.of(), null);
+        List<Message> messages = builder.buildMessages("阳光花园", "你好", null);
 
         assertThat(messages).hasSize(2);
     }
 
     @Test
-    @DisplayName("组装 - 多命中按编号排序生成上下文块")
-    void should_numberHits_inOrder() {
-        List<Message> messages = builder.buildMessages("阳光花园", "怎么扔垃圾", hits(), List.of());
+    @DisplayName("组装 - 历史为空列表时仅 system + user")
+    void should_buildWithoutHistory_when_historyEmpty() {
+        List<Message> messages = builder.buildMessages("阳光花园", "你好", List.of());
 
-        String system = messages.get(0).getText();
-        assertThat(system).contains("[2] 来源：《小区服务手册》 | 分类：service");
+        assertThat(messages).hasSize(2);
     }
 }
