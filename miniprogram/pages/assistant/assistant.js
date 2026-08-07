@@ -35,11 +35,11 @@ Page({
     scrollToView: 'msg-bottom',
     /** 历史会话弹层可见性 */
     historyVisible: false,
-    /** 历史会话列表（含 updatedAtText 显示字段） */
+    /** 历史会话列表（后端返回字段 id 即会话级 conversationId；含 updatedAtText 显示字段） */
     historyList: [],
     /** 批量选择模式 */
     selecting: false,
-    /** 已选会话 ID 集合 */
+    /** 已选会话 conversationId 集合（去重；同一会话多段只选一次） */
     selectedIds: [],
     /** 历史分页页码 */
     historyPage: 0,
@@ -523,9 +523,11 @@ Page({
     api.get('/api/agent/history', { page, size: 20 })
       .then((data) => {
         const content = (data && data.content) || [];
-        // 更新时间格式化为可读（后端 LocalDateTime，取前 16 位）
+        // 展开保留后端全部字段（id 字段即会话级 conversationId）；空标题兜底显示占位
         const items = content.map((c) => ({
           ...c,
+          title: c.title || '未命名对话',
+          // 更新时间格式化为可读（后端 LocalDateTime，取前 16 位）
           updatedAtText: (c.updatedAt || '').replace('T', ' ').slice(0, 16)
         }));
         this.setData({
@@ -547,30 +549,30 @@ Page({
     }
   },
 
-  /** 点击历史项：恢复该会话继续对话（非批量选择模式） */
+  /** 点击历史项：恢复该会话继续对话（非批量选择模式；dataset.id 为会话级 conversationId） */
   onHistoryItemTap(e) {
     if (this.data.selecting) {
       this.toggleSelect(e.currentTarget.dataset.id);
       return;
     }
-    const id = e.currentTarget.dataset.id;
+    const conversationId = e.currentTarget.dataset.id;
     // 当前有进行中对话时二次确认（后端恢复前会自动归档当前热会话，前端避免误触）
     if (this.data.messages.length > 0) {
       wx.showModal({
         title: '切换对话',
         content: '切换到该历史对话？当前对话将自动保存',
         success: (r) => {
-          if (r.confirm) this.doResume(id);
+          if (r.confirm) this.doResume(conversationId);
         }
       });
       return;
     }
-    this.doResume(id);
+    this.doResume(conversationId);
   },
 
-  /** 执行恢复 */
-  doResume(id) {
-    api.post(`/api/agent/history/${id}/resume`)
+  /** 执行恢复：按会话级 conversationId 恢复（后端恢复该会话全部归档段） */
+  doResume(conversationId) {
+    api.post(`/api/agent/history/${conversationId}/resume`)
       .then(() => {
         // 恢复成功：清空当前对话（历史上下文在服务端回填），提示后重新进入
         this.setData({ messages: [], historyVisible: false });
@@ -585,18 +587,19 @@ Page({
     this.setData({ selecting: true, selectedIds: [] });
   },
 
-  /** 批量选择切换 */
-  toggleSelect(id) {
+  /** 批量选择切换：以会话级 conversationId 为单位（indexOf 去重，同一会话多段只选一次） */
+  toggleSelect(conversationId) {
     const selected = this.data.selectedIds.slice();
-    const idx = selected.indexOf(id);
+    const idx = selected.indexOf(conversationId);
     if (idx > -1) selected.splice(idx, 1);
-    else selected.push(id);
+    else selected.push(conversationId);
     this.setData({ selectedIds: selected });
   },
 
-  /** 批量删除所选会话 */
+  /** 批量删除所选会话：按会话级 conversationId 删除（后端删除该会话全部段 + 压缩段） */
   onBatchDelete() {
-    const ids = this.data.selectedIds;
+    // selectedIds 已按会话去重，此处再兜底 Set 去重，保证传给后端的是去重后的会话级 id 集合
+    const ids = [...new Set(this.data.selectedIds)];
     if (ids.length === 0) {
       wx.showToast({ title: '请先选择会话', icon: 'none' });
       return;
@@ -631,5 +634,10 @@ Page({
       clearInterval(this._recordTimer);
       this._recordTimer = null;
     }
+    // fire-and-forget 通知后端结束会话并归档剩余对话（空闲 15 分钟只是兜底）。
+    // 不等待、不阻塞、不提示：失败不影响页面关闭，仅留 warn 便于定位（对齐 code-standards 禁空 catch）
+    api.post('/api/agent/exit').catch(() => {
+      console.warn('[assistant] 退出会话通知失败，后端将在空闲后兜底归档');
+    });
   }
 });
