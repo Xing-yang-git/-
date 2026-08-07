@@ -94,4 +94,26 @@ class AgentPromptBuilderTest {
 
         assertThat(messages).hasSize(2);
     }
+
+    @Test
+    @DisplayName("组装 - 4 参重载：memoryContext 非空时 {历史记忆} 渲染为记忆内容")
+    void should_renderMemoryContext_when_memoryContextProvided() {
+        List<Message> messages = builder.buildMessages("阳光花园", "你好", List.of(), "用户喜欢园艺，常发起搬家求助");
+
+        String system = messages.get(0).getText();
+        assertThat(system).contains("用户喜欢园艺，常发起搬家求助");
+        assertThat(system).doesNotContain("{历史记忆}");
+    }
+
+    @Test
+    @DisplayName("组装 - 4 参重载：memoryContext 为 null 或空白时渲染「无」")
+    void should_renderNone_when_memoryContextNullOrBlank() {
+        List<Message> withNull = builder.buildMessages("阳光花园", "你好", List.of(), null);
+        List<Message> withBlank = builder.buildMessages("阳光花园", "你好", List.of(), "  ");
+
+        // {历史记忆} 占位符全部替换为「无」（含模板「（当{历史记忆}为「无」时，忽略本节）」行 → 「当无为「无」」）
+        assertThat(withNull.get(0).getText()).contains("（当无为「无」时，忽略本节）");
+        assertThat(withNull.get(0).getText()).doesNotContain("{历史记忆}");
+        assertThat(withBlank.get(0).getText()).contains("（当无为「无」时，忽略本节）");
+    }
 }

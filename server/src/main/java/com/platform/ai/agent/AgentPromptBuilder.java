@@ -15,7 +15,7 @@ import java.util.List;
  * Agent 对话 Prompt 组装器 — 构建「小邻」助手的 System Prompt 与用户消息。
  *
  * <p>System Prompt 从提示词文件 {@code prompts/agent/system.md} 读取（key {@code agent.system}），
- * 运行时只替换占位符：{@code {小区名}} → 小区名称、{@code {历史记忆}} → 本期固定「无」（记忆注入后续步骤）。
+ * 运行时替换占位符：{@code {小区名}} → 小区名称、{@code {历史记忆}} → 记忆上下文变量（null/「无」时渲染「无」）。
  * 知识库资料不再拼进 System Prompt——检索已工具化（search_knowledge），模型按决策路由自主调用。
  * 读工具（search_items、search_knowledge 等）由 AgentService 注册 ToolCallback 自动暴露，无需在此描述。</p>
  */
@@ -35,7 +35,7 @@ public class AgentPromptBuilder {
     }
 
     /**
-     * 构建对话消息列表（system + 历史 + user），模型 options 由 AgentService 组装（含工具注册）。
+     * 构建对话消息列表（无记忆上下文版，{@code {历史记忆}} 固定渲染「无」）。
      *
      * @param tenantName 小区名称（替换 {@code {小区名}} 占位符）
      * @param message    用户消息
@@ -44,11 +44,28 @@ public class AgentPromptBuilder {
      */
     public List<Message> buildMessages(String tenantName, String message,
                                        List<AgentSession.AgentMessageItem> history) {
+        return buildMessages(tenantName, message, history, null);
+    }
+
+    /**
+     * 构建对话消息列表（system + 历史 + user），模型 options 由 AgentService 组装（含工具注册）。
+     *
+     * <p>记忆上下文注入：{@code {历史记忆}} 渲染 = memoryContext 非空则其值、否则「无」；
+     * 窗口内固定（AgentService 只检索一次，不在此重复检索）。</p>
+     *
+     * @param tenantName    小区名称（替换 {@code {小区名}} 占位符）
+     * @param message       用户消息
+     * @param history       多轮历史（Redis 热会话，可为空）
+     * @param memoryContext 窗口长期记忆变量文本（null 或「无」时渲染「无」）
+     * @return system + 历史 + user 消息列表
+     */
+    public List<Message> buildMessages(String tenantName, String message,
+                                       List<AgentSession.AgentMessageItem> history, String memoryContext) {
         String template = promptRepository.get("agent.system");
+        String memory = memoryContext == null || memoryContext.isBlank() ? "无" : memoryContext;
         String system = template
                 .replace("{小区名}", tenantName == null ? "本小区" : tenantName)
-                // 历史记忆注入在后续步骤，本期固定为「无」（模板内已注明「为无时忽略本节」）
-                .replace("{历史记忆}", "无");
+                .replace("{历史记忆}", memory);
 
         List<Message> messages = new ArrayList<>();
         messages.add(new SystemMessage(system));

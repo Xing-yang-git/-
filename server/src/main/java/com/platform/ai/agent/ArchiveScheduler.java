@@ -39,7 +39,7 @@ public class ArchiveScheduler {
     }
 
     /**
-     * 定时扫描归档：遍历 agent:session:*，空闲超时的会话归档到 PG。
+     * 定时扫描归档：遍历 agent:session:*，空闲超时的会话按会话结束语义归档剩余全部消息到 PG。
      * 归档后热会话保留到 TTL 自然过期（支持"继续上次"冷启动）。
      */
     @Scheduled(fixedDelay = 300_000, initialDelay = 60_000)
@@ -56,7 +56,7 @@ public class ArchiveScheduler {
                         continue;
                     }
                     if (isIdle(userId)) {
-                        archiveService.archive(userId);
+                        archiveService.archiveRemaining(userId);
                         archived++;
                     }
                 } catch (Exception e) {

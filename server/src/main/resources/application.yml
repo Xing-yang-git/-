@@ -139,6 +139,9 @@ ai:
     max-tool-calls: 5
     archive-idle-minutes: 15 # 空闲归档阈值
     archive-message-count: 20 # 消息数归档阈值（= max-turns×2，截断封顶一致，防止阈值 > 截断上限导致永不触发）
+    # 长期记忆检索：新窗口开始检索用户压缩段 top-N 并注入 {历史记忆}
+    memory-recall-top: 3     # 记忆召回条数（检索该用户压缩段 top-N）
+    memory-match-threshold: 0.45 # 记忆匹配距离阈值（余弦距离，≤ 此值才注入；与知识库检索同款阈值）
     tool-mode: native        # 工具模式：native(原生 tool calling，PoC 已验证) / json(JSON 意图兜底)
     max-tokens: 1024         # 对话回复最大 token（reasoning 思维链占用大，512 实测 content 为空）
     temperature-knowledge: 0.2  # RAG 精准检索温度

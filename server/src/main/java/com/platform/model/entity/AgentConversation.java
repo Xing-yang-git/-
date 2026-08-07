@@ -20,7 +20,9 @@ import java.time.LocalDateTime;
 /**
  * Agent 会话实体，对应 agent_conversations 表（长期记忆归档）。
  *
- * <p>Redis 热会话（active）在触发归档后写入本表（archived），用户软删后标记 deleted 保留审计。
+ * <p>滑动窗口设计：每次归档创建一条新行（archived），同一会话的多次归档通过 conversation_id
+ * 关联（首次归档行的 conversation_id = 自身 id，充当会话级 id；后续归档行共享该值）。
+ * Redis 热会话（active）在触发归档后写入本表（archived），用户软删后标记 deleted 保留审计。
  * last_message_at（业务时间，仅新消息更新）与 updated_at（审计时间，任意变更更新）语义不同。</p>
  */
 @Data
@@ -44,7 +46,11 @@ public class AgentConversation {
     @Column(name = AgentConversationsColumn.COL_TENANT_ID, nullable = false)
     private Long tenantId;
 
-    /** 会话标题（归档时由首条消息生成） */
+    /** 会话级 conversation_id（滑动窗口多条归档记录共享同一会话 id；历史数据 NULL 视作自身 id） */
+    @Column(name = AgentConversationsColumn.COL_CONVERSATION_ID)
+    private Long conversationId;
+
+    /** 会话标题（归档时由压缩流程异步回填；未回填为 null） */
     @Column(name = AgentConversationsColumn.COL_TITLE, length = 200)
     private String title;
 

@@ -42,8 +42,9 @@ import java.util.concurrent.atomic.AtomicLong;
  *   <li>POST /chat — 流式对话（SSE 伪流式：决策轮非流式生成全文，后端分块播放）</li>
  *   <li>GET /suggestions — 快捷问题（常量，后续可 B端配置）</li>
  *   <li>GET /history — 历史会话列表（分页，排除软删）</li>
- *   <li>POST /history/{id}/resume — 恢复归档会话（回填最近 N 轮，先归档当前热会话防丢失）</li>
- *   <li>DELETE /history — 批量软删历史会话（保留审计）</li>
+ *   <li>POST /history/{id}/resume — 恢复归档会话（按会话级 id，回填最近 N 轮，先归档当前热会话防丢失）</li>
+ *   <li>DELETE /history — 批量软删历史会话（按会话级 id，保留审计，联动清理压缩段）</li>
+ *   <li>POST /exit — 退出会话（前端通知：归档剩余全部 + 补压 RETRY 压缩段）</li>
  * </ul>
  *
  * <p>安全：内存限流防刷 API 额度；SSE error 事件只透出白名单业务文案，内部细节仅记日志。</p>
@@ -60,6 +61,7 @@ public class AgentController {
     private final ThreadPoolTaskExecutor agentExecutor;
     private final IntentRouter intentRouter;
     private final AgentToolDispatcher toolDispatcher;
+    private final MemoryCompressionService memoryCompressionService;
 
     /** 敏感词跨 chunk 边界匹配：carry-over 保留的上一分块尾部字符数（须大于最长沙感词 + 干扰字符的跨度） */
     private static final int SENSITIVE_CARRY_LENGTH = 20;
@@ -70,7 +72,8 @@ public class AgentController {
                            RateLimitService rateLimitService,
                            ThreadPoolTaskExecutor agentExecutor,
                            IntentRouter intentRouter,
-                           AgentToolDispatcher toolDispatcher) {
+                           AgentToolDispatcher toolDispatcher,
+                           MemoryCompressionService memoryCompressionService) {
         this.agentService = agentService;
         this.archiveService = archiveService;
         this.objectMapper = objectMapper;
@@ -78,6 +81,7 @@ public class AgentController {
         this.agentExecutor = agentExecutor;
         this.intentRouter = intentRouter;
         this.toolDispatcher = toolDispatcher;
+        this.memoryCompressionService = memoryCompressionService;
     }
 
     /**
@@ -346,6 +350,23 @@ public class AgentController {
         }
         int deleted = archiveService.softDelete(userId, ids);
         return Result.ok(Map.of("deleted", deleted));
+    }
+
+    /**
+     * 退出会话（前端离开对话页时通知后端）— 会话结束语义：归档剩余全部消息 + 补压 RETRY 压缩段。
+     *
+     * <p>轻量接口，无业务参数：先 archiveRemaining（纯 DB 搬运，同步），再 compressRetry（补压失败段），
+     * 不返回额外数据。</p>
+     *
+     * @param auth 当前认证用户
+     * @return 处理结果
+     */
+    @PostMapping("/exit")
+    public Result<?> exit(Authentication auth) {
+        Long userId = Long.valueOf(auth.getName());
+        archiveService.archiveRemaining(userId);
+        memoryCompressionService.compressRetry(userId);
+        return Result.ok();
     }
 
     /**

@@ -523,3 +523,46 @@ COMMENT ON COLUMN sensitive_word.word IS '敏感词原文（唯一；匹配时�
 COMMENT ON COLUMN sensitive_word.status IS '状态：ENABLED(启用)/DISABLED(停用)，引用 SensitiveWordStatus；仅启用词参与匹配';
 COMMENT ON COLUMN sensitive_word.created_at IS '创建时间';
 COMMENT ON COLUMN sensitive_word.updated_at IS '更新时间';
+
+-- =============================================================================
+-- 41. agent_memory_segments — 会话长期记忆压缩段（滑动窗口，每段归档对应一条；向量供记忆检索）
+-- =============================================================================
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS agent_memory_segments (
+    id              BIGSERIAL      PRIMARY KEY,               -- 压缩段 ID（自增主键）
+    user_id         BIGINT         NOT NULL REFERENCES users(id),   -- 住户用户 ID（越权检索强制过滤）
+    tenant_id       BIGINT         NOT NULL REFERENCES tenants(id), -- 所属小区 ID
+    conversation_id BIGINT         NOT NULL,                  -- 会话级 id（多段共享同一会话）
+    archive_row_id  BIGINT         NOT NULL,                  -- 对应归档行（供回溯原始消息/补压）
+    segment_no      INT            NOT NULL DEFAULT 1,        -- 压缩段序号（会话内递增，从 1 起）
+    title           VARCHAR(50),                              -- 标题（≤20 字）
+    summary         VARCHAR(600),                             -- 摘要（目标 100~200 字，上限 300 字）
+    embedding       TEXT,                                     -- 摘要向量字面量（embedding-3 1024 维，与 knowledge_items 同款：text 存字面量，检索/索引时 ::vector 强转）
+    status          VARCHAR(20)    NOT NULL DEFAULT 'SUCCESS',  -- SUCCESS(成功)/RETRY(失败待补压)
+    created_at      TIMESTAMP      NOT NULL DEFAULT NOW()     -- 创建时间
+);
+COMMENT ON TABLE  agent_memory_segments IS '会话长期记忆压缩段（滑动窗口，每段归档对应一条；向量供记忆检索）';
+COMMENT ON COLUMN agent_memory_segments.id IS '压缩段 ID（自增主键）';
+COMMENT ON COLUMN agent_memory_segments.user_id IS '住户用户 ID → users.id（记忆检索强制按用户过滤，越权防护）';
+COMMENT ON COLUMN agent_memory_segments.tenant_id IS '所属小区 ID，外键 → tenants.id';
+COMMENT ON COLUMN agent_memory_segments.conversation_id IS '会话级 id（滑动窗口多条归档记录共享同一会话 id；供记忆检索与联动删除）';
+COMMENT ON COLUMN agent_memory_segments.archive_row_id IS '对应归档行（agent_conversations.id），供回溯原始消息与 RETRY 补压拼 transcript';
+COMMENT ON COLUMN agent_memory_segments.segment_no IS '压缩段序号（会话内递增，从 1 起；归档触发时按 max+1 计算）';
+COMMENT ON COLUMN agent_memory_segments.title IS '标题（≤20 字，LLM 压缩产出；失败时用首条用户消息截断兜底）';
+COMMENT ON COLUMN agent_memory_segments.summary IS '摘要（目标 100~200 字，上限 300 字；LLM 压缩产出，失败时为空）';
+COMMENT ON COLUMN agent_memory_segments.embedding IS '摘要向量（embedding-3，1024 维；生成失败留空可补压补齐）';
+COMMENT ON COLUMN agent_memory_segments.status IS '状态：SUCCESS(压缩成功)/RETRY(压缩失败待补压)，引用 MemorySegmentStatus';
+COMMENT ON COLUMN agent_memory_segments.created_at IS '创建时间';
+
+CREATE INDEX IF NOT EXISTS idx_memory_segments_user ON agent_memory_segments (user_id, tenant_id);
+CREATE INDEX IF NOT EXISTS idx_memory_segments_conversation ON agent_memory_segments (conversation_id);
+-- 记忆向量 HNSW 索引（text 列存储，::vector 强转建索引，与 knowledge_items 同款）
+CREATE INDEX IF NOT EXISTS idx_memory_segments_embedding_hnsw ON agent_memory_segments USING hnsw ((embedding::vector(1024)) vector_cosine_ops);
+
+-- =============================================================================
+-- 42. agent_conversations — 新增会话级 conversation_id（滑动窗口多条归档记录共享同一会话 id）
+-- =============================================================================
+ALTER TABLE agent_conversations ADD COLUMN IF NOT EXISTS conversation_id BIGINT;
+CREATE INDEX IF NOT EXISTS idx_conversations_conversation ON agent_conversations (conversation_id);
+COMMENT ON COLUMN agent_conversations.conversation_id IS '会话级 conversation_id（滑动窗口多条归档记录共享同一会话 id；历史数据为 NULL 视作自身 id）';
