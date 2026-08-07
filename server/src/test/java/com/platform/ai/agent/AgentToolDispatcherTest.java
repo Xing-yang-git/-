@@ -36,6 +36,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -287,6 +288,16 @@ class AgentToolDispatcherTest {
                 .isEqualTo("无法识别该日期描述，请换个说法");
     }
 
+    @Test
+    @DisplayName("query_date - 本地解析异常（超大偏移量溢出）返回防御性兜底不抛异常")
+    void should_returnDateErrorReply_when_resolveThrows() {
+        // 本地解析理论不抛，但「N天后」的 N 超 Integer.MAX_VALUE 时 Integer.parseInt 抛
+        // NumberFormatException → 触发 query_date 的防御性 catch 兜底（模块 4b 兜底核查）
+        String result = dispatcher.queryDate(USER_ID, REQ_1, new DateQueryParams("99999999999999999999天后"));
+
+        assertThat(result).isEqualTo("查询日期暂不可用，请稍后再试");
+    }
+
     private void assertDate(AgentToolDispatcher dispatcher, String expr, LocalDate expected,
                             DateTimeFormatter fmt, List<String> weekdays) {
         // 每次调用用独立 requestId，避免多次 query_date 触发工具计数上限
@@ -523,5 +534,45 @@ class AgentToolDispatcherTest {
         dispatcher.searchItems(USER_ID, REQ_1, new SearchParams("帮忙", "HELP"));
 
         verify(idleService).search(eq(USER_ID), eq("帮忙"), eq(PostType.HELP), eq(0), eq(5), eq("hybrid"));
+    }
+
+    // ==================== 工具兜底核查补齐（Step 4b：全部工具异常不抛给模型） ====================
+
+    @Test
+    @DisplayName("search_items - 服务异常返回可读兜底不抛异常")
+    void should_searchItems_degradeOnError() {
+        when(idleService.search(any(), any(), any(), anyInt(), anyInt(), any()))
+                .thenThrow(new RuntimeException("db down"));
+
+        assertThat(dispatcher.searchItems(USER_ID, REQ_1, new SearchParams("钻", null)))
+                .isEqualTo("搜索闲置物品暂不可用，请稍后再试");
+    }
+
+    @Test
+    @DisplayName("my_posts - 服务异常返回可读兜底不抛异常")
+    void should_myPosts_degradeOnError() {
+        when(idleService.getMyPosts(USER_ID, PostType.LEND)).thenThrow(new RuntimeException("db down"));
+
+        assertThat(dispatcher.myPosts(USER_ID, REQ_1, new MyPostsParams(null)))
+                .isEqualTo("查询我的发布暂不可用，请稍后再试");
+    }
+
+    @Test
+    @DisplayName("my_borrows_due - 服务异常返回可读兜底不抛异常")
+    void should_myBorrowsDue_degradeOnError() {
+        when(borrowService.getMyApplications(USER_ID)).thenThrow(new RuntimeException("db down"));
+
+        assertThat(dispatcher.myBorrowsDue(USER_ID, REQ_1, new VoidParams()))
+                .isEqualTo("查询我的借用暂不可用，请稍后再试");
+    }
+
+    @Test
+    @DisplayName("generate_feedback - 服务异常返回可读兜底不抛异常")
+    void should_generateFeedback_degradeOnError() {
+        when(polishingClient.generateFeedback(any(), any(), any()))
+                .thenThrow(new RuntimeException("上游不可用"));
+
+        assertThat(dispatcher.generateFeedback(USER_ID, REQ_1, new FeedbackParams(null, "电钻", "借用顺利")))
+                .isEqualTo("生成互助感想暂不可用，请稍后再试");
     }
 }

@@ -48,7 +48,8 @@ import java.util.stream.Collectors;
  * 流结束 {@link #takeHits} 维护生命周期。</p>
  *
  * <p>仅注册读工具（可安全自动执行）；写操作走 IntentRouter JSON 意图出动作卡片，不在此执行。
- * 全部工具方法内部 catch 异常返回可读兜底文案，绝不把异常抛给模型。</p>
+ * 全部工具方法内部 catch 异常返回可读兜底文案，绝不把异常抛给模型（模块 4b 兜底核查）。
+ * 每次成功调用输出工具调用日志（模块 4d，含 userId/工具名/关键词截断/命中条数）。</p>
  */
 @Slf4j
 @Component
@@ -70,11 +71,15 @@ public class AgentToolDispatcher {
     private static final String KB_ERROR_REPLY = "知识检索暂不可用，请稍后再试";
     /** 日期解析失败 */
     private static final String DATE_PARSE_FAIL_REPLY = "无法识别该日期描述，请换个说法";
+    /** 日期查询内部异常（防御性兜底，本地解析理论不抛） */
+    private static final String DATE_ERROR_REPLY = "查询日期暂不可用，请稍后再试";
 
     // ==================== 知识检索相关常量 ====================
 
     /** 检索关键词最长字符数（超长截断后检索） */
     private static final int KB_KEYWORD_MAX_LENGTH = 50;
+    /** 工具调用日志中检索关键词截断字符数（防超长关键词刷爆日志，与 {@link #KB_KEYWORD_MAX_LENGTH} 同值） */
+    private static final int TOOL_LOG_KEYWORD_MAX_LENGTH = 50;
     /** 返回给模型的知识命中条数上限 */
     private static final int KB_RESULT_MAX_COUNT = 3;
     /** 返回给模型的正文截断字符数 */
@@ -192,12 +197,14 @@ public class AgentToolDispatcher {
             // 检索：召回 top-8（向量 ∪ 关键词）→ 必走重排 top-3 → 重排分数关卡过滤
             List<KnowledgeHit> hits = retrievalService.searchForAgent(user.getTenantId(), keyword);
             if (hits == null || hits.isEmpty()) {
+                logToolCall(userId, "search_knowledge", keyword, 0);
                 return KB_NO_RESULT_REPLY;
             }
 
             // 同一请求内多次调用命中合并去重后存入缓存（供流结束取回引用来源）
             mergeHits(requestId, hits);
 
+            logToolCall(userId, "search_knowledge", keyword, hits.size());
             return formatKnowledgeResults(hits);
         } catch (Exception e) {
             log.warn("search_knowledge 工具执行失败: userId={}, {}", userId, e.getMessage());
@@ -222,8 +229,16 @@ public class AgentToolDispatcher {
         if (limit != null) {
             return limit;
         }
-        String resolved = resolveDate(p == null ? null : p.expression());
-        return resolved != null ? resolved : DATE_PARSE_FAIL_REPLY;
+        try {
+            String resolved = resolveDate(p == null ? null : p.expression());
+            String result = resolved != null ? resolved : DATE_PARSE_FAIL_REPLY;
+            logToolCall(userId, "query_date", p == null ? null : p.expression(), resolved != null ? 1 : 0);
+            return result;
+        } catch (Exception e) {
+            // 兜底：本地日期解析异常（理论不抛，防御性保护工具契约「绝不抛异常给模型」）
+            log.warn("query_date 工具执行失败: userId={}, {}", userId, e.getMessage());
+            return DATE_ERROR_REPLY;
+        }
     }
 
     /**
@@ -243,6 +258,7 @@ public class AgentToolDispatcher {
             List<NotificationDTO> notifications = notificationService.getNotifications(userId);
             long unread = notificationService.getUnreadCount(userId);
             if (notifications == null || notifications.isEmpty()) {
+                logToolCall(userId, "query_notifications", null, 0);
                 return "目前没有新的小区通知";
             }
             StringBuilder sb = new StringBuilder();
@@ -258,6 +274,7 @@ public class AgentToolDispatcher {
                         .append(" | ").append(Boolean.TRUE.equals(n.getIsRead()) ? "已读" : "未读").append("\n");
                 idx++;
             }
+            logToolCall(userId, "query_notifications", null, notifications.size());
             return sb.toString();
         } catch (Exception e) {
             log.warn("query_notifications 工具执行失败: userId={}, {}", userId, e.getMessage());
@@ -283,6 +300,7 @@ public class AgentToolDispatcher {
             PageDTO<HelpResponseDTO> page = helpService.search(userId, keyword, 0, 5);
             List<HelpResponseDTO> list = page == null ? List.of() : page.getContent();
             if (list.isEmpty()) {
+                logToolCall(userId, "query_help_requests", keyword, 0);
                 return "目前没有找到相关的互助求助";
             }
             StringBuilder sb = new StringBuilder("找到以下互助求助：\n");
@@ -295,6 +313,7 @@ public class AgentToolDispatcher {
                         .append(" | 发起人房号：").append(nullToEmpty(dto.getUserRoom())).append("\n");
                 idx++;
             }
+            logToolCall(userId, "query_help_requests", keyword, list.size());
             return sb.toString();
         } catch (Exception e) {
             log.warn("query_help_requests 工具执行失败: userId={}, {}", userId, e.getMessage());
@@ -330,6 +349,7 @@ public class AgentToolDispatcher {
                     + inProgressHelpReq.size() + inProgressHelpPro.size();
 
             if (totalApproval == 0 && totalInProgress == 0) {
+                logToolCall(userId, "my_todos", null, 0);
                 return "目前没有待处理的事项";
             }
 
@@ -350,6 +370,7 @@ public class AgentToolDispatcher {
                 sb.append(idx).append(". ").append(nullToEmpty(dto.getTitle())).append("；");
                 idx++;
             }
+            logToolCall(userId, "my_todos", null, totalApproval + totalInProgress);
             return sb.toString();
         } catch (Exception e) {
             log.warn("my_todos 工具执行失败: userId={}, {}", userId, e.getMessage());
@@ -382,8 +403,7 @@ public class AgentToolDispatcher {
                             "description", d.getDescription() == null ? "" : d.getDescription(),
                             "category", d.getCategory() == null ? "" : d.getCategory()))
                     .collect(Collectors.toList());
-            log.info("search_items 工具执行: userId={}, keyword={}, postType={}, 返回 {} 条",
-                    userId, p.keyword(), postType, items.size());
+            logToolCall(userId, "search_items", p.keyword(), items.size());
             return writeJson(items);
         } catch (Exception e) {
             log.warn("search_items 工具执行失败: userId={}, {}", userId, e.getMessage());
@@ -413,6 +433,7 @@ public class AgentToolDispatcher {
                             "title", d.getTitle(),
                             "status", d.getStatus() == null ? "" : d.getStatus()))
                     .collect(Collectors.toList());
+            logToolCall(userId, "my_posts", p.postType(), items.size());
             return writeJson(items);
         } catch (Exception e) {
             log.warn("my_posts 工具执行失败: userId={}, {}", userId, e.getMessage());
@@ -445,6 +466,7 @@ public class AgentToolDispatcher {
                             "durationDays", b.getDurationDays() == null ? 0 : b.getDurationDays(),
                             "status", b.getStatus()))
                     .collect(Collectors.toList());
+            logToolCall(userId, "my_borrows_due", null, items.size());
             return writeJson(items);
         } catch (Exception e) {
             log.warn("my_borrows_due 工具执行失败: userId={}, {}", userId, e.getMessage());
@@ -468,6 +490,7 @@ public class AgentToolDispatcher {
         try {
             String role = (p.role() == null || p.role().isBlank()) ? PolishingClient.ROLE_LEND : p.role();
             String feedback = polishingClient.generateFeedback(role, p.itemTitle(), p.description());
+            logToolCall(userId, "generate_feedback", p.itemTitle(), 1);
             return writeJson(Map.of("feedback", feedback));
         } catch (Exception e) {
             log.warn("generate_feedback 工具执行失败: userId={}, {}", userId, e.getMessage());
@@ -520,6 +543,22 @@ public class AgentToolDispatcher {
         }
         counter.incrementAndGet();
         return null;
+    }
+
+    /**
+     * 记录工具调用日志（模块 4d）— 含业务上下文 userId；检索关键词截断 ≤50 字；禁止打印知识库命中正文。
+     *
+     * @param userId      当前用户 ID
+     * @param tool        工具名（与注册名一致）
+     * @param keyword     检索关键词/参数（可为 null，截断到 {@link #TOOL_LOG_KEYWORD_MAX_LENGTH} 字符）
+     * @param resultCount 返回给模型的条数（单条结果类工具传 1，无命中传 0）
+     */
+    private void logToolCall(Long userId, String tool, String keyword, int resultCount) {
+        String k = keyword == null ? "" : keyword;
+        if (k.length() > TOOL_LOG_KEYWORD_MAX_LENGTH) {
+            k = k.substring(0, TOOL_LOG_KEYWORD_MAX_LENGTH);
+        }
+        log.info("Agent 工具调用: userId={}, 工具={}, 关键词={}, 返回 {} 条", userId, tool, k, resultCount);
     }
 
     /**

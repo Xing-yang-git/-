@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * AI Agent「小邻」对话 REST API（C端，仅登录即可访问）。
@@ -59,6 +60,9 @@ public class AgentController {
     private final ThreadPoolTaskExecutor agentExecutor;
     private final IntentRouter intentRouter;
     private final AgentToolDispatcher toolDispatcher;
+
+    /** 敏感词跨 chunk 边界匹配：carry-over 保留的上一分块尾部字符数（须大于最长沙感词 + 干扰字符的跨度） */
+    private static final int SENSITIVE_CARRY_LENGTH = 20;
 
     public AgentController(AgentService agentService,
                            ArchiveService archiveService,
@@ -135,7 +139,12 @@ public class AgentController {
                 // 避免用户看到裸 JSON。
                 StringBuilder full = new StringBuilder();
                 StringBuilder held = new StringBuilder();
+                // 敏感词跨 chunk 掩码：carry 保留上一分块尾部原文，供下个分块判全（整词命中）
+                StringBuilder carry = new StringBuilder();
                 AtomicBoolean jsonHeldBack = new AtomicBoolean(false);
+                // 流式 LLM 耗时：首字延迟（首个非空分块到达）与总耗时（流结束）
+                long streamStartMs = System.currentTimeMillis();
+                AtomicLong firstTokenMs = new AtomicLong(-1L);
 
                 stream.contentFlux()
                         .doOnNext(cr -> {
@@ -143,6 +152,8 @@ public class AgentController {
                             if (delta == null || delta.isEmpty()) {
                                 return;
                             }
+                            // 首字延迟：首个非空文本分块到达即记录（含网络与模型首字生成耗时）
+                            firstTokenMs.compareAndSet(-1L, System.currentTimeMillis() - streamStartMs);
                             full.append(delta);
                             if (jsonHeldBack.get()) {
                                 held.append(delta);
@@ -150,7 +161,17 @@ public class AgentController {
                                 jsonHeldBack.set(true);
                                 held.append(delta);
                             } else {
-                                safeSend(emitter, "answer", delta);
+                                // 跨 chunk 敏感词掩码：combined = 上一分块尾部原文 + 本分块，掩码后仅发送安全前缀，
+                                // 尾部保留给下个分块判全（流结束 replace 事件兜底整词掩码与未发送的尾部）
+                                String combined = carry.toString() + delta;
+                                String masked = agentService.maskForDisplay(combined);
+                                int hold = Math.min(SENSITIVE_CARRY_LENGTH, masked.length());
+                                String sendable = masked.substring(0, masked.length() - hold);
+                                carry.setLength(0);
+                                carry.append(masked, masked.length() - hold, masked.length());
+                                if (!sendable.isEmpty()) {
+                                    safeSend(emitter, "answer", sendable);
+                                }
                             }
                         })
                         .doOnComplete(() -> {
@@ -158,30 +179,33 @@ public class AgentController {
                             AgentAction action = intentRouter.parse(fullText);
                             String cleanReply = agentService.cleanReply(fullText, action);
                             if (jsonHeldBack.get()) {
-                                // 纯 JSON：是意图则替换为友好文案 + 动作卡片；否则原样补发
+                                // 纯 JSON：是意图则替换为友好文案 + 动作卡片；否则原样补发（均做敏感词掩码）
                                 if (action != null) {
-                                    safeSend(emitter, "answer", cleanReply);
+                                    safeSend(emitter, "answer", agentService.maskForDisplay(cleanReply));
                                     safeSend(emitter, "action", List.of(action));
                                 } else {
-                                    safeSend(emitter, "answer", held.toString());
+                                    safeSend(emitter, "answer", agentService.maskForDisplay(held.toString()));
                                 }
                             } else if (action != null) {
-                                // 文本 + JSON：replace 事件用剔除 JSON 后的文案刷新气泡
-                                safeSend(emitter, "replace", cleanReply);
+                                // 文本 + JSON：replace 事件用剔除 JSON 后的文案刷新气泡（掩码后）
+                                safeSend(emitter, "replace", agentService.maskForDisplay(cleanReply));
                                 safeSend(emitter, "action", List.of(action));
                             }
                             // 运行时取回引用来源（requestId 缓存的工具命中；工具调用在流内完成，流结束才可知）
                             List<KnowledgeHit> sources = toolDispatcher.takeHits(stream.requestId());
-                            // 防幻觉：移除非法 [N] 引用、检测资料外数字（仅记日志）
-                            String display = agentService.applyHallucinationGuard(userId, cleanReply, sources);
-                            // 移除非法引用后文本有变化 → replace 事件刷新前端气泡为校验后文本
-                            if (!display.equals(cleanReply)) {
-                                safeSend(emitter, "replace", display);
-                            }
+                            // 防幻觉：移除非法 [N] 引用、检测资料外数字（仅记日志）→ 敏感词掩码（只影响展示文本）
+                            String guarded = agentService.applyHallucinationGuard(userId, cleanReply, sources);
+                            String display = agentService.maskForDisplay(guarded);
+                            // 始终 replace 为最终展示文本：覆盖流式分块未发送的尾部（敏感词 carry-over 保留段）
+                            // 与防幻觉修正，保证气泡展示的必然是掩码后的完整文本（前端 replace 整体刷新，幂等）
+                            safeSend(emitter, "replace", display);
+                            // LLM 耗时日志（首字延迟 + 总耗时，流式）
+                            log.info("Agent 流式 LLM 耗时: userId={}, 首字延迟={}ms, 总耗时={}ms",
+                                    userId, Math.max(firstTokenMs.get(), 0L), System.currentTimeMillis() - streamStartMs);
                             // sources 事件在 answer 分块之后发出（无命中发空列表）
                             safeSend(emitter, "sources", sources);
-                            // 回填会话（user + assistant 展示文案，含防幻觉校验结果）并触发归档
-                            agentService.completeStream(userId, req.getMessage(), display, sources, action, stream.requestId());
+                            // 回填会话：历史保留展示前的原文 guarded（敏感词未替换，避免掩码污染后续上下文判断）
+                            agentService.completeStream(userId, req.getMessage(), guarded, sources, action, stream.requestId());
                             safeSend(emitter, "end", Map.of("done", true));
                             emitter.complete();
                         })

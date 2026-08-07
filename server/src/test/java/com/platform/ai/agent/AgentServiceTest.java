@@ -9,6 +9,7 @@ import com.platform.model.entity.Tenant;
 import com.platform.model.entity.User;
 import com.platform.repository.TenantRepository;
 import com.platform.repository.UserRepository;
+import com.platform.service.SensitiveWordService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -69,6 +70,8 @@ class AgentServiceTest {
     private TenantRepository tenantRepository;
     @Mock
     private MessagePreFilter preFilter;
+    @Mock
+    private SensitiveWordService sensitiveWordService;
 
     private AgentService agentService;
 
@@ -79,10 +82,14 @@ class AgentServiceTest {
     void setUp() {
         agentService = new AgentService(promptBuilder, toolDispatcher, intentRouter,
                 sessionService, archiveService, deepseekChatModel, userRepository, tenantRepository,
-                new ObjectMapper(), preFilter);
+                new ObjectMapper(), preFilter, sensitiveWordService);
         // 前置过滤器默认放行（清洗后消息 = 原消息），问候类测试不触达过滤器，故用 lenient 避免误报
         lenient().when(preFilter.process(any(), anyString()))
                 .thenAnswer(inv -> new MessagePreFilter.PreFilterResult(inv.getArgument(1), null, false, null));
+        // 敏感词替换默认透传原文：既有断言依赖 result.reply()（display=guarded）不受掩码影响；
+        // 问候/拦截/防幻觉类测试不触达替换方法，故用 lenient 避免严格桩误报；
+        // 掩码专项用例在各自测试内用更具体的 stub 覆盖 replace 返回值
+        lenient().when(sensitiveWordService.replace(anyString())).thenAnswer(inv -> inv.getArgument(0));
         ReflectionTestUtils.setField(agentService, "archiveMessageCount", 20);
     }
 
@@ -520,5 +527,43 @@ class AgentServiceTest {
                 .isEqualTo("参见与的说明");
         // null 来源同样按 0 条处理
         assertThat(agentService.applyHallucinationGuard(USER_ID, "见[1]", null)).isEqualTo("见");
+    }
+
+    // ==================== 输出敏感词掩码（Step 4c） ====================
+
+    @Test
+    @DisplayName("敏感词掩码 - 命中词被替换为 ***：maskForDisplay 透传 replace 结果")
+    void should_maskForDisplay_when_hitSensitiveWord() {
+        // replace 命中敏感词返回掩码后文本（真实替换逻辑见 SensitiveWordServiceTest）
+        when(sensitiveWordService.replace("物业电话 138-1234-5678")).thenReturn("物业电话 ***");
+
+        String result = agentService.maskForDisplay("物业电话 138-1234-5678");
+
+        assertThat(result).isEqualTo("物业电话 ***");
+    }
+
+    @Test
+    @DisplayName("敏感词掩码 - 未命中时原样返回")
+    void should_maskForDisplay_returnOriginal_when_noHit() {
+        // setUp 默认 stub 让 replace 透传原文，模拟未命中
+        assertThat(agentService.maskForDisplay("今天物业几点下班")).isEqualTo("今天物业几点下班");
+    }
+
+    @Test
+    @DisplayName("对话 - 展示文本经敏感词掩码，会话历史保留未掩码原文")
+    void should_maskDisplay_butKeepHistoryOriginal_when_sensitiveWordHit() {
+        stubCommon("物业电话多少");
+        when(deepseekChatModel.call(any(Prompt.class))).thenReturn(response("物业电话 138-1234-5678"));
+        when(intentRouter.parse(any())).thenReturn(null);
+        // 命中敏感词：展示文本被替换为 ***（真实替换逻辑见 SensitiveWordServiceTest）
+        when(sensitiveWordService.replace("物业电话 138-1234-5678")).thenReturn("物业电话 ***");
+
+        AgentChatResult result = agentService.chat(USER_ID, "物业电话多少");
+
+        // 返回给前端的展示文本是掩码后文本
+        assertThat(result.reply()).isEqualTo("物业电话 ***");
+        // 写入会话历史的是防幻觉校验后的原文（未掩码），避免掩码污染后续多轮上下文判断
+        verify(sessionService).append(eq(USER_ID), eq(AgentMessageRole.ASSISTANT),
+                eq("物业电话 138-1234-5678"), any(), any());
     }
 }

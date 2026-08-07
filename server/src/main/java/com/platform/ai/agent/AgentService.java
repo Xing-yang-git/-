@@ -9,6 +9,7 @@ import com.platform.model.entity.Tenant;
 import com.platform.model.entity.User;
 import com.platform.repository.TenantRepository;
 import com.platform.repository.UserRepository;
+import com.platform.service.SensitiveWordService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.ai.chat.messages.Message;
@@ -35,6 +36,10 @@ import java.util.regex.Pattern;
  * {@code search_knowledge} 工具（requestId 贯穿工具计数与命中缓存生命周期）；新增 4 个常用业务工具
  * （查日期/查通知/查互助/我的待办）。回复经防幻觉校验：移除非法 [N] 引用、检测资料外数字（仅记日志）。</p>
  *
+ * <p>输出敏感词替换（Step 4c）：展示文本在发给前端前经敏感词掩码（命中词替换为 {@code ***}），
+ * 写入会话历史保持原文，避免掩码污染后续上下文判断。关键链路日志（Step 4d）：拦截命中、LLM 耗时、
+ * 路由决策（本次请求是否调用了知识工具）。</p>
+ *
  * <p>写操作走 IntentRouter 解析模型返回的 JSON 意图，生成动作卡片（不自动落库，前端确认后走既有 API）。</p>
  */
 @Slf4j
@@ -51,6 +56,7 @@ public class AgentService {
     private final UserRepository userRepository;
     private final TenantRepository tenantRepository;
     private final ObjectMapper objectMapper;
+    private final SensitiveWordService sensitiveWordService;
 
     /** 消息数归档阈值（达到即触发归档；与 yml 及截断封顶 max-turns×2 一致，防阈值 > 截断上限永不触发） */
     @Value("${ai.agent.archive-message-count:20}")
@@ -91,7 +97,8 @@ public class AgentService {
                         UserRepository userRepository,
                         TenantRepository tenantRepository,
                         ObjectMapper objectMapper,
-                        MessagePreFilter preFilter) {
+                        MessagePreFilter preFilter,
+                        SensitiveWordService sensitiveWordService) {
         this.promptBuilder = promptBuilder;
         this.toolDispatcher = toolDispatcher;
         this.intentRouter = intentRouter;
@@ -102,6 +109,7 @@ public class AgentService {
         this.tenantRepository = tenantRepository;
         this.objectMapper = objectMapper;
         this.preFilter = preFilter;
+        this.sensitiveWordService = sensitiveWordService;
     }
 
     /**
@@ -139,8 +147,11 @@ public class AgentService {
         try {
             Prompt prompt = prepare(userId, filter.message(), filter.injectionHint(), requestId);
 
-            // deepseek 调用（Spring AI 自动执行读工具循环）
+            // deepseek 调用（Spring AI 自动执行读工具循环）；非流式首字延迟 ≈ 总耗时，故仅记录总耗时
+            long llmStartMs = System.currentTimeMillis();
             ChatResponse response = deepseekChatModel.call(prompt);
+            log.info("Agent LLM 调用耗时（非流式）: userId={}, 总耗时={}ms",
+                    userId, System.currentTimeMillis() - llmStartMs);
             String reply = response.getResult().getOutput().getText();
             if (reply == null || reply.isBlank()) {
                 throw new AiGenerationException("AI 回复为空，请稍后重试");
@@ -150,12 +161,16 @@ public class AgentService {
             String clean = cleanReply(reply, action);
             // 防幻觉：取回本次工具命中（引用来源），移除非法 [N]、检测资料外数字（仅记日志）
             List<KnowledgeHit> sources = toolDispatcher.takeHits(requestId);
-            String display = applyHallucinationGuard(userId, clean, sources);
+            String guarded = applyHallucinationGuard(userId, clean, sources);
+            // 输出敏感词替换：只影响展示文本；历史保留 guarded 原文，避免掩码污染后续上下文判断
+            String display = maskForDisplay(guarded);
+            // 路由决策日志：本次请求是否调用了知识工具（以命中缓存是否有结果为判断依据）
+            log.info("Agent 路由决策: userId={}, 本次调用了知识工具={}", userId, !sources.isEmpty());
 
             // 写入热会话（user + assistant），并触发消息数阈值归档
             List<AgentAction> actions = action != null ? List.of(action) : List.of();
             sessionService.append(userId, AgentMessageRole.USER, message, null, null);
-            sessionService.append(userId, AgentMessageRole.ASSISTANT, display,
+            sessionService.append(userId, AgentMessageRole.ASSISTANT, guarded,
                     writeJsonOrNull(sources), writeJsonOrNull(actions));
             archiveIfNeeded(userId);
 
@@ -213,7 +228,7 @@ public class AgentService {
      *
      * @param userId         当前用户 ID
      * @param userMessage    用户消息
-     * @param assistantReply 展示用回复（已剔除意图 JSON，并经过防幻觉引用校验）
+     * @param assistantReply 写入历史的助手回复（已剔除意图 JSON、经防幻觉引用校验，但未做敏感词掩码——历史保留原文）
      * @param hits           引用来源（requestId 缓存取回的工具命中）
      * @param action         写操作意图（可为 null）
      * @param requestId      请求 ID（用于清理工具计数与命中缓存）
@@ -225,6 +240,8 @@ public class AgentService {
         sessionService.append(userId, AgentMessageRole.ASSISTANT, assistantReply,
                 writeJsonOrNull(hits), writeJsonOrNull(actions));
         archiveIfNeeded(userId);
+        // 路由决策日志：本次请求是否调用了知识工具（以命中缓存是否有结果为判断依据）
+        log.info("Agent 路由决策: userId={}, 本次调用了知识工具={}", userId, hits != null && !hits.isEmpty());
         // 请求级工具状态清理（计数 + 命中缓存）
         toolDispatcher.reset(requestId);
     }
@@ -278,6 +295,19 @@ public class AgentService {
             }
         }
         return displayReply;
+    }
+
+    /**
+     * 对展示文本做敏感词掩码（命中词替换为 {@code ***}）。
+     *
+     * <p>只影响发给前端的展示文本；写入会话历史的内容保持原文（不调用本方法），
+     * 避免掩码污染后续多轮对话的上下文判断。流式 Controller 对每个分块与最终展示文本均调用。</p>
+     *
+     * @param text 展示文本
+     * @return 掩码后的文本（无命中时原样返回）
+     */
+    public String maskForDisplay(String text) {
+        return sensitiveWordService.replace(text);
     }
 
     /**
