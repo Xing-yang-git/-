@@ -71,6 +71,8 @@
           <text class="abort-marker" wx:if="{{item.aborted}}">（已终止）</text>
         </view>
       </view>
+      <!-- 失败重试入口（超时/网络中断/出错时显示，点击原问题重发） -->
+      <view class="msg-retry" wx:if="{{item.failed}}" data-msg="{{item.retryText}}" bindtap="onRetryTap">回复失败，点此重试</view>
       <!-- 引用来源（后端检索结果） -->
       <view class="sources" wx:if="{{item.sources.length > 0}}">
         <text class="source-item" wx:for="{{item.sources}}" wx:key="id" wx:for-item="src">参考：{{src.source}}</text>

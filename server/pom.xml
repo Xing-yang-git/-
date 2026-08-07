@@ -107,6 +107,27 @@
             <version>4.0.3</version>
         </dependency>
 
+        <!-- PDFBox — PDF 文本抽取 + 页面渲染成图片（扫描版 OCR 前置，仅此一个坐标防 2.0.x 混入类冲突） -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.4</version>
+        </dependency>
+
+        <!-- Apache POI OOXML — Word(docx) 解析（版本与 EasyExcel 传递依赖 5.2.5 对齐，避免类冲突） -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.2.5</version>
+        </dependency>
+
+        <!-- Apache Commons CSV — CSV 解析（显式 Charset + 剥 BOM） -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-csv</artifactId>
+            <version>1.11.0</version>
+        </dependency>
+
         <!-- pgvector — PostgreSQL 向量扩展 -->
         <dependency>
             <groupId>com.pgvector</groupId>
@@ -124,6 +145,13 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- OpenCC4J — 中文繁简体转换（敏感词归一化匹配：繁转简），1.8.1 为 1.8.x 线在中央仓库可用的最新版（1.8.3 不存在） -->
+        <dependency>
+            <groupId>com.github.houbb</groupId>
+            <artifactId>opencc4j</artifactId>
+            <version>1.8.1</version>
         </dependency>
 
         <!-- Test -->

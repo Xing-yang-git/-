@@ -263,6 +263,18 @@
   color: var(--text-tertiary);
 }
 
+/* 失败重试入口：超时/网络中断/出错时显示在 AI 气泡下方，点击原问题重发 */
+.msg-retry {
+  display: inline-block;
+  margin: -8rpx 0 16rpx 16rpx;
+  padding: 10rpx 20rpx;
+  font-size: var(--text-xs);
+  color: var(--blue);
+  background: var(--fill-tertiary);
+  border: 1rpx solid var(--separator);
+  border-radius: var(--radius-sm);
+}
+
 /* 引用来源 */
 .sources {
   display: flex;

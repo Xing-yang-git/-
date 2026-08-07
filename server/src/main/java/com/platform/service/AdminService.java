@@ -2567,6 +2567,19 @@ public class AdminService {
 
     // ==================== 私有辅助方法：管理员鉴权 ====================
 
+    /**
+     * 校验当前管理员是否为超级管理员（仅 super_admin 模块的公开权限入口）。
+     *
+     * <p>敏感词管理等平台级配置模块复用本入口：按现有模式先 findAdmin 再 requireSuperAdmin，
+     * 非 super_admin 一律拒绝（业务异常「权限不足，仅超级管理员可操作」，403 语义）。</p>
+     *
+     * @param adminId 管理员用户 ID
+     * @throws RuntimeException 账号不存在或非超级管理员时抛出
+     */
+    public void requireSuperAdmin(Long adminId) {
+        requireSuperAdmin(findAdmin(adminId));
+    }
+
     private User findAdmin(Long adminId) {
         return userRepository.findById(adminId)
                 .orElseThrow(() -> new RuntimeException("管理员不存在"));

@@ -31,6 +31,14 @@ public final class KnowledgeItemsColumn {
     public static final String COL_EMBEDDING = "embedding";
     /** 状态：online(启用)/offline(停用) */
     public static final String COL_STATUS = "status";
+    /** 来源文档 ID（NULL=手写条目），外键 → knowledge_documents.id，删除文档时级联清理 */
+    public static final String COL_DOC_ID = "doc_id";
+    /** 切片在源文档中的序号（0 基） */
+    public static final String COL_CHUNK_INDEX = "chunk_index";
+    /** 切片来源页码 */
+    public static final String COL_PAGE_NO = "page_no";
+    /** 切片章节标题路径 */
+    public static final String COL_SECTION_TITLE = "section_title";
     /** 录入管理员用户 ID */
     public static final String COL_CREATED_BY = "created_by";
     /** 创建时间 */

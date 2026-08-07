@@ -11,7 +11,7 @@
 | 后端 | Spring Boot 3.2 + JPA + PostgreSQL + pgvector |
 | 实时 | WebSocket 聊天中继（纯转发不落库，握手 JWT 鉴权） |
 | 认证 | JWT（C端 手机号+密码 / B端 账号密码；后端另提供微信 code 登录接口） |
-| AI | 智谱 GLM-4-Flash（文本审核/文案生成）+ GLM-4V-Flash（图片审核）+ embedding-3（语义向量）；知识库条目为 AI 助手「小邻」提供 RAG 检索源 |
+| AI | 智谱 GLM-4-Flash（文本审核/文案生成）+ GLM-4V-Flash（图片审核）+ embedding-3（语义向量）；本地 rerank-service（bge-reranker-v2-m3，FastAPI/Docker，仅回环 127.0.0.1:8001）；知识库条目为 AI 助手「小邻」提供 RAG 检索源 |
 
 ## 项目结构
 
@@ -23,27 +23,31 @@ community-platform/
 │       ├── main/java/com/platform/
 │       │   ├── config/        # CORS, Security, WebSocket, DataInitializer, SchemaMigration, AiConfig
 │       │   ├── security/      # JwtTokenProvider, JwtAuthenticationFilter, JwtHandshakeInterceptor
-│       │   ├── ai/            # AI 模块（嵌入、审核、匹配、RAG 检索、文案生成、Agent 对话）
+│       │   ├── ai/            # AI 模块（嵌入、审核、匹配、RAG 检索、文档导入、文案生成、Agent 对话）
 │       │   │   ├── embedding/ # EmbeddingClient, EmbeddingService
 │       │   │   ├── moderation/# ModerationClient/Service/Scheduler（内容审核）
 │       │   │   ├── matching/  # MatchingService/Scheduler（供需匹配）
-│       │   │   ├── search/    # SemanticSearchService, KnowledgeRetrievalService, KnowledgeHit（RAG 检索）
-│       │   │   └── agent/     # AgentController/Service/SessionService/ArchiveService/ArchiveScheduler/RateLimitService/PromptBuilder/ToolDispatcher/IntentRouter（小邻对话，Redis 会话记忆 + 归档 + 恢复 + SSE 流式 + 读工具调用 + 写操作动作卡片 + 限流）
-│       │   ├── model/entity/  # 15 JPA 实体（Tenant, Building, Unit, Room, User,
+│       │   │   ├── search/    # SemanticSearchService, KnowledgeRetrievalService, KnowledgeHit, RerankerService（RAG 检索 + 语义重排）
+│       │   │   ├── document/  # 文档导入：DocumentParserRegistry + pdf/docx/md/csv/xlsx/txt 解析器 + ocr/VisionOcrClient + 分片/清洗/标题派生 + DocumentProcessGuard（幂等防重）
+│       │   │   ├── common/    # AiApiInvoker（LLM 调用熔断/缓存/有界线程池）, PromptRepository（提示词目录读取）
+│       │   │   └── agent/     # AgentController/Service/SessionService/ArchiveService/ArchiveScheduler/RateLimitService/PromptBuilder/ToolDispatcher/IntentRouter/MessagePreFilter（小邻对话，Redis 会话记忆 + 归档 + 恢复 + SSE 流式 + 读工具调用 + 写操作动作卡片 + 限流 + 消息前置拦截）
+│       │   ├── model/entity/  # 19 JPA 实体（Tenant, Building, Unit, Room, User,
 │       │   │                  #   IdleItem, HelpRequest, HelpApplication,
 │       │   │                  #   BorrowRequest, Message, Notification,
-│       │   │                  #   OperationLog, Rating, ExportLog, KnowledgeItem）
-│       │   ├── model/entity/column/  # 17 表字段常量类（实体列名集中管理）
+│       │   │                  #   OperationLog, Rating, ExportLog, KnowledgeItem,
+│       │   │                  #   AgentConversation, AgentMessage, KnowledgeDocument, SensitiveWord）
+│       │   ├── model/entity/column/  # 19 表字段常量类（实体列名集中管理）
 │       │   ├── model/dto/     # DTO
-│       │   ├── repository/    # 15 Repository
-│       │   ├── service/       # 12 Service（含 WeChatService）
-│       │   ├── controller/    # 11 Controller
+│       │   ├── repository/    # 19 Repository
+│       │   ├── service/       # 15 Service（含 WeChatService、KnowledgeDocumentService、KnowledgeImportService、SensitiveWordService）
+│       │   ├── controller/    # 12 Controller
 │       │   ├── websocket/     # ChatWebSocketHandler, DashboardWebSocketHandler
 │       │   └── common/        # Result + Exception + 18 常量类（BizStatus, PostType, DamageType, KnowledgeCategory 等）
 │       ├── main/resources/
 │       │   ├── application.yml
-│       │   └── db/            # schema.sql（14 张表）+ seed-*.sql + alter-*.sql（知识库/Agent 归档 3 张增量表）
-│       └── test/java/com/platform/service/   # 8 个 Service 单元测试
+│       │   ├── prompts/       # 提示词目录（agent/system.md、block/replies.md、memory/*.md，由 PromptRepository 读取）
+│       │   └── db/            # schema.sql（14 张表）+ seed-*.sql + alter-*.sql（知识库/Agent 归档/敏感词 增量表）
+│       └── test/java/com/platform/   # 47 个单元测试类（ai/agent、ai/document、ai/common、ai/search、service、security 等）
 │
 ├── miniprogram/               # C端微信小程序
 │   ├── app.js / app.json / app.wxss
@@ -62,14 +66,15 @@ community-platform/
 ├── admin/                     # B端 Vue 3 后台
 │   └── src/
 │       # `@/` 路径别名 → src/（vite.config.js resolve + tsconfig paths）
-│       ├── views/             # 9 个视图（Dashboard, Audit, Content, Records,
-│       │                      #   Knowledge, Export, Settings, Home, Login）
+│       ├── views/             # 10 个视图（Dashboard, Audit, Content, Records,
+│       │                      #   Knowledge, SensitiveWord, Export, Settings, Home, Login）
 │       ├── components/        # AppSidebar, StatCard
 │       ├── stores/            # Pinia：auth, community
 │       ├── router/            # Vue Router + auth guard
 │       ├── utils/             # api.js (axios), ws.js
 │       └── styles/            # b-end.css
 │
+├── rerank-service/            # 语义重排服务（FastAPI + bge-reranker-v2-m3，Docker，仅回环 127.0.0.1:8001）
 ├── reviews/                   # 质量审查报告归档
 ├── CLAUDE.md                  # 项目约定与协作机制
 └── README.md
@@ -96,6 +101,7 @@ mvn spring-boot:run
 # schema.sql 自动建表；DataInitializer 播种管理员账号、小区/楼栋/单元/房号数据及平台帮助知识条目（5 条）
 # 需要在 PostgreSQL 中启用 pgvector 扩展：CREATE EXTENSION IF NOT EXISTS vector;
 # 需要 Redis（Agent 热会话/限流）：docker run --name community-redis -p 6379:6379 -d redis
+# 需要重排服务（可选，RAG 语义重排）：cd rerank-service && docker compose up -d（模型首次需从 ModelScope 下载）
 ```
 
 **AI 功能配置（可选）**：语义搜索、图片审核、文案润色需要智谱 AI API 密钥；文本生成、文本审核、Agent 对话需要 DeepSeek API 密钥：
@@ -149,7 +155,9 @@ C端用户通过手机号 + 密码注册登录（`register` 页注册，`login` 
 | 认证 | POST /api/auth/* | wx-login / login / phone-login / register / appeal，GET status |
 | 闲置 | /api/idle-items/** | 发布/列表/详情/搜索（支持 keyword/semantic/混合三种模式）/下架 |
 | AI | POST /api/ai/* | 管理员批量生成语义向量 |
-| AI 助手 | /api/agent/** | 小邻对话（POST chat，SSE 流式 + RAG 检索 + 读工具调用 + 写操作动作卡片 + Redis 会话记忆 + 限流）/ 推荐提问（GET suggestions）/ 历史会话（GET history 分页、POST history/{id}/resume 恢复、DELETE history 批量软删），需登录 |
+| AI 助手 | /api/agent/** | 小邻对话（POST chat，SSE 流式 + RAG 检索 + 读工具调用 + 写操作动作卡片 + Redis 会话记忆 + 限流 + 消息前置拦截）/ 推荐提问（GET suggestions）/ 历史会话（GET history 分页、POST history/{id}/resume 恢复、DELETE history 批量软删），需登录 |
+| 文档管理 | /api/knowledge-documents/** | 知识库源文档上传/列表/状态/删除/重传（多格式解析 + OCR + 切片 + embedding + 重排） |
+| 敏感词 | /api/sensitive-words/** | 敏感词增删改查/列表（仅 super_admin） |
 | 借入 | /api/borrow-requests/** | 申请/审批/归还确认 |
 | 技能求助 | /api/help-requests/** | 发布/列表/申请/审批 |
 | 评分 | /api/ratings/** | 提交评分/查看评分 |

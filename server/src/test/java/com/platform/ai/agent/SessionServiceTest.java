@@ -203,4 +203,30 @@ class SessionServiceTest {
         // 反序列化失败降级为无会话
         assertThat(session).isNull();
     }
+
+    // ==================== clearSession ====================
+
+    @Test
+    @DisplayName("清空会话 - 重置为空会话并写回 Redis")
+    void should_clearSession_resetToEmpty() throws Exception {
+        AtomicReference<String> savedJson = new AtomicReference<>();
+        doAnswer(inv -> {
+            savedJson.set(inv.getArgument(1));
+            return null;
+        }).when(valueOperations).set(eq("agent:session:1"), anyString(), any(Duration.class));
+
+        sessionService.clearSession(1L);
+
+        AgentSession saved = objectMapper.readValue(savedJson.get(), AgentSession.class);
+        assertThat(saved.getMessages()).isEmpty();
+        assertThat(saved.getConversationId()).isNull();
+    }
+
+    @Test
+    @DisplayName("清空会话 - 与 saveSession 一致以 TTL 续期写回")
+    void should_clearSession_renewTtl() {
+        sessionService.clearSession(1L);
+
+        verify(valueOperations).set(eq("agent:session:1"), anyString(), eq(Duration.ofHours(24)));
+    }
 }

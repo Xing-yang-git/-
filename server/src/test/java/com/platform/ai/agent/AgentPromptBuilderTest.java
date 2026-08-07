@@ -23,8 +23,8 @@ class AgentPromptBuilderTest {
 
     private List<KnowledgeHit> hits() {
         return List.of(
-                new KnowledgeHit(1L, "装修时间规定", "工作日 8:00-12:00", "rules", "小区规章制度", 0.1),
-                new KnowledgeHit(2L, "垃圾投放", "分类投放", "service", "小区服务手册", 0.2));
+                new KnowledgeHit(1L, "装修时间规定", "工作日 8:00-12:00", "rules", "小区规章制度", 0.1, "装修施工 / 施工时间", 3),
+                new KnowledgeHit(2L, "垃圾投放", "分类投放", "service", "小区服务手册", 0.2, null, null));
     }
 
     @Test
@@ -37,6 +37,8 @@ class AgentPromptBuilderTest {
         String system = messages.get(0).getText();
         assertThat(system).contains("你是阳光花园小区的智能助手「小邻」");
         assertThat(system).contains("[1] 来源：《小区规章制度》 | 分类：rules");
+        assertThat(system).contains("| 章节：装修施工 / 施工时间");
+        assertThat(system).contains("| 第 3 页");
         assertThat(system).contains("工作日 8:00-12:00");
         assertThat(system).contains("根据《小区规章制度》");
         assertThat(messages.get(1)).isInstanceOf(UserMessage.class);

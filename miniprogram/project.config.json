@@ -1,9 +1,5 @@
 {
   "description": "社区互助闲置平台",
-  "packOptions": {
-    "ignore": [],
-    "include": []
-  },
   "setting": {
     "urlCheck": false,
     "es6": true,
@@ -24,8 +20,6 @@
     "compileHotReLoad": false,
     "lazyloadPlaceholderEnable": false,
     "useMultiFrameRuntime": true,
-    "useApiHook": true,
-    "useApiHostProcess": true,
     "babelSetting": {
       "ignore": [],
       "disablePlugins": [],
@@ -41,12 +35,10 @@
     "disableUseStrict": false,
     "useCompilerPlugins": false,
     "swc": false,
-    "disableSWC": true
+    "disableSWC": true,
+    "ignoreUploadUnusedFiles": true
   },
   "compileType": "miniprogram",
-  "libVersion": "3.3.4",
-  "appid": "wx410a8754a30ef1e6",
-  "projectname": "community-platform",
   "condition": {
     "search": {},
     "conversation": {},
@@ -58,5 +50,10 @@
   "editorSetting": {
     "tabIndent": "insertSpaces",
     "tabSize": 2
-  }
+  },
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "appid": "wx410a8754a30ef1e6"
 }

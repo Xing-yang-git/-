@@ -2,7 +2,7 @@
  * 管理端 API 模块 — 封装 /api/admin/* 全部接口，严格 TypeScript 类型。
  */
 
-import { get, post, put, del } from '../utils/api';
+import api, { get, post, put, del } from '../utils/api';
 import type { AxiosResponse } from 'axios';
 
 // ============================================================
@@ -679,40 +679,136 @@ export const KNOWLEDGE_CATEGORY = {
   GUIDE: 'guide'
 } as const;
 
-/** 知识条目分类联合类型 */
-export type KnowledgeCategoryKey = typeof KNOWLEDGE_CATEGORY[keyof typeof KNOWLEDGE_CATEGORY];
+/** 知识库当前支持上传的文件扩展名（TXT/Excel/CSV 暂时禁用，与后端对齐） */
+export const KNOWLEDGE_FILE_EXTS = ['.md', '.pdf', '.docx'] as const;
 
-/** 知识库列表查询参数 */
-export interface KnowledgeListParams {
+/** 知识库源文档 DTO（前端实际使用的字段；后端不再传递 tenantId/tags/chunkCount/createdAt） */
+export interface KnowledgeDocumentDTO {
+  /** 源文档 ID */
+  id: number;
+  /** 分类：rules/service/help/guide */
+  category: string;
+  /** 原始文件名（含扩展名） */
+  fileName: string;
+  /** 文件类型：md/txt/pdf/docx/xlsx/csv */
+  fileType: string;
+  /** 展示来源名（默认文件名去扩展名，问答引用出处） */
+  source?: string;
+  /** 处理状态：parsing(解析中)/ready(就绪)/failed(失败可重试) */
+  status: string;
+  /** 失败原因 / 部分内容未处理警告 */
+  errorMessage?: string;
+  /** 更新时间 */
+  updatedAt: string;
+}
+
+/** 文档列表查询参数 */
+export interface KnowledgeDocumentListParams {
   /** 页码（从 0 开始） */
   page?: number;
   /** 每页条数 */
   size?: number;
-  /** 分类过滤 */
-  category?: string;
-  /** 状态过滤：online/offline */
+  /** 状态过滤：parsing/ready/failed */
   status?: string;
-  /** 关键词（标题/正文/标签） */
-  keyword?: string;
 }
 
-/** 知识条目 DTO（不含 embedding 向量） */
-export interface KnowledgeItemDTO {
-  /** 知识条目 ID */
-  id: number;
-  /** 所属小区 ID */
-  tenantId: number;
+/** 上传知识文档（multipart：文件 + 分类 + 是否替换） */
+export function importKnowledgeDocument(params: {
+  /** 上传文件 */
+  file: File;
   /** 分类：rules/service/help/guide */
   category: string;
-  /** 条目标题 */
-  title: string;
-  /** 条目正文 */
-  content: string;
-  /** 来源文档名 */
-  source?: string;
-  /** 逗号分隔标签 */
-  tags?: string;
-  /** 状态：online(启用)/offline(停用) */
+  /** 同名文档是否替换（替换先删旧文档） */
+  replace?: boolean;
+}): Promise<AxiosResponse> {
+  const form = new FormData();
+  form.append('file', params.file);
+  form.append('category', params.category);
+  form.append('replace', String(!!params.replace));
+  return api.post('/api/admin/knowledge/documents/import', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 60000
+  });
+}
+
+/**
+ * 批量上传知识文档 — 逐个复用单文件接口，返回成功数与会话失败文件名。
+ *
+ * @param files       待上传文件列表（已过滤不支持类型）
+ * @param category    分类：rules/service/help/guide
+ * @param replaceNames 需替换同名旧文档的文件名集合
+ * @return 成功数 + 失败文件名列表（单文件失败不影响其余）
+ */
+export async function importKnowledgeDocuments(
+  files: File[],
+  category: string,
+  replaceNames: Set<string>
+): Promise<{ success: number; failed: string[] }> {
+  const results = await Promise.allSettled(
+    files.map((file) =>
+      importKnowledgeDocument({ file, category, replace: replaceNames.has(file.name) })
+    )
+  );
+  let success = 0;
+  const failed: string[] = [];
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled') {
+      success++;
+    } else {
+      failed.push(files[i].name);
+    }
+  });
+  return { success, failed };
+}
+
+/** 文档列表（一次性获取全量） */
+export function getKnowledgeDocuments(params: KnowledgeDocumentListParams = {}): Promise<AxiosResponse> {
+  return get('/api/admin/knowledge/documents', {
+    page: params.page ?? 0,
+    size: params.size ?? 10,
+    status: params.status
+  });
+}
+
+/** 删除文档（清库全量：切片 + 文档行 + 落盘文件） */
+export function deleteKnowledgeDocument(id: number): Promise<AxiosResponse> {
+  return del(`/api/admin/knowledge/documents/${id}`);
+}
+
+/** 重试解析失败文档 */
+export function retryKnowledgeDocument(id: number): Promise<AxiosResponse> {
+  return post(`/api/admin/knowledge/documents/${id}/retry`);
+}
+
+// ============================================================
+// 敏感词管理（仅 super_admin）
+// ============================================================
+
+/** 敏感词状态（与后端 SensitiveWordStatus 对齐） */
+export const SENSITIVE_WORD_STATUS = {
+  /** 启用 */
+  ENABLED: 'ENABLED',
+  /** 停用 */
+  DISABLED: 'DISABLED',
+} as const;
+
+/** 敏感词列表查询参数 */
+export interface SensitiveWordListParams {
+  /** 页码（从 0 开始） */
+  page?: number;
+  /** 每页条数 */
+  size?: number;
+  /** 状态过滤：ENABLED/DISABLED，缺省查全部 */
+  status?: string;
+}
+
+/** 敏感词 DTO（与后端 SensitiveWordDTO 对齐） */
+export interface SensitiveWordDTO {
+  /** 敏感词 ID */
+  id: number;
+  /** 敏感词原文 */
+  word: string;
+  /** 状态：ENABLED(启用)/DISABLED(停用) */
   status: string;
   /** 创建时间 */
   createdAt: string;
@@ -720,51 +816,41 @@ export interface KnowledgeItemDTO {
   updatedAt: string;
 }
 
-/** 知识条目创建/更新请求体 */
-export interface KnowledgeBody {
-  /** 所属小区 ID（super_admin 创建时必须指定） */
-  tenantId?: number;
-  /** 分类：rules/service/help/guide */
-  category: string;
-  /** 条目标题 */
-  title: string;
-  /** 条目正文 */
-  content: string;
-  /** 来源文档名 */
-  source?: string;
-  /** 逗号分隔标签 */
-  tags?: string;
-  /** 状态：online/offline */
+/** 新增/编辑敏感词请求体 */
+export interface SensitiveWordBody {
+  /** 敏感词原文（必填） */
+  word: string;
+  /** 状态：ENABLED(启用)/DISABLED(停用)，新增时缺省 ENABLED */
   status?: string;
 }
 
-/** 分页查询知识条目 */
-export function getKnowledgeList(params: KnowledgeListParams = {}): Promise<AxiosResponse> {
-  return get('/api/admin/knowledge', {
+/** 敏感词分页列表 */
+export function getSensitiveWords(
+  params: SensitiveWordListParams = {},
+): Promise<AxiosResponse> {
+  return get('/api/admin/sensitive-words', {
     page: params.page ?? 0,
     size: params.size ?? 10,
-    category: params.category,
     status: params.status,
-    keyword: params.keyword
   });
 }
 
-/** 创建知识条目（自动生成向量） */
-export function createKnowledge(body: KnowledgeBody): Promise<AxiosResponse> {
-  return post('/api/admin/knowledge', body);
+/** 新增敏感词（词重复返回业务错误） */
+export function createSensitiveWord(
+  body: SensitiveWordBody,
+): Promise<AxiosResponse> {
+  return post('/api/admin/sensitive-words', body);
 }
 
-/** 更新知识条目（内容变更后重新生成向量） */
-export function updateKnowledge(id: number, body: KnowledgeBody): Promise<AxiosResponse> {
-  return put(`/api/admin/knowledge/${id}`, body);
+/** 编辑敏感词（word/status） */
+export function updateSensitiveWord(
+  id: number,
+  body: SensitiveWordBody,
+): Promise<AxiosResponse> {
+  return put(`/api/admin/sensitive-words/${id}`, body);
 }
 
-/** 软上下架知识条目 */
-export function setKnowledgeStatus(id: number, status: string): Promise<AxiosResponse> {
-  return put(`/api/admin/knowledge/${id}/status`, { status });
-}
-
-/** 批量补齐缺失向量 */
-export function reindexKnowledge(): Promise<AxiosResponse> {
-  return post('/api/admin/knowledge/reindex');
+/** 删除敏感词 */
+export function deleteSensitiveWord(id: number): Promise<AxiosResponse> {
+  return del(`/api/admin/sensitive-words/${id}`);
 }

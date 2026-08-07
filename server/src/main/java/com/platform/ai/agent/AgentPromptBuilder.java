@@ -94,8 +94,15 @@ public class AgentPromptBuilder {
         for (KnowledgeHit hit : hits) {
             String source = hit.source() != null ? hit.source() : "小区资料";
             sb.append("[").append(idx).append("] 来源：《").append(source)
-                    .append("》 | 分类：").append(hit.category()).append("\n")
-                    .append(hit.content()).append("\n");
+                    .append("》 | 分类：").append(hit.category());
+            // 文档切片附注章节/页码，增强引用准确性
+            if (hit.sectionTitle() != null && !hit.sectionTitle().isBlank()) {
+                sb.append(" | 章节：").append(hit.sectionTitle());
+            }
+            if (hit.pageNo() != null) {
+                sb.append(" | 第 ").append(hit.pageNo()).append(" 页");
+            }
+            sb.append("\n").append(hit.content()).append("\n");
             idx++;
         }
         return sb.toString();

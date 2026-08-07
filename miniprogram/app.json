@@ -5,6 +5,11 @@
       "provider": "wx069ba97219f66d99"
     }
   },
+  "permission": {
+    "scope.record": {
+      "desc": "用于按住说话语音输入提问"
+    }
+  },
   "pages": [
     "pages/login/login",
     "pages/register/register",

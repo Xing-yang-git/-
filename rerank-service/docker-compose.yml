@@ -1,0 +1,18 @@
+# bge-reranker-v2-m3 独立重排服务 — 与 pgvector17 / community-redis 同在 Docker
+services:
+  rerank:
+    build: .
+    container_name: community-rerank
+    ports:
+      # 仅绑定本机回环地址，避免局域网任意客户端 POST /api/rerank 消耗推理资源
+      - "127.0.0.1:8001:8001"
+    environment:
+      # 模型由部署脚本从 ModelScope 下载到 /models/bge-reranker-v2-m3（hf-mirror 不支持 HEAD，无法用 huggingface_hub 在线加载）
+      - RERANK_MODEL_DIR=/models/bge-reranker-v2-m3
+    volumes:
+      # 模型持久化卷：下载一次，容器重启/重建不重复下载
+      - rerank-models:/models
+    restart: unless-stopped
+
+volumes:
+  rerank-models:

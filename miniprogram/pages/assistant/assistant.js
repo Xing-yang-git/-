@@ -1,8 +1,13 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
 const { POST_TYPE, STORAGE_KEY } = require('../../utils/constants');
-// 微信同声传译插件（语音转文字），需在 app.json plugins 注册 + 小程序后台添加插件
-const speechManager = requirePlugin('WechatSI').getRecordRecognitionManager();
+// 语音识别管理器实例：不在模块顶层 requirePlugin——微信官方要求插件在运行时动态加载，
+// 插件环境未就绪（后台已添加但工具未启用插件调试/缓存未刷新）时顶层调用会让模块加载直接抛
+// 「Plugin is not defined」导致整页打不开。改在 initSpeech（onLoad 阶段）动态加载 + try-catch 降级
+let speechManager = null;
+
+/** SSE 静默看门狗时长（毫秒）：收到任何分块即重置，仅当流真正静默超时才判超时 */
+const WATCHDOG_SILENCE_MS = 45000;
 
 /**
  * 小邻 — AI 智能助手对话页（独立单页面，无底部导航栏，对齐聊天页）。
@@ -79,6 +84,16 @@ Page({
   initSpeech() {
     if (this._speechInited) return;
     this._speechInited = true;
+    // 运行时动态加载微信同声传译插件（语音转文字）：模块顶层不调用 requirePlugin
+    if (!speechManager) {
+      try {
+        speechManager = requirePlugin('WechatSI').getRecordRecognitionManager();
+      } catch (e) {
+        console.warn('[assistant] WechatSI 插件不可用，语音输入已降级:', e && e.message);
+      }
+    }
+    // 插件未启用时跳过回调注册，避免对 null 调用 onStop/onError 抛 TypeError
+    if (!speechManager) return;
     speechManager.onStop = (res) => {
       // 识别完成：文字直接发送（不进输入框）；截断到输入上限，避免后端 @Size 拒绝
       this.setData({ recording: false });
@@ -116,8 +131,58 @@ Page({
   /** 按住开始录音识别（voice 模式按压区） */
   onVoiceStart(e) {
     if (this.data.sending) return;
+    // 插件未启用时语音不可用：给提示而非对 null speechManager 调用 start 抛错
+    if (!speechManager) {
+      wx.showToast({ title: '语音功能未启用', icon: 'none' });
+      return;
+    }
     // 防重复触发录音（对齐 chat 页 onRecordStart；Android touch 事件偶现重复触发）
     if (this.data.recording) return;
+    // 先申请录音权限再开始：未授权时微信不会录音，start 会走 onError（-2 未授权）
+    this._ensureRecordAuth().then((granted) => {
+      if (granted) this._beginRecord(e);
+    });
+  },
+
+  /**
+   * 检查并申请麦克风权限（scope.record）。
+   *
+   * <p>首次请求弹系统授权框；已拒绝过则引导去设置页开启。
+   * getSetting 异常时不阻断（由 start 的 onError 兜底提示）。</p>
+   *
+   * @return {Promise<boolean>} 是否已获得录音权限
+   */
+  _ensureRecordAuth() {
+    return new Promise((resolve) => {
+      wx.getSetting({
+        success: (res) => {
+          if (res.authSetting['scope.record']) {
+            resolve(true);
+            return;
+          }
+          wx.authorize({
+            scope: 'scope.record',
+            success: () => resolve(true),
+            fail: () => {
+              wx.showModal({
+                title: '需要麦克风权限',
+                content: '语音输入需要麦克风权限，请在设置中开启',
+                confirmText: '去设置',
+                success: (r) => {
+                  if (r.confirm) wx.openSetting();
+                },
+              });
+              resolve(false);
+            },
+          });
+        },
+        fail: () => resolve(true),
+      });
+    });
+  },
+
+  /** 获得录音权限后真正开始录音识别 */
+  _beginRecord(e) {
     // 记录起始触摸 Y（上滑取消判断基准；触摸信息由组件透传在 e.detail）
     this._recordStartY = (e.detail.touches && e.detail.touches[0]) ? e.detail.touches[0].clientY : 0;
     this._recordCancelled = false;
@@ -252,29 +317,38 @@ Page({
    */
   sendMessage(msg) {
     const userMsg = { id: 'u' + (++this._msgSeq), role: 'user', content: msg, sources: [], streaming: false };
-    const aiMsg = { id: 'a' + (++this._msgSeq), role: 'assistant', content: '', sources: [], streaming: true };
+    const aiMsg = { id: 'a' + (++this._msgSeq), role: 'assistant', content: '', sources: [], streaming: true, failed: false, retryText: msg };
     const messages = this.data.messages.concat([userMsg, aiMsg]);
     this._currentMsgId = aiMsg.id;
     this._sseBuffer = '';
     this.setData({ messages, inputText: '', sending: true, scrollToView: aiMsg.id });
 
-    // 兜底看门狗：60s 内未收到 end/error 则强制结束流，避免后端挂起时永久卡在"回复中"
-    if (this._streamWatchdog) clearTimeout(this._streamWatchdog);
-    this._streamWatchdog = setTimeout(() => {
-      if (!this.data.sending) return;
-      if (this._abortStream) { this._abortStream(); this._abortStream = null; }
-      const messages = this.data.messages.map((m) => {
-        if (m.id === this._currentMsgId) {
-          return { ...m, content: (m.content || '') + '\n（回复超时，请点击重试）', streaming: false };
-        }
-        return m;
-      });
-      this.setData({ messages, sending: false });
-    }, 60000);
+    // 静默看门狗：收到任何 SSE 分块即重置，仅当流真正静默超时才判超时（见 _onSseChunk）
+    this._armStreamWatchdog();
 
     this._abortStream = api.requestStream('/api/agent/chat', { message: msg },
       (chunk) => this._onSseChunk(chunk),
       () => this._onStreamError());
+  },
+
+  /**
+   * 挂载/重置静默看门狗：每次收到流数据都会重新计时，
+   * 只有连续 WATCHDOG_SILENCE_MS 毫秒没有任何分块到达才判超时，避免误杀正常慢流。
+   */
+  _armStreamWatchdog() {
+    if (this._streamWatchdog) { clearTimeout(this._streamWatchdog); this._streamWatchdog = null; }
+    this._streamWatchdog = setTimeout(() => {
+      if (!this.data.sending) return;
+      if (this._abortStream) { this._abortStream(); this._abortStream = null; }
+      const msgId = this._currentMsgId;
+      const messages = this.data.messages.map((m) => {
+        if (m.id === msgId) {
+          return { ...m, content: (m.content || '') + '\n（回复超时）', streaming: false, failed: true };
+        }
+        return m;
+      });
+      this.setData({ messages, sending: false });
+    }, WATCHDOG_SILENCE_MS);
   },
 
   /** SSE 分块累积 + 按事件边界切分（兼容 \r\n 行尾，统一归一化） */
@@ -287,6 +361,8 @@ Page({
       this._sseBuffer = this._sseBuffer.slice(idx + 2);
       this._handleSseEvent(event);
     }
+    // 收到任何数据 = 流存活，重置静默看门狗（流结束后不重挂，避免悬空定时器）
+    if (this.data.sending) this._armStreamWatchdog();
   },
 
   /** 处理单个 SSE 事件（event: X + data: JSON） */
@@ -305,8 +381,12 @@ Page({
       this._setSources(evt.data || []);
     } else if (type === 'action') {
       this._setActions(evt.data || []);
+    } else if (type === 'replace') {
+      // 后端在流结束后剔除写操作意图 JSON，用干净文案整体替换气泡内容
+      this._setContent(evt.data || '');
     } else if (type === 'error') {
       this._appendToCurrent('（出错了：' + (evt.data || '请稍后重试') + '）');
+      this._markFailed();
       this._finishStream();
     } else if (type === 'end') {
       this._finishStream();
@@ -321,6 +401,16 @@ Page({
       return m;
     });
     this.setData({ messages, scrollToView: msgId });
+  },
+
+  /** 整体替换当前 AI 消息内容（后端剔除写操作意图 JSON 后刷新展示） */
+  _setContent(text) {
+    const msgId = this._currentMsgId;
+    const messages = this.data.messages.map((m) => {
+      if (m.id === msgId) return { ...m, content: text };
+      return m;
+    });
+    this.setData({ messages });
   },
 
   /** 为当前 AI 消息设置引用来源 */
@@ -381,10 +471,29 @@ Page({
     if (this._streamWatchdog) { clearTimeout(this._streamWatchdog); this._streamWatchdog = null; }
     const msgId = this._currentMsgId;
     const messages = this.data.messages.map((m) => {
-      if (m.id === msgId) return { ...m, content: m.content + '\n（网络中断，请点击重试）', streaming: false };
+      if (m.id === msgId) {
+        return { ...m, content: m.content + '\n（网络中断）', streaming: false, failed: true };
+      }
       return m;
     });
     this.setData({ messages, sending: false });
+  },
+
+  /** 将当前 AI 消息标记为失败（供重试按钮渲染；retryText 在创建消息时已存原始问题） */
+  _markFailed() {
+    const msgId = this._currentMsgId;
+    const messages = this.data.messages.map((m) => {
+      if (m.id === msgId) return { ...m, failed: true };
+      return m;
+    });
+    this.setData({ messages });
+  },
+
+  /** 点击失败气泡下方的重试入口：原问题重发（不自动重发，仅用户显式触发） */
+  onRetryTap(e) {
+    const msg = e.currentTarget.dataset.msg;
+    if (!msg || this.data.sending) return;
+    this.sendMessage(msg);
   },
 
   /** 键盘弹起/收起：输入区跟随抬升 */

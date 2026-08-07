@@ -9,6 +9,7 @@ import com.platform.model.dto.AgentChatRequest;
 import com.platform.model.dto.AgentStreamEvent;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -29,6 +30,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * AI Agent「小邻」对话 REST API（C端，仅登录即可访问）。
@@ -54,17 +56,20 @@ public class AgentController {
     private final ObjectMapper objectMapper;
     private final RateLimitService rateLimitService;
     private final ThreadPoolTaskExecutor agentExecutor;
+    private final IntentRouter intentRouter;
 
     public AgentController(AgentService agentService,
                            ArchiveService archiveService,
                            ObjectMapper objectMapper,
                            RateLimitService rateLimitService,
-                           ThreadPoolTaskExecutor agentExecutor) {
+                           ThreadPoolTaskExecutor agentExecutor,
+                           IntentRouter intentRouter) {
         this.agentService = agentService;
         this.archiveService = archiveService;
         this.objectMapper = objectMapper;
         this.rateLimitService = rateLimitService;
         this.agentExecutor = agentExecutor;
+        this.intentRouter = intentRouter;
     }
 
     /**
@@ -98,50 +103,135 @@ public class AgentController {
 
         agentExecutor.execute(() -> {
             try {
-                emitter.send(SseEmitter.event().name("start")
-                        .data(toJson("start", Map.of("message", req.getMessage()))));
+                safeSend(emitter, "start", Map.of("message", req.getMessage()));
 
-                // Phase A：RAG 检索 + 生成全文（阻塞，一次性完成）
-                AgentChatResult result = agentService.chat(userId, req.getMessage());
+                // 流式编排：问候秒回；普通对话走 Spring AI 真流式（工具在流内自动执行）
+                AgentService.AgentChatStream stream = agentService.chatStream(userId, req.getMessage());
 
-                // 伪流式：全文分块播放（模拟逐字输出）
-                for (String chunk : chunk(result.reply(), 8)) {
-                    emitter.send(SseEmitter.event().name("answer").data(toJson("answer", chunk)));
-                    try {
-                        Thread.sleep(30);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
+                if (stream.isGreeting()) {
+                    // 问候快速通道：直接播固定文案（不订阅内容流）
+                    safeSend(emitter, "answer", stream.greetingReply());
+                    safeSend(emitter, "end", Map.of("done", true));
+                    emitter.complete();
+                    return;
                 }
 
-                // 引用来源（后端检索结果，非模型输出）
-                emitter.send(SseEmitter.event().name("sources").data(toJson("sources", result.sources())));
-
-                // 动作卡片（写操作，需用户确认；前端渲染确认卡片后跳发布页预填）
-                if (result.actions() != null && !result.actions().isEmpty()) {
-                    emitter.send(SseEmitter.event().name("action").data(toJson("action", result.actions())));
+                if (stream.isBlocked()) {
+                    // 前置过滤器拦截：直接播本地文案（不订阅内容流，不写会话历史）
+                    safeSend(emitter, "answer", stream.blockReply());
+                    safeSend(emitter, "end", Map.of("done", true));
+                    emitter.complete();
+                    return;
                 }
 
-                emitter.send(SseEmitter.event().name("end").data(toJson("end", Map.of("done", true))));
-                emitter.complete();
+                // 引用来源（RAG 完成即发，用户等待回复时即可看到参考）
+                safeSend(emitter, "sources", stream.sources());
+
+                // 真流式：模型内容分块直发。
+                // 写操作意图 JSON（模型按要求直接返回 {"intent":...}）会混进内容流——
+                // 若首个分块以 { 开头（纯 JSON 意图），暂缓转发，等流结束解析后替换为友好文案，
+                // 避免用户看到裸 JSON。
+                StringBuilder full = new StringBuilder();
+                StringBuilder held = new StringBuilder();
+                AtomicBoolean jsonHeldBack = new AtomicBoolean(false);
+
+                stream.contentFlux()
+                        .doOnNext(cr -> {
+                            String delta = extractText(cr);
+                            if (delta == null || delta.isEmpty()) {
+                                return;
+                            }
+                            full.append(delta);
+                            if (jsonHeldBack.get()) {
+                                held.append(delta);
+                            } else if (full.length() == delta.length() && delta.trim().startsWith("{")) {
+                                jsonHeldBack.set(true);
+                                held.append(delta);
+                            } else {
+                                safeSend(emitter, "answer", delta);
+                            }
+                        })
+                        .doOnComplete(() -> {
+                            String fullText = full.toString();
+                            AgentAction action = intentRouter.parse(fullText);
+                            String displayReply = agentService.cleanReply(fullText, action);
+                            if (jsonHeldBack.get()) {
+                                // 纯 JSON：是意图则替换为友好文案 + 动作卡片；否则原样补发
+                                if (action != null) {
+                                    safeSend(emitter, "answer", displayReply);
+                                    safeSend(emitter, "action", List.of(action));
+                                } else {
+                                    safeSend(emitter, "answer", held.toString());
+                                }
+                            } else if (action != null) {
+                                // 文本 + JSON：replace 事件用剔除 JSON 后的文案刷新气泡
+                                safeSend(emitter, "replace", displayReply);
+                                safeSend(emitter, "action", List.of(action));
+                            }
+                            // 回填会话（user + assistant 展示文案）并触发归档
+                            agentService.completeStream(userId, req.getMessage(), displayReply, stream.sources(), action);
+                            safeSend(emitter, "end", Map.of("done", true));
+                            emitter.complete();
+                        })
+                        .doOnError(e -> {
+                            log.error("Agent 流式对话失败: userId={}", userId, e);
+                            String safeMessage = toSafeMessage(e);
+                            safeSend(emitter, "error", safeMessage);
+                            emitter.completeWithError(e);
+                        })
+                        .subscribe();
             } catch (Exception e) {
                 // 安全映射：只透出白名单业务文案，内部细节（SQL/上游错误）仅记日志
-                String safeMessage = "服务开小差了，请稍后重试";
-                if (e instanceof AiGenerationException || e instanceof BizException) {
-                    safeMessage = e.getMessage();
-                }
                 log.error("Agent 对话失败: userId={}", userId, e);
-                try {
-                    emitter.send(SseEmitter.event().name("error").data(toJson("error", safeMessage)));
-                } catch (IOException ignored) {
-                    // 连接已断开，忽略
-                }
+                String safeMessage = toSafeMessage(e);
+                safeSend(emitter, "error", safeMessage);
                 emitter.completeWithError(e);
             }
         });
 
         return emitter;
+    }
+
+    /**
+     * 将异常映射为对用户安全的文案（内部细节仅记日志）。
+     *
+     * @param e 异常（含响应式流的 Throwable）
+     * @return 可透出的业务文案
+     */
+    private String toSafeMessage(Throwable e) {
+        if (e instanceof AiGenerationException || e instanceof BizException) {
+            return e.getMessage();
+        }
+        return "服务开小差了，请稍后重试";
+    }
+
+    /**
+     * 从流式 ChatResponse 中提取文本增量。
+     *
+     * @param cr Spring AI 流式响应
+     * @return 文本增量，或 null
+     */
+    private String extractText(ChatResponse cr) {
+        if (cr == null || cr.getResult() == null || cr.getResult().getOutput() == null) {
+            return null;
+        }
+        String text = cr.getResult().getOutput().getText();
+        return text == null ? null : text;
+    }
+
+    /**
+     * 发送 SSE 事件（连接已断开时静默忽略，避免污染日志）。
+     *
+     * @param emitter SSE 发射器
+     * @param name    事件名
+     * @param data    事件数据（序列化为 AgentStreamEvent JSON）
+     */
+    private void safeSend(SseEmitter emitter, String name, Object data) {
+        try {
+            emitter.send(SseEmitter.event().name(name).data(toJson(name, data)));
+        } catch (IOException e) {
+            log.debug("SSE 发送失败（连接可能已断开）: name={}", name);
+        }
     }
 
     /**
@@ -246,20 +336,5 @@ public class AgentController {
      */
     private String toJson(String type, Object data) throws JsonProcessingException {
         return objectMapper.writeValueAsString(new AgentStreamEvent(type, data));
-    }
-
-    /**
-     * 将文本按固定长度切块（伪流式播放用）。
-     *
-     * @param text 完整文本
-     * @param size 每块字符数
-     * @return 分块列表
-     */
-    private List<String> chunk(String text, int size) {
-        List<String> chunks = new ArrayList<>();
-        for (int i = 0; i < text.length(); i += size) {
-            chunks.add(text.substring(i, Math.min(i + size, text.length())));
-        }
-        return chunks;
     }
 }

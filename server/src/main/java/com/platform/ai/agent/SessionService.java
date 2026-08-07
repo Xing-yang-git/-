@@ -91,6 +91,17 @@ public class SessionService {
     }
 
     /**
+     * 清空用户热会话（供消息前置过滤器处理 /clear、/reset、清除对话 等控制指令时调用）。
+     *
+     * <p>重置为空对象并保存（saveSession 自带 TTL 续期），新会话从空上下文开始。</p>
+     *
+     * @param userId 住户用户 ID
+     */
+    public void clearSession(Long userId) {
+        saveSession(userId, new AgentSession());
+    }
+
+    /**
      * 追加一条消息并写回（含截断）。
      *
      * @param userId  住户用户 ID

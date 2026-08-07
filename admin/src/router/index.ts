@@ -66,6 +66,13 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '知识库' },
   },
   {
+    /** 敏感词管理 — AI 对话输入前置过滤词库，仅超级管理员可访问 */
+    path: '/sensitive-words',
+    name: 'SensitiveWords',
+    component: () => import('../views/SensitiveWordView.vue'),
+    meta: { title: '敏感词管理' },
+  },
+  {
     /** 数据导出 — 多维度 Excel 导出 + 导出历史，需高级管理员权限 */
     path: '/export',
     name: 'Export',
@@ -89,6 +96,9 @@ const router = createRouter({
 
 /** 需要高级管理员及以上权限的路由 */
 const SENIOR_ROUTES = ['/settings', '/export'];
+
+/** 仅超级管理员可访问的路由（敏感词管理等平台级配置） */
+const SUPER_ONLY_ROUTES = ['/sensitive-words'];
 
 /** 超级管理员无权访问的业务数据路由 */
 const DATA_ROUTES = ['/dashboard', '/audit', '/content', '/records', '/knowledge', '/export'];
@@ -115,13 +125,23 @@ router.beforeEach((to, _from, next) => {
 
   const ut = getUserType();
 
-  // super_admin 仅可访问 /settings，其余页面均重定向到 /settings
+  // super_admin 仅可访问 /settings、/home 与仅超级管理员路由，其余页面均重定向到 /settings
   if (ut === USER_TYPE.SUPER_ADMIN) {
-    if (to.path === '/settings' || to.path === '/home') {
+    if (
+      to.path === '/settings' ||
+      to.path === '/home' ||
+      SUPER_ONLY_ROUTES.includes(to.path)
+    ) {
       next();
       return;
     }
     next('/settings');
+    return;
+  }
+
+  // 仅超级管理员路由：普通/高级管理员一律拒绝
+  if (SUPER_ONLY_ROUTES.includes(to.path)) {
+    next('/home');
     return;
   }
 

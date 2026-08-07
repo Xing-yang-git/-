@@ -67,6 +67,18 @@
       </div>
 
       <div
+        v-if="isSuperAdmin"
+        class="sidebar-item"
+        :class="{ active: activeRoute === '/sensitive-words' }"
+        @click="$router.push('/sensitive-words')"
+      >
+        <span class="icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2l7 3v6c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V5l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+        </span>
+        <span>敏感词管理</span>
+      </div>
+
+      <div
         v-if="isSeniorAdmin"
         class="sidebar-item"
         :class="{ active: activeRoute === '/export' }"

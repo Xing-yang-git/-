@@ -55,8 +55,9 @@ spring:
 
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 20MB
+      # 知识文档上传（扫描版 PDF 可达 20-30MB）：单文件 20MB，整体请求 40MB
+      max-file-size: 20MB
+      max-request-size: 40MB
 
   # Redis — Agent 热会话 + 限流（Docker community-redis 容器）
   data:
@@ -87,11 +88,14 @@ jwt:
 # 文件上传路径
 file:
   upload-dir: ./uploads
+  # 知识库源文档独立目录（不落 /uploads 静态区，防止源文件被公开访问）
+  knowledge-dir: ./knowledge-docs
 
 logging:
   level:
     com.platform: DEBUG
     org.springframework.security: DEBUG
+    org.springframework.web.client: DEBUG
 
 # AI 配置
 ai:
@@ -107,6 +111,11 @@ ai:
       api-key: ${BIGMODEL_EMBEDDING3_KEY:your-api-key}
       base-url: https://open.bigmodel.cn/api/paas/v4
       model-vision: glm-4v-flash
+  # 独立重排服务（rerank-service Docker 容器，bge-reranker-v2-m3 / FastAPI）
+  # 必须用 127.0.0.1 而非 localhost：Java 解析 localhost 优先 IPv6(::1)，会打到 WSL 的 8001 而非 Docker 端口映射
+  rerank:
+    base-url: http://127.0.0.1:8001
+    model: bge-reranker-v2-m3
   # DeepSeek 文本模型 — 文本生成/审核/Agent 对话（通用 OpenAI ChatModel 对接）
   # 注意：禁止引入 spring-ai-starter-model-deepseek（Function Call 会失效），统一走 OpenAI 兼容
   deepseek:
@@ -130,3 +139,22 @@ ai:
     max-tokens: 1024         # 对话回复最大 token（reasoning 思维链占用大，512 实测 content 为空）
     temperature-knowledge: 0.2  # RAG 精准检索温度
     temperature-creative: 0.6   # 创意文案温度（PolishingClient 互助感想保持 0.7 不动）
+  # 文档导入解析配置（RAG 数据源：B端上传 → 解析 → 切片 → 嵌入）
+  doc:
+    chunk-size: 400             # 切片目标长度（字符），按行贪心累加达到后封卡
+    chunk-max: 550              # 切片硬上限（字符），超长单行按此滑动窗口切
+    chunk-overlap: 60           # 滑窗切片重叠字符数
+    min-chunk-length: 20        # 最短有效切片，低于此丢弃
+    rows-per-chunk: 20          # Excel/CSV 每组行数
+    recall-top-k: 10            # 混合召回条数（向量 ∪ 关键词）
+    rerank-top-m: 5             # LLM 重排后注入 prompt 条数
+    # 重排已通过 thinking:disabled 关闭思考模式（RerankerService 手写请求体携带该字段），
+    # 从「思维链吃光预算导致响应为空、每次浪费 13s」修复为 0.7s 稳定成功。
+    rerank-enabled: true        # DeepSeek 重排开关（失败自动降级原序）
+    ocr-max-pages: 20           # 扫描版 PDF OCR 页数上限，超限页跳过并记录 warning
+    ocr-scan-threshold: 20      # 单页抽取文本量低于此字符数判定为扫描页
+    ocr-dpi: 150                # PDF 渲染 OCR 分辨率（纯图片页自动提至 200）
+    embedding-batch-size: 16    # embedding 批量条数
+    embedding-delay-ms: 200     # 批量间节流延迟
+    cleanup-retention-hours: 24 # 失败/中断源文件保留时长，超时由定时任务清理
+    kb-block-max-chars: 1500    # 注入 prompt 的 KB 块总字符上限

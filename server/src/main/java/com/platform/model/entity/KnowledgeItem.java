@@ -70,6 +70,22 @@ public class KnowledgeItem {
     @Builder.Default
     private String status = BizStatus.ONLINE;
 
+    /** 来源文档 ID（NULL=手写条目）→ knowledge_documents.id，删除文档时据此级联清理全部切片 */
+    @Column(name = KnowledgeItemsColumn.COL_DOC_ID)
+    private Long docId;
+
+    /** 切片在源文档中的序号（0 基），用于分块排序与展示；手写条目为 NULL */
+    @Column(name = KnowledgeItemsColumn.COL_CHUNK_INDEX)
+    private Integer chunkIndex;
+
+    /** 切片来源页码（PDF 或分页文档），扫描件经 OCR 后记录原页；非分页文档为 NULL */
+    @Column(name = KnowledgeItemsColumn.COL_PAGE_NO)
+    private Integer pageNo;
+
+    /** 切片章节标题路径（如"门禁与访客 / 访客登记"），问答引用出处与增强检索语义；手写条目为 NULL */
+    @Column(name = KnowledgeItemsColumn.COL_SECTION_TITLE, length = 200)
+    private String sectionTitle;
+
     /** 录入管理员用户 ID → users.id */
     @Column(name = KnowledgeItemsColumn.COL_CREATED_BY)
     private Long createdBy;

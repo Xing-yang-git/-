@@ -33,6 +33,10 @@ import java.util.concurrent.ThreadPoolExecutor;
 @Configuration
 public class AiConfig {
 
+    /** 关闭 keep-alive 的头：复用陈旧连接会触发上游 Connection reset，见 aiRestClientBuilder 注释 */
+    private static final String HEADER_CONNECTION = "Connection";
+    private static final String HEADER_VALUE_CLOSE = "close";
+
     // ==================== 智谱 Embedding（语义向量） ====================
 
     /** 智谱 Embedding API 密钥 */
@@ -65,6 +69,12 @@ public class AiConfig {
     @Value("${ai.zhipu.chat.model-vision}")
     private String modelVision;
 
+    // ==================== 独立重排服务（bge-reranker-v2-m3） ====================
+
+    /** 重排服务基础地址（rerank-service Docker 容器，本地 8001） */
+    @Value("${ai.rerank.base-url:http://localhost:8001}")
+    private String rerankBaseUrl;
+
     // ==================== DeepSeek 文本 ====================
 
     /** DeepSeek API 密钥 */
@@ -95,6 +105,7 @@ public class AiConfig {
         return RestClient.builder()
                 .baseUrl(baseUrl)
                 .requestFactory(requestFactory)
+                .defaultHeader(HEADER_CONNECTION, HEADER_VALUE_CLOSE)
                 .build();
     }
 
@@ -114,6 +125,7 @@ public class AiConfig {
         return RestClient.builder()
                 .baseUrl(chatBaseUrl)
                 .requestFactory(requestFactory)
+                .defaultHeader(HEADER_CONNECTION, HEADER_VALUE_CLOSE)
                 .build();
     }
 
@@ -139,6 +151,26 @@ public class AiConfig {
     // ==================== Spring AI 模型 Bean ====================
 
     /**
+     * 构建带显式超时的 RestClient.Builder（Spring AI 模型 Bean 共用）。
+     *
+     * <p>Spring AI 1.0 的 OpenAiApi 默认用 JDK HttpClient，未显式配置时无读超时，
+     * 外部 AI API stall 会无限阻塞调用线程。统一在此注入超时，保证故障有界收敛。</p>
+     *
+     * @param connectTimeoutMs 连接超时（毫秒）
+     * @param readTimeoutMs    读超时（毫秒）
+     * @return 配置好超时的 RestClient.Builder
+     */
+    private RestClient.Builder aiRestClientBuilder(int connectTimeoutMs, int readTimeoutMs) {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(connectTimeoutMs);
+        requestFactory.setReadTimeout(readTimeoutMs);
+        // Connection: close 关闭 keep-alive 连接复用：外部 AI API 的 keep-alive 连接空闲后会被服务端关闭，
+        // Java HttpURLConnection 复用陈旧连接会间歇性 Connection reset，触发 Spring AI 重试（默认 10 次指数退避）
+        // 放大到 8~24s。每次新建连接（~50ms 握手）换取稳定，对 LLM 调用时延可忽略。
+        return RestClient.builder().requestFactory(requestFactory).defaultHeader(HEADER_CONNECTION, HEADER_VALUE_CLOSE);
+    }
+
+    /**
      * DeepSeek 文本模型 — 文本生成/文本审核/Agent 对话。
      *
      * <p>OpenAI 兼容端点，base-url 指向 deepseek，使用默认 /v1 路径。
@@ -148,9 +180,13 @@ public class AiConfig {
      */
     @Bean
     public OpenAiChatModel deepseekChatModel() {
+        // 显式配置连接/读超时：外部 API 一旦 stall，无超时会无限挂起 agent-sse 线程，
+        // 前端 45s 静默兜底后只能报"回复超时"。25s 读超时对正常生成（1~8s）足够宽松，
+        // 又能把故障收敛为有界错误，线程随即释放。
         OpenAiApi api = OpenAiApi.builder()
                 .baseUrl(deepseekBaseUrl)
                 .apiKey(deepseekApiKey)
+                .restClientBuilder(aiRestClientBuilder(10_000, 25_000))
                 .build();
         return OpenAiChatModel.builder()
                 .openAiApi(api)
@@ -174,6 +210,7 @@ public class AiConfig {
                 .baseUrl(chatBaseUrl)
                 .completionsPath("/chat/completions")
                 .apiKey(chatApiKey)
+                .restClientBuilder(aiRestClientBuilder(10_000, 30_000))
                 .build();
         return OpenAiChatModel.builder()
                 .openAiApi(api)
@@ -181,6 +218,30 @@ public class AiConfig {
                         .model(modelVision)
                         .maxTokens(200)
                         .build())
+                .build();
+    }
+
+    /**
+     * 重排服务 RestClient — 独立 FastAPI 服务里的 bge-reranker-v2-m3。
+     *
+     * <p>专用 cross-encoder 重排器（非 LLM）：毫秒级、确定性、无思维链/空 content 问题。
+     * 本地服务，超时给短（连接 2s / 读 5s），服务不可用时由 RerankerService 降级原序。</p>
+     *
+     * @return 指向 rerank-service 的 RestClient
+     */
+    @Bean
+    public RestClient rerankRestClient() {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(2000);
+        // 读超时放宽到 20s：候选 documents 为长文本，bge-reranker 逐条推理实测约 6s，
+        // 5s 会频繁超时降级（大 body 推理必超 5s）。
+        requestFactory.setReadTimeout(20000);
+        // 与其他 AI RestClient 一致：Connection: close 禁用 keep-alive 复用，
+        // Docker Desktop 端口转发对陈旧 keep-alive 连接会返回异常响应，每次新建连接换取稳定。
+        return RestClient.builder()
+                .baseUrl(rerankBaseUrl)
+                .requestFactory(requestFactory)
+                .defaultHeader(HEADER_CONNECTION, HEADER_VALUE_CLOSE)
                 .build();
     }
 
@@ -195,10 +256,32 @@ public class AiConfig {
     @Bean
     public ThreadPoolTaskExecutor agentExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(2);
-        executor.setMaxPoolSize(4);
+        // 阻塞式 LLM 调用单次可能占线程数秒~数十秒（有超时兜底），核心/上限调到 4/8，
+        // 避免 2 个慢请求就排满队列、后续请求被 CallerRuns 卡住 Tomcat 线程
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(8);
         executor.setQueueCapacity(50);
         executor.setThreadNamePrefix("agent-sse-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        executor.initialize();
+        return executor;
+    }
+
+    /**
+     * 文档导入解析异步线程池（B端上传文档 → 解析/切片/嵌入，不阻塞上传响应）。
+     *
+     * <p>与 agentExecutor 职责分离：文档解析耗时较长（大 PDF / 扫描 OCR），
+     * 固定 2 线程 + 有界队列，防止大批量上传打满内存。</p>
+     *
+     * @return 文档导入专用线程池
+     */
+    @Bean
+    public ThreadPoolTaskExecutor documentImportExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(2);
+        executor.setQueueCapacity(50);
+        executor.setThreadNamePrefix("doc-import-");
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         executor.initialize();
         return executor;
@@ -214,10 +297,12 @@ public class AiConfig {
      */
     @Bean
     public OpenAiEmbeddingModel zhipuEmbedding() {
+        // 与 chat 模型同理：补显式超时（embedding 非关键，故障降级为关键词检索，读超时给短些）
         OpenAiApi api = OpenAiApi.builder()
                 .baseUrl(baseUrl)
                 .embeddingsPath("/embeddings")
                 .apiKey(apiKey)
+                .restClientBuilder(aiRestClientBuilder(10_000, 10_000))
                 .build();
         return new OpenAiEmbeddingModel(api, MetadataMode.EMBED,
                 OpenAiEmbeddingOptions.builder()

@@ -31,6 +31,14 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
+/**
+ * AdminService 单元测试。
+ *
+ * <p>越权口径（requireSuperAdmin 用例）：项目尚无 Controller/MockMvc 测试先例，
+ * 敏感词管理等平台级配置模块（{@code /api/admin/sensitive-words}）每个端点首行调用
+ * {@link AdminService#requireSuperAdmin(Long)}，非 super_admin 一律拒绝（业务异常）。
+ * 因此越权校验按服务层用例覆盖：super_admin 放行、普通/高级管理员被拒、账号不存在被拒。</p>
+ */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("AdminService 单元测试")
 class AdminServiceTest {
@@ -918,5 +926,55 @@ class AdminServiceTest {
         // 断言：Excel 文件至少包含表头
         assertThat(result).isNotNull();
         assertThat(result.length).isGreaterThan(0);
+    }
+
+    // ==================== requireSuperAdmin（越权口径见类 Javadoc） ====================
+
+    @Test
+    @DisplayName("越权 - super_admin 放行")
+    void should_pass_when_superAdmin() {
+        // 准备
+        User superAdmin = User.builder().id(adminId).userType(UserType.SUPER_ADMIN).build();
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(superAdmin));
+
+        // 执行 & 断言：不抛异常即视为放行
+        adminService.requireSuperAdmin(adminId);
+    }
+
+    @Test
+    @DisplayName("越权 - 高级管理员（senior_admin）被拒")
+    void should_throw_when_seniorAdmin() {
+        // 准备：fixture admin 为 senior_admin
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
+
+        // 执行 & 断言
+        assertThatThrownBy(() -> adminService.requireSuperAdmin(adminId))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("权限不足，仅超级管理员可操作");
+    }
+
+    @Test
+    @DisplayName("越权 - 普通管理员被拒")
+    void should_throw_when_regularAdmin() {
+        // 准备
+        User regular = User.builder().id(adminId).userType(UserType.ADMIN).build();
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(regular));
+
+        // 执行 & 断言
+        assertThatThrownBy(() -> adminService.requireSuperAdmin(adminId))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("权限不足，仅超级管理员可操作");
+    }
+
+    @Test
+    @DisplayName("越权 - 账号不存在抛异常")
+    void should_throw_when_adminNotFound() {
+        // 准备
+        when(userRepository.findById(adminId)).thenReturn(Optional.empty());
+
+        // 执行 & 断言
+        assertThatThrownBy(() -> adminService.requireSuperAdmin(adminId))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("管理员不存在");
     }
 }

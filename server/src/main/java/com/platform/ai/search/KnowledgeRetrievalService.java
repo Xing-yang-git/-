@@ -11,16 +11,20 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
  * 知识库 RAG 检索服务 — AI Agent「小邻」回答前从知识库检索相关资料。
  *
- * <p>检索策略（两级降级）：
+ * <p>检索策略（混合召回 + LLM 重排）：
  * <ol>
- *   <li>查询文本 → 智谱 embedding-3（1024 维）→ pgvector 余弦距离，命中 HNSW 表达式索引</li>
- *   <li>向量结果为空 / 向量生成失败 → 关键词 LIKE（标题/正文/标签）兜底</li>
+ *   <li>查询文本 → 智谱 embedding-3（1024 维）→ pgvector 余弦距离（命中 HNSW 表达式索引），取 recall-top-k 条</li>
+ *   <li>关键词 LIKE（标题/正文/标签）同取 recall-top-k 条</li>
+ *   <li>向量 ∪ 关键词按 id 去重合并</li>
+ *   <li>{@code rerank-enabled} 时用 DeepSeek LLM 重排取 top-M（失败降级原序）</li>
  * </ol>
  *
  * <p>返回的 {@link KnowledgeHit} 由后端直接生成 sources（非模型输出），防幻觉引用。</p>
@@ -32,25 +36,44 @@ public class KnowledgeRetrievalService {
     private final EntityManager entityManager;
     private final OpenAiEmbeddingModel zhipuEmbedding;
     private final KnowledgeItemRepository knowledgeItemRepository;
-
-    /** 检索返回条数上限 */
-    @Value("${ai.agent.knowledge-top-k:5}")
-    private int topK;
+    private final RerankerService rerankerService;
 
     /** 余弦距离阈值（小于此值才视为语义相关） */
-    @Value("${ai.agent.knowledge-threshold:0.25}")
+    @Value("${ai.agent.knowledge-threshold:0.45}")
     private double threshold;
 
+    /** 混合召回条数（向量与关键词各自召回上限） */
+    @Value("${ai.doc.recall-top-k:10}")
+    private int recallTopK;
+
+    /** 重排后注入 prompt 条数 */
+    @Value("${ai.doc.rerank-top-m:5}")
+    private int rerankTopM;
+
+    /** DeepSeek LLM 重排开关 */
+    @Value("${ai.doc.rerank-enabled:true}")
+    private boolean rerankEnabled;
+
+    /**
+     * 构造器注入。
+     *
+     * @param entityManager            JPA EntityManager（原生 SQL 向量检索）
+     * @param zhipuEmbedding           智谱 embedding 模型（1024 维）
+     * @param knowledgeItemRepository  知识条目仓储
+     * @param rerankerService          DeepSeek 重排服务
+     */
     public KnowledgeRetrievalService(EntityManager entityManager,
                                      OpenAiEmbeddingModel zhipuEmbedding,
-                                     KnowledgeItemRepository knowledgeItemRepository) {
+                                     KnowledgeItemRepository knowledgeItemRepository,
+                                     RerankerService rerankerService) {
         this.entityManager = entityManager;
         this.zhipuEmbedding = zhipuEmbedding;
         this.knowledgeItemRepository = knowledgeItemRepository;
+        this.rerankerService = rerankerService;
     }
 
     /**
-     * 检索与查询相关的知识条目（向量优先，关键词兜底）。
+     * 检索与查询相关的知识条目（混合召回 + LLM 重排）。
      *
      * @param tenantId  当前用户所在小区 ID
      * @param queryText 用户提问文本
@@ -61,18 +84,24 @@ public class KnowledgeRetrievalService {
             return List.of();
         }
         String emb = embedQuery(queryText);
-        List<KnowledgeHit> hits = new ArrayList<>();
-        if (emb != null && tenantId != null) {
-            hits = vectorSearch(tenantId, emb);
+        List<KnowledgeHit> vectorHits = (emb != null && tenantId != null)
+                ? vectorSearch(tenantId, emb, recallTopK)
+                : List.of();
+        List<KnowledgeHit> keywordHits = (tenantId != null)
+                ? keywordSearch(tenantId, queryText, recallTopK)
+                : List.of();
+        List<KnowledgeHit> merged = unionById(vectorHits, keywordHits);
+        if (merged.isEmpty()) {
+            return List.of();
         }
-        if (hits.isEmpty()) {
-            hits = keywordSearch(tenantId, queryText);
+        if (rerankEnabled) {
+            return rerankerService.rerank(queryText, merged, rerankTopM);
         }
-        return hits;
+        return merged.size() > rerankTopM ? merged.subList(0, rerankTopM) : merged;
     }
 
     /**
-     * 将查询文本编码为 1024 维向量字符串（失败返回 null，触发关键词兜底）。
+     * 将查询文本编码为 1024 维向量字符串（失败返回 null，跳过向量召回）。
      *
      * @param text 查询文本
      * @return pgvector 字面量，或 null
@@ -81,12 +110,12 @@ public class KnowledgeRetrievalService {
         try {
             float[] vector = zhipuEmbedding.embed(text);
             if (vector.length != 1024) {
-                log.warn("查询向量维度异常: {}，降级关键词检索", vector.length);
+                log.warn("查询向量维度异常: {}，跳过向量召回", vector.length);
                 return null;
             }
             return toPgvectorString(vector);
         } catch (Exception e) {
-            log.warn("查询向量生成失败，降级关键词检索: {}", e.getMessage());
+            log.warn("查询向量生成失败，跳过向量召回: {}", e.getMessage());
             return null;
         }
     }
@@ -96,12 +125,14 @@ public class KnowledgeRetrievalService {
      *
      * @param tenantId 小区 ID
      * @param emb      查询向量字面量
+     * @param limit    召回条数
      * @return 语义相关命中列表
      */
     @SuppressWarnings("unchecked")
-    private List<KnowledgeHit> vectorSearch(Long tenantId, String emb) {
+    private List<KnowledgeHit> vectorSearch(Long tenantId, String emb, int limit) {
         String sql = "SELECT k.id, k.title, k.content, k.category, k.source, " +
-                "CAST(k.embedding AS vector(1024)) <=> CAST(:emb AS vector(1024)) AS distance " +
+                "CAST(k.embedding AS vector(1024)) <=> CAST(:emb AS vector(1024)) AS distance, " +
+                "k.section_title, k.page_no " +
                 "FROM knowledge_items k " +
                 "WHERE k.tenant_id = :tenantId AND k.status = :status AND k.embedding IS NOT NULL " +
                 "AND CAST(k.embedding AS vector(1024)) <=> CAST(:emb AS vector(1024)) < :threshold " +
@@ -111,7 +142,7 @@ public class KnowledgeRetrievalService {
         query.setParameter("status", BizStatus.ONLINE);
         query.setParameter("emb", emb);
         query.setParameter("threshold", threshold);
-        query.setParameter("limit", topK);
+        query.setParameter("limit", limit);
         List<Object[]> rows = query.getResultList();
         List<KnowledgeHit> hits = rows.stream()
                 .map(r -> new KnowledgeHit(
@@ -120,30 +151,51 @@ public class KnowledgeRetrievalService {
                         (String) r[2],
                         (String) r[3],
                         (String) r[4],
-                        ((Number) r[5]).doubleValue()))
+                        ((Number) r[5]).doubleValue(),
+                        (String) r[6],
+                        r[7] == null ? null : ((Number) r[7]).intValue()))
                 .collect(Collectors.toList());
         log.debug("知识库向量检索: query 命中 {} 条", hits.size());
         return hits;
     }
 
     /**
-     * 关键词 LIKE 兜底检索（标题/正文/标签）。
+     * 关键词 LIKE 检索（标题/正文/标签）。
      *
      * @param tenantId 小区 ID
      * @param keyword  关键词
+     * @param limit    召回条数
      * @return 关键词命中列表（distance 置为 -1 表示非语义排序）
      */
-    private List<KnowledgeHit> keywordSearch(Long tenantId, String keyword) {
+    private List<KnowledgeHit> keywordSearch(Long tenantId, String keyword, int limit) {
         if (tenantId == null) {
             return List.of();
         }
         return knowledgeItemRepository
-                .findWithFilter(tenantId, null, BizStatus.ONLINE, keyword, PageRequest.of(0, topK))
+                .findWithFilter(tenantId, null, BizStatus.ONLINE, keyword, PageRequest.of(0, limit))
                 .getContent()
                 .stream()
                 .map(k -> new KnowledgeHit(k.getId(), k.getTitle(), k.getContent(),
-                        k.getCategory(), k.getSource(), -1.0))
+                        k.getCategory(), k.getSource(), -1.0, k.getSectionTitle(), k.getPageNo()))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 向量 ∪ 关键词按 id 去重合并（向量在前按距离升序，关键词补尾）。
+     *
+     * @param vectorHits  向量命中
+     * @param keywordHits 关键词命中
+     * @return 合并去重列表
+     */
+    private List<KnowledgeHit> unionById(List<KnowledgeHit> vectorHits, List<KnowledgeHit> keywordHits) {
+        Map<Long, KnowledgeHit> merged = new LinkedHashMap<>();
+        for (KnowledgeHit hit : vectorHits) {
+            merged.put(hit.id(), hit);
+        }
+        for (KnowledgeHit hit : keywordHits) {
+            merged.putIfAbsent(hit.id(), hit);
+        }
+        return new ArrayList<>(merged.values());
     }
 
     /**
