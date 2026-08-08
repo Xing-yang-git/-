@@ -26,6 +26,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -56,6 +57,8 @@ class MemoryRetrievalServiceTest {
         service = new MemoryRetrievalService(promptRepository, deepseekChatModel, zhipuEmbedding, memorySegmentRepository);
         ReflectionTestUtils.setField(service, "memoryRecallTop", 3);
         ReflectionTestUtils.setField(service, "memoryMatchThreshold", 0.45);
+        // 默认存在压缩段（走完整检索链路）；「无段跳过」用例单独覆盖 0
+        lenient().when(memorySegmentRepository.countByUserId(any())).thenReturn(1L);
     }
 
     /** 1024 维零向量（与压缩段 vector(1024) 一致，满足生产维度校验） */
@@ -65,6 +68,32 @@ class MemoryRetrievalServiceTest {
 
     private ChatResponse response(String text) {
         return new ChatResponse(List.of(new Generation(new AssistantMessage(text))));
+    }
+
+    @Test
+    @DisplayName("无段跳过 - 用户无任何压缩段时直接返回「无」，不触发向量化与检索")
+    void should_skipEmbedding_when_noSegments() {
+        when(memorySegmentRepository.countByUserId(1L)).thenReturn(0L);
+
+        assertThat(service.loadMemoryContext(1L, "你好")).isEqualTo("无");
+
+        verify(zhipuEmbedding, never()).embed(anyString());
+        verify(memorySegmentRepository, never()).findIdsBySimilarity(any(), any(), anyInt());
+        verify(deepseekChatModel, never()).call(any(Prompt.class));
+    }
+
+    @Test
+    @DisplayName("无段跳过 - 数量统计抛异常时降级走原链路（不阻塞、不抛到 chat）")
+    void should_fallThrough_when_countThrows() {
+        when(memorySegmentRepository.countByUserId(1L)).thenThrow(new RuntimeException("统计失败"));
+        when(zhipuEmbedding.embed("你好")).thenReturn(vector());
+        when(memorySegmentRepository.findIdsBySimilarity(eq(1L), anyString(), eq(3))).thenReturn(List.of());
+
+        assertThat(service.loadMemoryContext(1L, "你好")).isEqualTo("无");
+
+        // 走原链路：统计失败不影响后续向量化与检索
+        verify(zhipuEmbedding).embed("你好");
+        verify(memorySegmentRepository).findIdsBySimilarity(eq(1L), anyString(), eq(3));
     }
 
     @Test

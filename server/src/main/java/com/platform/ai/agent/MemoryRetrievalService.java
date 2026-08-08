@@ -81,6 +81,15 @@ public class MemoryRetrievalService {
         if (queryText == null || queryText.isBlank()) {
             return null;
         }
+        // 0. 无段跳过：该用户从未产生压缩段（无长期记忆）→ 直接返回「无」，省去一次 embedding 调用与向量检索；
+        //    统计查询异常按检索异常降级铁律处理——记日志后走原链路（由后续 embedQuery/searchWithThreshold 兜底）
+        try {
+            if (memorySegmentRepository.countByUserId(userId) == 0L) {
+                return MEMORY_NONE;
+            }
+        } catch (Exception e) {
+            log.warn("记忆段数量统计失败（降级走原链路）: userId={}, {}", userId, e.getMessage());
+        }
         // 1. 向量化查询文本（失败降级返回 null，不阻塞对话）
         String queryVector = embedQuery(queryText);
         if (queryVector == null) {

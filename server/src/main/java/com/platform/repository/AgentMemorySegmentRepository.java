@@ -61,4 +61,12 @@ public interface AgentMemorySegmentRepository extends JpaRepository<AgentMemoryS
      * @return 命中压缩段列表
      */
     List<AgentMemorySegment> findByUserIdAndConversationId(Long userId, Long conversationId);
+
+    /**
+     * 统计某用户的压缩段数量（记忆检索的「无段跳过」预检：无历史段时直接跳过 embedding 与向量检索）。
+     *
+     * @param userId 住户用户 ID
+     * @return 该用户压缩段总数
+     */
+    long countByUserId(Long userId);
 }
