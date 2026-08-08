@@ -14,7 +14,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -576,80 +575,36 @@ class AgentServiceTest {
                 eq("物业电话 138-1234-5678"), any(), any());
     }
 
-    // ==================== 长期记忆注入（步骤5） ====================
+    // ==================== 长期记忆注入（方案 1：按次实时检索） ====================
 
     @Test
-    @DisplayName("记忆 - 新会话首条消息触发记忆检索并缓存进会话（memoryLoaded=true）")
-    void should_loadMemory_when_firstMessageInNewWindow() {
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(userWithTenant()));
-        when(tenantRepository.findById(TENANT_ID))
-                .thenReturn(Optional.of(Tenant.builder().id(TENANT_ID).name("阳光花园").build()));
-        when(sessionService.getHistory(USER_ID)).thenReturn(List.of());
-        when(memoryRetrievalService.loadMemoryContext(USER_ID, "物业几点下班")).thenReturn("用户喜欢园艺");
-        when(promptBuilder.buildMessages(any(), any(), any(), any()))
-                .thenReturn(List.<Message>of(new UserMessage("物业几点下班")));
+    @DisplayName("记忆 - 每次消息都按次实时检索 retrieveMemory(userId, message)，无窗口缓存")
+    void should_retrieveMemory_eachMessage() {
+        stubCommon("物业几点下班");
+        when(memoryRetrievalService.retrieveMemory(USER_ID, "物业几点下班")).thenReturn("用户喜欢园艺");
         when(deepseekChatModel.call(any(Prompt.class))).thenReturn(response("回复内容"));
         when(intentRouter.parse(any())).thenReturn(null);
 
         agentService.chat(USER_ID, "物业几点下班");
 
-        // 无会话（getSession null）→ 首条消息作查询文本触发检索
-        verify(memoryRetrievalService).loadMemoryContext(USER_ID, "物业几点下班");
-        // 检索结果缓存进会话并置 memoryLoaded=true（窗口内固定不重复检索）
-        ArgumentCaptor<AgentSession> captor = ArgumentCaptor.forClass(AgentSession.class);
-        verify(sessionService).saveSession(eq(USER_ID), captor.capture());
-        AgentSession saved = captor.getValue();
-        assertThat(saved.isMemoryLoaded()).isTrue();
-        assertThat(saved.getMemoryContext()).isEqualTo("用户喜欢园艺");
-        // 4 参 buildMessages 收到记忆上下文变量
+        // 按次实时检索：以当前消息为 query（方案 1 已删窗口缓存字段，不再经 getSession/setMemory 缓存记忆）
+        verify(memoryRetrievalService).retrieveMemory(USER_ID, "物业几点下班");
+        // {历史记忆} 注入：检索返回值作为 4 参 buildMessages 的 memoryText 参数
         verify(promptBuilder).buildMessages(eq("阳光花园"), eq("物业几点下班"), any(), eq("用户喜欢园艺"));
     }
 
     @Test
-    @DisplayName("记忆 - memoryLoaded=true 时直接复用现有记忆，不重复检索")
-    void should_reuseMemory_when_memoryLoaded() {
-        AgentSession session = new AgentSession();
-        session.setMemoryLoaded(true);
-        session.setMemoryContext("已加载记忆");
-        when(sessionService.getSession(USER_ID)).thenReturn(session);
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(userWithTenant()));
-        when(tenantRepository.findById(TENANT_ID))
-                .thenReturn(Optional.of(Tenant.builder().id(TENANT_ID).name("阳光花园").build()));
-        when(sessionService.getHistory(USER_ID)).thenReturn(List.of());
-        when(promptBuilder.buildMessages(any(), any(), any(), any()))
-                .thenReturn(List.<Message>of(new UserMessage("物业几点下班")));
+    @DisplayName("记忆 - 检索降级返回 null 时仍按次调用并透传 null，由 AgentPromptBuilder 渲染「无」")
+    void should_passThroughNull_when_retrieveMemoryReturnsNull() {
+        stubCommon("物业几点下班");
+        when(memoryRetrievalService.retrieveMemory(USER_ID, "物业几点下班")).thenReturn(null);
         when(deepseekChatModel.call(any(Prompt.class))).thenReturn(response("回复内容"));
         when(intentRouter.parse(any())).thenReturn(null);
 
         agentService.chat(USER_ID, "物业几点下班");
 
-        verify(memoryRetrievalService, never()).loadMemoryContext(any(), any());
-        verify(promptBuilder).buildMessages(eq("阳光花园"), eq("物业几点下班"), any(), eq("已加载记忆"));
-    }
-
-    @Test
-    @DisplayName("记忆 - 归档移走窗口后重置（memoryLoaded=false），新窗口用最早 user 消息重新加载")
-    void should_reloadMemory_when_windowReset() {
-        AgentSession session = new AgentSession();
-        session.setMessages(List.of(new AgentSession.AgentMessageItem(AgentMessageRole.USER, "最早的问题", null, null)));
-        // 归档移走窗口后置位：memoryLoaded=false、memoryContext=null
-        session.setMemoryLoaded(false);
-        session.setMemoryContext(null);
-        when(sessionService.getSession(USER_ID)).thenReturn(session);
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(userWithTenant()));
-        when(tenantRepository.findById(TENANT_ID))
-                .thenReturn(Optional.of(Tenant.builder().id(TENANT_ID).name("阳光花园").build()));
-        when(sessionService.getHistory(USER_ID)).thenReturn(List.of());
-        when(memoryRetrievalService.loadMemoryContext(USER_ID, "最早的问题")).thenReturn("重新加载的记忆");
-        when(promptBuilder.buildMessages(any(), any(), any(), any()))
-                .thenReturn(List.<Message>of(new UserMessage("新问题")));
-        when(deepseekChatModel.call(any(Prompt.class))).thenReturn(response("回复内容"));
-        when(intentRouter.parse(any())).thenReturn(null);
-
-        agentService.chat(USER_ID, "新问题");
-
-        // 查询文本取当前会话最早 user 消息，而非当前消息
-        verify(memoryRetrievalService).loadMemoryContext(USER_ID, "最早的问题");
-        verify(promptBuilder).buildMessages(eq("阳光花园"), eq("新问题"), any(), eq("重新加载的记忆"));
+        verify(memoryRetrievalService).retrieveMemory(USER_ID, "物业几点下班");
+        // null 透传给 buildMessages（「无」的渲染在 AgentPromptBuilder，见 AgentPromptBuilderTest）
+        verify(promptBuilder).buildMessages(eq("阳光花园"), eq("物业几点下班"), any(), eq(null));
     }
 }

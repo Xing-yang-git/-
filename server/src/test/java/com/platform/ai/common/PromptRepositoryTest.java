@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * PromptRepository 提示词仓库单元测试 — 验证 classpath:prompts/ 下 5 个提示词文件的加载、
+ * PromptRepository 提示词仓库单元测试 — 验证 classpath:prompts/ 下 4 个提示词文件的加载、
  * UTF-8 中文无乱码、properties 文案集解析与缺 key 时的 fail-fast 行为。
  *
  * <p>构造器即完成全部加载（fail-fast 设计），测试直接 {@code new PromptRepository()} 即可：
@@ -19,14 +19,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @DisplayName("PromptRepository 提示词仓库单元测试")
 class PromptRepositoryTest {
 
-    /** 仓库登记的 5 个 key（与 PromptRepository 的登记表一一对应） */
+    /** 仓库登记的 4 个 key（与 PromptRepository 的登记表一一对应） */
     private static final List<String> KEYS = List.of(
-            "agent.system", "memory.compress", "memory.memory-summary", "memory.archive-title", "block.replies");
+            "agent.system", "memory.compress", "memory.archive-title", "block.replies");
 
     private final PromptRepository repository = new PromptRepository();
 
     @Test
-    @DisplayName("加载 - 5 个登记的 key 均可取到非空内容且中文无乱码")
+    @DisplayName("加载 - 4 个登记的 key 均可取到非空内容且中文无乱码")
     void should_loadAllPrompts_when_constructor() {
         for (String key : KEYS) {
             String content = repository.get(key);

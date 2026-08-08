@@ -101,8 +101,8 @@ public class ArchiveService {
     /**
      * 滑动窗口归档：把会话中最旧的 windowSize 条消息归档为一条新行，归档后从 Redis 移走这批消息。
      *
-     * <p>归档行 title 暂空（异步回填）、message_count/last_message_at 正确填充；归档后触发异步压缩；
-     * 归档后 memoryLoaded 重置为 false（新窗口首条消息重新加载记忆）。</p>
+     * <p>归档行 title 暂空（异步回填）、message_count/last_message_at 正确填充；归档后触发异步压缩，
+     * 滑动窗口保留剩余上下文。</p>
      *
      * @param userId     住户用户 ID
      * @param windowSize 本次归档的消息条数（不足则全部归档）
@@ -139,11 +139,10 @@ public class ArchiveService {
     }
 
     /**
-     * 归档核心流程（纯数据库搬运，同步路径零 LLM 调用）：新建一行 → 写消息 → 移走已归档消息 →
-     * 重置记忆加载状态 → 异步触发压缩。
+     * 归档核心流程（纯数据库搬运，同步路径零 LLM 调用）：新建一行 → 写消息 → 移走已归档消息 → 异步触发压缩。
      *
      * @param userId   住户用户 ID
-     * @param session  热会话（归档后原地更新 messages/memoryLoaded/memoryContext）
+     * @param session  热会话（归档后原地更新 messages）
      * @param toArchive 本次归档的消息列表（按会话顺序）
      * @param keep     归档后保留在 Redis 的消息列表（剩余窗口）
      * @return 归档行 id；未绑定小区时返回 null
@@ -194,10 +193,8 @@ public class ArchiveService {
         }
         messageRepository.saveAll(messages);
 
-        // 归档后移走已归档消息，保留剩余；重置记忆加载状态（新窗口首条消息重新加载记忆）
+        // 归档后移走已归档消息，保留剩余
         session.setMessages(keep);
-        session.setMemoryLoaded(false);
-        session.setMemoryContext(null);
         session.setLastActive(LocalDateTime.now());
         sessionService.saveSession(userId, session);
 
@@ -273,8 +270,7 @@ public class ArchiveService {
     /**
      * 恢复会话到 Redis 热会话（按会话级 conversation_id，该会话所有归档行消息全部回填最近 N 轮）。
      *
-     * <p>回填量仍按 resumeTurns×2 上限；恢复后 memoryLoaded=true、memoryContext=null
-     * （跳过记忆注入——恢复上下文已完整）；conversationId 保留会话级 id，继续对话沿用同一会话。</p>
+     * <p>回填量仍按 resumeTurns×2 上限；conversationId 保留会话级 id，继续对话沿用同一会话。</p>
      *
      * @param userId         住户用户 ID
      * @param conversationId 会话级 id（历史数据传入归档行 id）
@@ -316,9 +312,6 @@ public class ArchiveService {
         session.setConversationId(sessionId);
         session.setMessages(recent);
         session.setLastActive(LocalDateTime.now());
-        // 恢复后置位：跳过记忆注入（恢复上下文已完整）
-        session.setMemoryLoaded(true);
-        session.setMemoryContext(null);
         sessionService.saveSession(userId, session);
         log.info("Agent 会话恢复: userId={}, conversationId={}, 回填 {} 条", userId, sessionId, recent.size());
     }

@@ -96,7 +96,7 @@ class AgentPromptBuilderTest {
     }
 
     @Test
-    @DisplayName("组装 - 4 参重载：memoryContext 非空时 {历史记忆} 渲染为记忆内容")
+    @DisplayName("组装 - 4 参重载：memoryText 非空时 {历史记忆} 渲染为记忆内容")
     void should_renderMemoryContext_when_memoryContextProvided() {
         List<Message> messages = builder.buildMessages("阳光花园", "你好", List.of(), "用户喜欢园艺，常发起搬家求助");
 
@@ -106,7 +106,7 @@ class AgentPromptBuilderTest {
     }
 
     @Test
-    @DisplayName("组装 - 4 参重载：memoryContext 为 null 或空白时渲染「无」")
+    @DisplayName("组装 - 4 参重载：memoryText 为 null 或空白时渲染「无」")
     void should_renderNone_when_memoryContextNullOrBlank() {
         List<Message> withNull = builder.buildMessages("阳光花园", "你好", List.of(), null);
         List<Message> withBlank = builder.buildMessages("阳光花园", "你好", List.of(), "  ");

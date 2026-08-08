@@ -40,8 +40,8 @@ import java.util.regex.Pattern;
  * 写入会话历史保持原文，避免掩码污染后续上下文判断。关键链路日志（Step 4d）：拦截命中、LLM 耗时、
  * 路由决策（本次请求是否调用了知识工具）。</p>
  *
- * <p>长期记忆（本任务）：新窗口开始（memoryLoaded=false 且 memoryContext=null）时取当前会话最早
- * user 消息作查询文本检索用户压缩段，注入 System Prompt 的 {@code {历史记忆}}；窗口内固定不重复检索；
+ * <p>长期记忆（本任务）：按次实时检索——每个用户消息以其自身为 query 检索用户压缩段摘要，
+ * 直接注入 System Prompt 的 {@code {历史记忆}}（无窗口缓存、无 LLM 整合）；
  * 归档触发改走 archiveWindow（滑动窗口，最旧 N 条归档）；清空会话指令先 archiveRemaining 再 clearSession。</p>
  *
  * <p>写操作走 IntentRouter 解析模型返回的 JSON 意图，生成动作卡片（不自动落库，前端确认后走既有 API）。</p>
@@ -273,8 +273,8 @@ public class AgentService {
         // 读取多轮历史（Redis 热会话，Redis 不可用降级为空）
         List<AgentSession.AgentMessageItem> history = sessionService.getHistory(userId);
 
-        // 窗口开始检测 + 记忆注入：memoryLoaded=false 且 memoryContext=null 时首次检索并缓存（窗口内固定不重复检索）
-        String memoryContext = ensureMemoryLoaded(userId, message);
+        // 按次实时记忆检索：每个用户消息以其自身为 query 检索压缩段摘要，直接注入 {历史记忆}（无窗口缓存）
+        String memoryText = memoryRetrievalService.retrieveMemory(userId, message);
 
         // 注入特征提示：仅附加进本次请求送入模型的用户消息（与用户内容用空行明确分隔）
         String modelUserMessage = injectionHint == null
@@ -282,73 +282,13 @@ public class AgentService {
                 : message + "\n\n（系统提示：" + injectionHint + "）";
 
         // 组装 Prompt：消息（system + 历史 + user）+ 读工具注册 + 参数（知识检索由模型按需调工具，不再无条件注入）
-        List<Message> messages = promptBuilder.buildMessages(tenantName, modelUserMessage, history, memoryContext);
+        List<Message> messages = promptBuilder.buildMessages(tenantName, modelUserMessage, history, memoryText);
         return new Prompt(messages, OpenAiChatOptions.builder()
                 .temperature(0.2)
                 // reasoning 模型思维链占用大，1024 预留足够空间
                 .maxTokens(1024)
                 .toolCallbacks(buildToolCallbacks(userId, requestId))
                 .build());
-    }
-
-    /**
-     * 窗口开始检测 + 记忆加载：本窗口首次（memoryLoaded=false 且 memoryContext=null）时检索长期记忆。
-     *
-     * <p>触发与跳过：
-     * <ul>
-     *   <li>memoryLoaded=true → 直接复用现有 memoryContext（resume 恢复已置位，天然跳过）</li>
-     *   <li>memoryLoaded=false 且 memoryContext=null → 本窗口首次：取当前会话最早 user 消息作查询文本
-     *       （新会话首条消息即第一条），检索结果缓存进 session 并置 memoryLoaded=true</li>
-     *   <li>归档移走窗口 / 清空会话 → memoryLoaded=false + memoryContext=null → 新窗口重新加载</li>
-     * </ul>
-     * 检索失败降级返回 null（注入侧渲染为「无」），不阻塞对话。</p>
-     *
-     * @param userId         住户用户 ID
-     * @param currentMessage 当前用户消息（新会话/空会话时作查询文本）
-     * @return 记忆上下文变量文本（可能为 null），供 {@code {历史记忆}} 注入
-     */
-    private String ensureMemoryLoaded(Long userId, String currentMessage) {
-        AgentSession session = sessionService.getSession(userId);
-        if (session == null) {
-            session = new AgentSession();
-        }
-        if (session.isMemoryLoaded()) {
-            return session.getMemoryContext();
-        }
-        if (session.getMemoryContext() != null) {
-            // 理论不可达（归档/清空时两者同时重置），保守置位后复用，避免重复检索
-            session.setMemoryLoaded(true);
-            sessionService.saveSession(userId, session);
-            return session.getMemoryContext();
-        }
-        // 本窗口首次：取当前会话最早的 user 消息作查询文本，无则用当前消息（新会话首条即第一条）
-        String queryText = earliestUserMessage(session);
-        if (queryText == null) {
-            queryText = currentMessage;
-        }
-        String context = memoryRetrievalService.loadMemoryContext(userId, queryText);
-        session.setMemoryContext(context);
-        session.setMemoryLoaded(true);
-        sessionService.saveSession(userId, session);
-        return context;
-    }
-
-    /**
-     * 取当前会话最早的一条非空白 user 消息（作为记忆检索查询文本）。
-     *
-     * @param session 热会话（可能为空 messages）
-     * @return 最早 user 消息内容，无则 null
-     */
-    private String earliestUserMessage(AgentSession session) {
-        if (session == null || session.getMessages() == null) {
-            return null;
-        }
-        for (AgentSession.AgentMessageItem item : session.getMessages()) {
-            if (AgentMessageRole.USER.equals(item.role()) && item.content() != null && !item.content().isBlank()) {
-                return item.content();
-            }
-        }
-        return null;
     }
 
     /**

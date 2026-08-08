@@ -50,19 +50,19 @@ public class AgentPromptBuilder {
     /**
      * 构建对话消息列表（system + 历史 + user），模型 options 由 AgentService 组装（含工具注册）。
      *
-     * <p>记忆上下文注入：{@code {历史记忆}} 渲染 = memoryContext 非空则其值、否则「无」；
-     * 窗口内固定（AgentService 只检索一次，不在此重复检索）。</p>
+     * <p>记忆注入：{@code {历史记忆}} 渲染 = memoryText 非空则其值、否则「无」；
+     * 由 AgentService 按次实时检索注入，本组件不做检索。</p>
      *
-     * @param tenantName    小区名称（替换 {@code {小区名}} 占位符）
-     * @param message       用户消息
-     * @param history       多轮历史（Redis 热会话，可为空）
-     * @param memoryContext 窗口长期记忆变量文本（null 或「无」时渲染「无」）
+     * @param tenantName 小区名称（替换 {@code {小区名}} 占位符）
+     * @param message    用户消息
+     * @param history    多轮历史（Redis 热会话，可为空）
+     * @param memoryText 当前消息实时检索的记忆摘要文本（null 或「无」时渲染「无」）
      * @return system + 历史 + user 消息列表
      */
     public List<Message> buildMessages(String tenantName, String message,
-                                       List<AgentSession.AgentMessageItem> history, String memoryContext) {
+                                       List<AgentSession.AgentMessageItem> history, String memoryText) {
         String template = promptRepository.get("agent.system");
-        String memory = memoryContext == null || memoryContext.isBlank() ? "无" : memoryContext;
+        String memory = memoryText == null || memoryText.isBlank() ? "无" : memoryText;
         String system = template
                 .replace("{小区名}", tenantName == null ? "本小区" : tenantName)
                 .replace("{历史记忆}", memory);

@@ -1,21 +1,13 @@
 package com.platform.ai.agent;
 
-import com.platform.ai.common.PromptRepository;
 import com.platform.model.entity.AgentMemorySegment;
 import com.platform.repository.AgentMemorySegmentRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.ai.chat.messages.AssistantMessage;
-import org.springframework.ai.chat.messages.Message;
-import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.chat.model.Generation;
-import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiEmbeddingModel;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -32,19 +24,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * MemoryRetrievalService 记忆检索单元测试 — 覆盖向量化/无命中/阈值过滤/LLM 整合/降级与越权隔离。
+ * MemoryRetrievalService 记忆检索单元测试 — 覆盖向量化/无命中/阈值过滤/降级与越权隔离。
  *
- * <p>降级铁律验证：embedding 失败 / 检索异常（如 pgvector 维度不匹配）/ LLM 失败 / LLM 回复空白
- * → 返回 null 不阻塞对话；检索 SQL 强制按 userId 过滤（越权防护）。</p>
+ * <p>方案 1（记忆按次实时检索）：无 LLM 整合步骤（摘要是压缩时产物，命中摘要按「1. 摘要\n2. 摘要」
+ * 格式化后直接注入 {@code {历史记忆}}）。降级铁律验证：embedding 失败 / 检索异常（如 pgvector 维度
+ * 不匹配）→ 返回 null 不阻塞对话；检索 SQL 强制按 userId 过滤（越权防护）。</p>
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("MemoryRetrievalService 记忆检索单元测试")
 class MemoryRetrievalServiceTest {
 
-    @Mock
-    private PromptRepository promptRepository;
-    @Mock
-    private OpenAiChatModel deepseekChatModel;
     @Mock
     private OpenAiEmbeddingModel zhipuEmbedding;
     @Mock
@@ -54,7 +43,7 @@ class MemoryRetrievalServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new MemoryRetrievalService(promptRepository, deepseekChatModel, zhipuEmbedding, memorySegmentRepository);
+        service = new MemoryRetrievalService(zhipuEmbedding, memorySegmentRepository);
         ReflectionTestUtils.setField(service, "memoryRecallTop", 3);
         ReflectionTestUtils.setField(service, "memoryMatchThreshold", 0.45);
         // 默认存在压缩段（走完整检索链路）；「无段跳过」用例单独覆盖 0
@@ -66,20 +55,15 @@ class MemoryRetrievalServiceTest {
         return new float[1024];
     }
 
-    private ChatResponse response(String text) {
-        return new ChatResponse(List.of(new Generation(new AssistantMessage(text))));
-    }
-
     @Test
     @DisplayName("无段跳过 - 用户无任何压缩段时直接返回「无」，不触发向量化与检索")
     void should_skipEmbedding_when_noSegments() {
         when(memorySegmentRepository.countByUserId(1L)).thenReturn(0L);
 
-        assertThat(service.loadMemoryContext(1L, "你好")).isEqualTo("无");
+        assertThat(service.retrieveMemory(1L, "你好")).isEqualTo("无");
 
         verify(zhipuEmbedding, never()).embed(anyString());
         verify(memorySegmentRepository, never()).findIdsBySimilarity(any(), any(), anyInt());
-        verify(deepseekChatModel, never()).call(any(Prompt.class));
     }
 
     @Test
@@ -89,7 +73,7 @@ class MemoryRetrievalServiceTest {
         when(zhipuEmbedding.embed("你好")).thenReturn(vector());
         when(memorySegmentRepository.findIdsBySimilarity(eq(1L), anyString(), eq(3))).thenReturn(List.of());
 
-        assertThat(service.loadMemoryContext(1L, "你好")).isEqualTo("无");
+        assertThat(service.retrieveMemory(1L, "你好")).isEqualTo("无");
 
         // 走原链路：统计失败不影响后续向量化与检索
         verify(zhipuEmbedding).embed("你好");
@@ -97,10 +81,10 @@ class MemoryRetrievalServiceTest {
     }
 
     @Test
-    @DisplayName("检索 - 查询文本为空时返回 null，不触发向量化与检索")
+    @DisplayName("检索 - 查询文本为空或空白时返回 null，不触发向量化与检索")
     void should_returnNull_when_queryBlank() {
-        assertThat(service.loadMemoryContext(1L, null)).isNull();
-        assertThat(service.loadMemoryContext(1L, "   ")).isNull();
+        assertThat(service.retrieveMemory(1L, null)).isNull();
+        assertThat(service.retrieveMemory(1L, "   ")).isNull();
         verify(memorySegmentRepository, never()).findIdsBySimilarity(any(), any(), anyInt());
     }
 
@@ -109,20 +93,18 @@ class MemoryRetrievalServiceTest {
     void should_returnNull_when_embeddingFails() {
         when(zhipuEmbedding.embed("你好")).thenThrow(new RuntimeException("向量失败"));
 
-        assertThat(service.loadMemoryContext(1L, "你好")).isNull();
+        assertThat(service.retrieveMemory(1L, "你好")).isNull();
 
         verify(memorySegmentRepository, never()).findIdsBySimilarity(any(), any(), anyInt());
-        verify(deepseekChatModel, never()).call(any(Prompt.class));
     }
 
     @Test
-    @DisplayName("检索 - 无命中返回「无」，不调 LLM")
+    @DisplayName("检索 - 无命中返回「无」")
     void should_returnNone_when_noHits() {
         when(zhipuEmbedding.embed("你好")).thenReturn(vector());
         when(memorySegmentRepository.findIdsBySimilarity(eq(1L), anyString(), eq(3))).thenReturn(List.of());
 
-        assertThat(service.loadMemoryContext(1L, "你好")).isEqualTo("无");
-        verify(deepseekChatModel, never()).call(any(Prompt.class));
+        assertThat(service.retrieveMemory(1L, "你好")).isEqualTo("无");
     }
 
     @Test
@@ -131,13 +113,13 @@ class MemoryRetrievalServiceTest {
         when(zhipuEmbedding.embed("你好")).thenReturn(vector());
         when(memorySegmentRepository.findIdsBySimilarity(eq(1L), anyString(), eq(3))).thenReturn(List.of());
 
-        service.loadMemoryContext(1L, "你好");
+        service.retrieveMemory(1L, "你好");
 
         verify(memorySegmentRepository).findIdsBySimilarity(eq(1L), anyString(), eq(3));
     }
 
     @Test
-    @DisplayName("检索 - 命中按距离阈值过滤（>0.45 不注入），仅距离 ≤ 阈值的摘要进提示词")
+    @DisplayName("检索 - 命中按距离阈值过滤（>0.45 不注入），仅距离 ≤ 阈值的摘要格式化注入")
     void should_filterByThreshold_when_hitsReturned() {
         when(zhipuEmbedding.embed("你好")).thenReturn(vector());
         // 距离 0.9 超过阈值 0.45 → 过滤；距离 0.3 命中（保持距离升序）
@@ -145,46 +127,43 @@ class MemoryRetrievalServiceTest {
                 .thenReturn(List.<Object[]>of(new Object[]{2L, 0.9}, new Object[]{1L, 0.3}));
         AgentMemorySegment hit = AgentMemorySegment.builder().id(1L).summary("用户喜欢园艺").build();
         when(memorySegmentRepository.findAllById(List.of(1L))).thenReturn(List.of(hit));
-        when(promptRepository.get("memory.memory-summary")).thenReturn("记忆整合模板 {segments}");
-        when(deepseekChatModel.call(any(Prompt.class))).thenReturn(response("整合后的记忆"));
 
-        String ctx = service.loadMemoryContext(1L, "你好");
+        String result = service.retrieveMemory(1L, "你好");
 
-        assertThat(ctx).isEqualTo("整合后的记忆");
-        // 只注入距离 ≤ 阈值的那条摘要（findAllById 只拉取过滤后的 id）
+        // 只注入距离 ≤ 阈值的那条摘要（findAllById 只拉取过滤后的 id），返回带序号文本
+        assertThat(result).isEqualTo("1. 用户喜欢园艺");
         verify(memorySegmentRepository).findAllById(List.of(1L));
-        ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
-        verify(deepseekChatModel).call(promptCaptor.capture());
-        Message system = promptCaptor.getValue().getInstructions().get(0);
-        assertThat(system.getText()).contains("用户喜欢园艺");
     }
 
     @Test
-    @DisplayName("检索 - LLM 整合失败降级返回 null（不阻塞对话）")
-    void should_returnNull_when_llmFails() {
+    @DisplayName("检索 - 命中多条时返回带序号的摘要列表文本「1. 摘要\\n2. 摘要」（无 LLM 整合）")
+    void should_returnNumberedSegmentsText_when_hits() {
         when(zhipuEmbedding.embed("你好")).thenReturn(vector());
+        // 两条均 ≤ 阈值 0.45（按距离升序），hitIds=[2L,1L]，摘要按此顺序带序号格式化
         when(memorySegmentRepository.findIdsBySimilarity(eq(1L), anyString(), eq(3)))
-                .thenReturn(List.<Object[]>of(new Object[]{1L, 0.3}));
-        when(memorySegmentRepository.findAllById(List.of(1L)))
-                .thenReturn(List.of(AgentMemorySegment.builder().id(1L).summary("摘要").build()));
-        when(promptRepository.get("memory.memory-summary")).thenReturn("模板 {segments}");
-        when(deepseekChatModel.call(any(Prompt.class))).thenThrow(new RuntimeException("LLM 失败"));
+                .thenReturn(List.<Object[]>of(new Object[]{2L, 0.2}, new Object[]{1L, 0.3}));
+        when(memorySegmentRepository.findAllById(List.of(2L, 1L))).thenReturn(List.of(
+                AgentMemorySegment.builder().id(2L).summary("常发起搬家求助").build(),
+                AgentMemorySegment.builder().id(1L).summary("用户喜欢园艺").build()));
 
-        assertThat(service.loadMemoryContext(1L, "你好")).isNull();
+        String result = service.retrieveMemory(1L, "你好");
+
+        assertThat(result).isEqualTo("1. 常发起搬家求助\n2. 用户喜欢园艺");
     }
 
     @Test
-    @DisplayName("检索 - LLM 回复空白降级返回 null")
-    void should_returnNull_when_llmReplyBlank() {
+    @DisplayName("检索 - 命中段摘要为空/空白时跳过不占序号")
+    void should_skipBlankSummary_when_buildText() {
         when(zhipuEmbedding.embed("你好")).thenReturn(vector());
         when(memorySegmentRepository.findIdsBySimilarity(eq(1L), anyString(), eq(3)))
-                .thenReturn(List.<Object[]>of(new Object[]{1L, 0.3}));
-        when(memorySegmentRepository.findAllById(List.of(1L)))
-                .thenReturn(List.of(AgentMemorySegment.builder().id(1L).summary("摘要").build()));
-        when(promptRepository.get("memory.memory-summary")).thenReturn("模板 {segments}");
-        when(deepseekChatModel.call(any(Prompt.class))).thenReturn(response("   "));
+                .thenReturn(List.<Object[]>of(new Object[]{1L, 0.3}, new Object[]{2L, 0.2}));
+        when(memorySegmentRepository.findAllById(List.of(1L, 2L))).thenReturn(List.of(
+                AgentMemorySegment.builder().id(1L).summary("   ").build(),
+                AgentMemorySegment.builder().id(2L).summary("用户喜欢园艺").build()));
 
-        assertThat(service.loadMemoryContext(1L, "你好")).isNull();
+        String result = service.retrieveMemory(1L, "你好");
+
+        assertThat(result).isEqualTo("1. 用户喜欢园艺");
     }
 
     @Test
@@ -194,9 +173,7 @@ class MemoryRetrievalServiceTest {
         when(memorySegmentRepository.findIdsBySimilarity(eq(1L), anyString(), eq(3)))
                 .thenThrow(new RuntimeException("pgvector 维度不匹配"));
 
-        assertThat(service.loadMemoryContext(1L, "你好")).isNull();
-
-        verify(deepseekChatModel, never()).call(any(Prompt.class));
+        assertThat(service.retrieveMemory(1L, "你好")).isNull();
     }
 
     @Test
@@ -208,8 +185,6 @@ class MemoryRetrievalServiceTest {
         when(memorySegmentRepository.findAllById(List.of(1L)))
                 .thenThrow(new RuntimeException("pgvector 维度不匹配"));
 
-        assertThat(service.loadMemoryContext(1L, "你好")).isNull();
-
-        verify(deepseekChatModel, never()).call(any(Prompt.class));
+        assertThat(service.retrieveMemory(1L, "你好")).isNull();
     }
 }

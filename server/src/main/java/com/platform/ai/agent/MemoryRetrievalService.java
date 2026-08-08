@@ -1,15 +1,8 @@
 package com.platform.ai.agent;
 
-import com.platform.ai.common.PromptRepository;
 import com.platform.model.entity.AgentMemorySegment;
 import com.platform.repository.AgentMemorySegmentRepository;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.messages.Message;
-import org.springframework.ai.chat.messages.SystemMessage;
-import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.OpenAiEmbeddingModel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -20,18 +13,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 记忆检索服务 — 新窗口开始时把用户历史长期记忆（压缩段）整合为 {@code {历史记忆}} 变量。
+ * 记忆检索服务 — 按次实时检索用户长期记忆（压缩段）摘要，直接注入 {@code {历史记忆}} 变量。
  *
  * <p>链路：向量化 queryText → 按用户过滤的向量检索 top-N（阈值过滤在服务层）→ 无命中返回「无」→
- * 读 {@code memory.memory-summary} 渲染命中摘要列表 → LLM 整合为一段记忆变量。
- * <b>降级铁律</b>：embedding 失败 / LLM 失败 → 返回 null 不阻塞对话（注入侧将 null 渲染为「无」）。</p>
+ * 命中摘要按序号格式化后直接注入（记忆摘要本就是压缩时 LLM 产物，无需二次整合）。
+ * <b>降级铁律</b>：embedding 失败 / 检索异常 / 统计异常 → 返回 null 不阻塞对话（注入侧将 null 渲染为「无」）。</p>
  */
 @Slf4j
 @Service
 public class MemoryRetrievalService {
 
-    private final PromptRepository promptRepository;
-    private final OpenAiChatModel deepseekChatModel;
     private final OpenAiEmbeddingModel zhipuEmbedding;
     private final AgentMemorySegmentRepository memorySegmentRepository;
 
@@ -43,45 +34,36 @@ public class MemoryRetrievalService {
     @Value("${ai.agent.memory-match-threshold:0.45}")
     private double memoryMatchThreshold;
 
-    /** 记忆整合 LLM 温度（与压缩一致的精准档） */
-    private static final double SUMMARY_TEMPERATURE = 0.2;
-
-    /** 记忆整合 LLM 最大输出 token */
-    private static final int SUMMARY_MAX_TOKENS = 1024;
-
     /** 无命中时的记忆变量文本 */
     private static final String MEMORY_NONE = "无";
 
     /**
      * 构造器注入。
      *
-     * @param promptRepository        提示词仓库（key {@code memory.memory-summary}）
-     * @param deepseekChatModel       DeepSeek 对话模型（与 AgentService 同一 Bean）
      * @param zhipuEmbedding          智谱 embedding 模型（与知识库同款 1024 维，写入 vector(1024) 压缩段）
      * @param memorySegmentRepository 压缩段仓储（按用户检索）
      */
-    public MemoryRetrievalService(PromptRepository promptRepository,
-                                  OpenAiChatModel deepseekChatModel,
-                                  OpenAiEmbeddingModel zhipuEmbedding,
+    public MemoryRetrievalService(OpenAiEmbeddingModel zhipuEmbedding,
                                   AgentMemorySegmentRepository memorySegmentRepository) {
-        this.promptRepository = promptRepository;
-        this.deepseekChatModel = deepseekChatModel;
         this.zhipuEmbedding = zhipuEmbedding;
         this.memorySegmentRepository = memorySegmentRepository;
     }
 
     /**
-     * 加载用户长期记忆上下文变量（供 System Prompt 的 {@code {历史记忆}} 注入）。
+     * 按次实时检索用户长期记忆摘要并返回注入文本（供 System Prompt 的 {@code {历史记忆}} 注入）。
+     *
+     * <p>每个用户消息都以其自身作 query 实时检索 top-3（阈值过滤在服务层），命中摘要按
+     * 「1. 摘要\n2. 摘要」格式直接返回；无 LLM 整合、无窗口缓存。</p>
      *
      * @param userId    住户用户 ID（检索强制按用户过滤，越权防护）
-     * @param queryText 当前窗口首条用户消息（作检索查询文本）
-     * @return 整合后的记忆变量文本；无命中返回「无」；embedding/LLM 失败降级返回 null（不阻塞）
+     * @param queryText 当前用户消息（作检索查询文本）
+     * @return 命中摘要列表文本；无命中返回「无」；queryText 空/embedding 失败/检索异常降级返回 null（不阻塞）
      */
-    public String loadMemoryContext(Long userId, String queryText) {
+    public String retrieveMemory(Long userId, String queryText) {
         if (queryText == null || queryText.isBlank()) {
             return null;
         }
-        // 0. 无段跳过：该用户从未产生压缩段（无长期记忆）→ 直接返回「无」，省去一次 embedding 调用与向量检索；
+        // 无段跳过：该用户从未产生压缩段（无长期记忆）→ 直接返回「无」，省去一次 embedding 调用与向量检索；
         //    统计查询异常按检索异常降级铁律处理——记日志后走原链路（由后续 embedQuery/searchWithThreshold 兜底）
         try {
             if (memorySegmentRepository.countByUserId(userId) == 0L) {
@@ -90,12 +72,12 @@ public class MemoryRetrievalService {
         } catch (Exception e) {
             log.warn("记忆段数量统计失败（降级走原链路）: userId={}, {}", userId, e.getMessage());
         }
-        // 1. 向量化查询文本（失败降级返回 null，不阻塞对话）
+        // 向量化查询文本（失败降级返回 null，不阻塞对话）
         String queryVector = embedQuery(queryText);
         if (queryVector == null) {
             return null;
         }
-        // 2. 按用户检索 top-N，阈值过滤在服务层（与知识库检索同款做法）
+        // 按用户检索 top-N，阈值过滤在服务层（与知识库检索同款做法）
         List<AgentMemorySegment> hits;
         try {
             hits = searchWithThreshold(userId, queryVector);
@@ -104,31 +86,15 @@ public class MemoryRetrievalService {
             log.warn("记忆检索异常（降级不注入记忆）: userId={}, {}", userId, e.getMessage());
             return null;
         }
-        // 3. 无命中 → 返回「无」
+        // 无命中 → 返回「无」
         if (hits.isEmpty()) {
             return MEMORY_NONE;
         }
-        // 4. 渲染 memory-summary 提示词 → LLM 整合（失败降级返回 null）
-        String segmentsText = buildSegmentsText(hits);
-        String prompt = promptRepository.get("memory.memory-summary").replace("{segments}", segmentsText);
-        try {
-            Message system = new SystemMessage(prompt);
-            ChatResponse response = deepseekChatModel.call(new Prompt(List.of(system),
-                    OpenAiChatOptions.builder()
-                            .temperature(SUMMARY_TEMPERATURE)
-                            .maxTokens(SUMMARY_MAX_TOKENS)
-                            .build()));
-            String summary = response.getResult().getOutput().getText();
-            if (summary == null || summary.isBlank()) {
-                log.warn("记忆整合 LLM 回复为空（降级不注入）: userId={}", userId);
-                return null;
-            }
-            log.info("记忆检索注入: userId={}, 命中 {} 段", userId, hits.size());
-            return summary.trim();
-        } catch (Exception e) {
-            log.warn("记忆整合 LLM 失败（降级不注入）: userId={}, {}", userId, e.getMessage());
-            return null;
-        }
+        // 命中 → 直接格式化命中摘要注入（无 LLM 整合，记忆摘要即压缩时产物）；
+        //    摘要全为空（如 RETRY 段摘要缺失）时 buildSegmentsText 返回「无」，与无命中语义一致
+        String text = buildSegmentsText(hits);
+        log.info("记忆检索注入: userId={}, 命中 {} 段", userId, hits.size());
+        return text;
     }
 
     /**
@@ -208,10 +174,10 @@ public class MemoryRetrievalService {
     }
 
     /**
-     * 构建命中摘要列表文本（带序号，供 memory-summary 提示词渲染）。
+     * 构建命中摘要列表文本（带序号，直接注入用）。
      *
      * @param segments 命中的压缩段（按距离升序）
-     * @return 形如「1. 摘要1\n2. 摘要2」的文本
+     * @return 形如「1. 摘要1\n2. 摘要2」的文本；摘要全为空（空白）时返回「无」
      */
     private String buildSegmentsText(List<AgentMemorySegment> segments) {
         StringBuilder sb = new StringBuilder();
@@ -226,6 +192,6 @@ public class MemoryRetrievalService {
                 seq++;
             }
         }
-        return sb.toString();
+        return sb.length() == 0 ? MEMORY_NONE : sb.toString();
     }
 }

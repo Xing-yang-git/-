@@ -153,13 +153,12 @@ class ArchiveServiceTest {
 
         verify(messageRepository).saveAll(anyList());
 
-        // 归档后热会话清空并回填会话级 conversationId；memoryLoaded 重置为 false
+        // 归档后热会话清空并回填会话级 conversationId（记忆按次实时检索，无窗口缓存字段）
         ArgumentCaptor<AgentSession> sessionCaptor = ArgumentCaptor.forClass(AgentSession.class);
         verify(sessionService).saveSession(eq(1L), sessionCaptor.capture());
         AgentSession saved = sessionCaptor.getValue();
         assertThat(saved.getConversationId()).isEqualTo(1L);
         assertThat(saved.getMessages()).isEmpty();
-        assertThat(saved.isMemoryLoaded()).isFalse();
     }
 
     @Test
@@ -202,15 +201,13 @@ class ArchiveServiceTest {
         assertThat(created.getMessageCount()).isEqualTo(2);
         assertThat(created.getConversationId()).isEqualTo(50L);
 
-        // Redis 移走最旧 2 条，保留剩余 3 条；memoryLoaded 重置为 false
+        // Redis 移走最旧 2 条，保留剩余 3 条（记忆按次实时检索，无窗口缓存字段）
         ArgumentCaptor<AgentSession> sessionCaptor = ArgumentCaptor.forClass(AgentSession.class);
         verify(sessionService).saveSession(eq(1L), sessionCaptor.capture());
         AgentSession saved = sessionCaptor.getValue();
         assertThat(saved.getMessages()).hasSize(3);
         assertThat(saved.getMessages().get(0).content()).isEqualTo("消息3");
         assertThat(saved.getConversationId()).isEqualTo(50L);
-        assertThat(saved.isMemoryLoaded()).isFalse();
-        assertThat(saved.getMemoryContext()).isNull();
 
         // 异步触发压缩（segmentNo = 已用序号 + 1 = 1）
         verify(memoryCompressionService).compressWindow(eq(1L), eq(10L), eq(50L), eq(50L), anyString(), eq(1));
@@ -351,7 +348,7 @@ class ArchiveServiceTest {
     }
 
     @Test
-    @DisplayName("恢复 - 按会话级 id 合并全部归档行消息回填最近 N 轮，保留会话级 id 且跳过记忆注入")
+    @DisplayName("恢复 - 按会话级 id 合并全部归档行消息回填最近 N 轮，保留会话级 id")
     void should_resume_withRecentTurnsBackfill() {
         when(sessionService.getSession(1L)).thenReturn(null);
         // 同一会话两条归档行，共享会话级 id=9
@@ -384,9 +381,6 @@ class ArchiveServiceTest {
         assertThat(saved.getMessages().get(3).content()).isEqualTo("归档消息6");
         // 会话级 id 保留，继续对话沿用同一会话
         assertThat(saved.getConversationId()).isEqualTo(9L);
-        // 恢复上下文已完整，跳过记忆注入
-        assertThat(saved.isMemoryLoaded()).isTrue();
-        assertThat(saved.getMemoryContext()).isNull();
     }
 
     // ==================== 软删（按会话级 id + 越权防护） ====================
