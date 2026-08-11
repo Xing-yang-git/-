@@ -1,41 +1,24 @@
 <template>
-  <el-container class="admin-layout">
-    <el-aside width="240px">
-      <AppSidebar />
-    </el-aside>
-    <el-container>
-      <el-header class="topbar">
-        <div
-          class="topbar-left"
-          style="display: flex; align-items: baseline; gap: 8px"
+  <AppLayout title="物业运营端">
+    <template #subtitle>{{ todayWithTime }}</template>
+    <template #actions="{ logout }">
+      <span class="logout-btn" @click="logout" title="退出登录">
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
         >
-          <span class="topbar-title">物业运营端</span>
-          <span
-            class="text-sm text-secondary"
-            style="white-space: nowrap; font-weight: 400"
-            >{{ todayWithTime }}</span
-          >
-        </div>
-        <div class="topbar-right">
-          <span class="logout-btn" @click="handleLogout" title="退出登录">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
-          </span>
-        </div>
-      </el-header>
-      <el-main>
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+      </span>
+    </template>
         <!-- 快速统计 -->
         <div class="quick-stats">
           <div class="quick-stat">
@@ -217,9 +200,7 @@
           </div>
         </div>
         </template>
-      </el-main>
-    </el-container>
-  </el-container>
+  </AppLayout>
 </template>
 
 <!--
@@ -231,11 +212,10 @@
 <script setup lang="ts">
 import { computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
-import { ElMessageBox } from "element-plus";
 
-import { useAuthStore } from "../stores/auth";
-import { USER_TYPE } from "../utils/constants";
-import AppSidebar from "../components/AppSidebar.vue";
+import { useAuthStore } from "@/stores/auth";
+import { USER_TYPE } from "@/utils/constants";
+import AppLayout from "@/layouts/AppLayout.vue";
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -261,20 +241,6 @@ const todayWithTime = computed(() => {
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日周${days[d.getDay()]} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 });
 
-/** 退出登录 — 确认后清除 token 并跳转登录页 */
-async function handleLogout(): Promise<void> {
-  try {
-    await ElMessageBox.confirm("确认退出登录？", "提示", {
-      confirmButtonText: "退出",
-      cancelButtonText: "取消",
-      type: "warning",
-    });
-    authStore.logout();
-    router.push("/login");
-  } catch {
-    // 已取消
-  }
-}
 </script>
 
 <style scoped>
@@ -351,16 +317,4 @@ async function handleLogout(): Promise<void> {
   border-radius: 10px;
 }
 
-/* 顶部栏退出登录按钮 */
-:deep(.logout-btn) {
-  display: flex;
-  align-items: center;
-  padding: 4px;
-  cursor: pointer;
-  color: var(--text-secondary);
-  transition: color var(--transition);
-}
-:deep(.logout-btn:hover) {
-  color: var(--red);
-}
 </style>

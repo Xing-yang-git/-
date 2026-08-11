@@ -131,14 +131,32 @@ class AdminServiceTest {
 
     // ==================== getDashboard ====================
 
+    /** 构造一条租户内借用记录（供看板测试，idleId 需落在 idleItems 映射内） */
+    private BorrowRequest buildBorrow(Long idleId, Long borrowerId) {
+        LocalDateTime now = LocalDateTime.now();
+        return BorrowRequest.builder().idleId(idleId).borrowerId(borrowerId)
+                .status(BizStatus.RETURNED).damageType("normal")
+                .createdAt(now).returnedAt(now)
+                .build();
+    }
+
     @Test
     @DisplayName("获取仪表盘 - 正常返回统计数据")
     void should_returnDashboard_when_dataExists() {
-        // 准备
+        // 准备：本月归还完成且有正常耗损的借用 + 本月完成的帮助接单
+        LocalDateTime now = LocalDateTime.now();
+        BorrowRequest borrow = buildBorrow(itemId, userId);
+        HelpApplication helpApp = HelpApplication.builder()
+                .id(400L).helpId(helpId).helperId(userId)
+                .status(BizStatus.COMPLETED)
+                .createdAt(now).completedAt(now)
+                .build();
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
         when(idleItemRepository.findAll()).thenReturn(List.of(idleItem));
         when(helpRequestRepository.findAll()).thenReturn(List.of(helpRequest));
-        when(borrowRequestRepository.findAll()).thenReturn(Collections.emptyList());
+        when(borrowRequestRepository.findAll()).thenReturn(List.of(borrow));
+        when(helpApplicationRepository.findAll()).thenReturn(List.of(helpApp));
+        when(ratingRepository.findAll()).thenReturn(Collections.emptyList());
         when(userRepository.findAll()).thenReturn(List.of(user));
 
         // 执行
@@ -146,10 +164,190 @@ class AdminServiceTest {
 
         // 断言
         assertThat(result).isNotNull();
-        assertThat(result.getOnlineIdleCount()).isEqualTo(1);
-        assertThat(result.getOnlineHelpCount()).isEqualTo(1);
-        assertThat(result.getItemStats()).isNotNull();
-        assertThat(result.getCategoryStats()).isNotNull();
+        assertThat(result.getKpis()).hasSize(4);
+        assertThat(result.getKpis().get(0).getKey()).isEqualTo("idle");
+        assertThat(result.getKpis().get(0).getValue()).isEqualTo(1);   // LEND online
+        assertThat(result.getKpis().get(1).getKey()).isEqualTo("help");
+        assertThat(result.getKpis().get(1).getValue()).isEqualTo(1);   // 求助 online
+        assertThat(result.getCompletion().getCompleted()).isEqualTo(2); // 归还借用 + 完成帮助
+        assertThat(result.getDamage().getNormal()).isEqualTo(1);
+        assertThat(result.getRanking()).isNotEmpty();
+        assertThat(result.getTrends().getWeek().getLabels()).hasSize(7);
+    }
+
+    @Test
+    @DisplayName("KPI 环比 - 本月 vs 上月发布增速")
+    void should_computeKpiMomChange_correctly() {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime lastMonth = now.minusMonths(1);
+        List<IdleItem> idleItems = new ArrayList<>();
+        // 本月 3 条 LEND 发布
+        for (int i = 0; i < 3; i++) {
+            idleItems.add(IdleItem.builder().id(100L + i).userId(userId).tenantId(tenantId)
+                    .postType("LEND").status("online").category("数码").createdAt(now).build());
+        }
+        // 上月 6 条 LEND 发布
+        for (int i = 0; i < 6; i++) {
+            idleItems.add(IdleItem.builder().id(200L + i).userId(userId).tenantId(tenantId)
+                    .postType("LEND").status("online").category("数码").createdAt(lastMonth).build());
+        }
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
+        when(idleItemRepository.findAll()).thenReturn(idleItems);
+        when(helpRequestRepository.findAll()).thenReturn(Collections.emptyList());
+        when(borrowRequestRepository.findAll()).thenReturn(Collections.emptyList());
+        when(helpApplicationRepository.findAll()).thenReturn(Collections.emptyList());
+        when(ratingRepository.findAll()).thenReturn(Collections.emptyList());
+        when(userRepository.findAll()).thenReturn(List.of(user));
+
+        DashboardDTO result = adminService.getDashboard(adminId);
+
+        // 在线闲置(LEND online) = 9；idle 环比 = 本月 3 vs 上月 6 = -50%
+        assertThat(result.getKpis().get(0).getValue()).isEqualTo(9);
+        assertThat(result.getKpis().get(0).getMomChange()).isEqualTo(-50.0);
+        // 本月发布 = 3、pub 环比 -50%
+        assertThat(result.getKpis().get(2).getValue()).isEqualTo(3);
+        assertThat(result.getKpis().get(2).getMomChange()).isEqualTo(-50.0);
+    }
+
+    @Test
+    @DisplayName("损坏统计 - 三态分布")
+    void should_computeDamageThreeStates() {
+        LocalDateTime now = LocalDateTime.now();
+        IdleItem i1 = IdleItem.builder().id(itemId).userId(userId).tenantId(tenantId)
+                .postType("LEND").status("online").createdAt(now).build();
+        IdleItem i2 = IdleItem.builder().id(itemId + 1).userId(userId).tenantId(tenantId)
+                .postType("LEND").status("online").createdAt(now).build();
+        List<BorrowRequest> borrows = List.of(
+                BorrowRequest.builder().idleId(i1.getId()).borrowerId(userId).damageType("normal").build(),
+                BorrowRequest.builder().idleId(i1.getId()).borrowerId(userId).damageType("normal").build(),
+                BorrowRequest.builder().idleId(i2.getId()).borrowerId(userId).damageType("severe").build(),
+                BorrowRequest.builder().idleId(i2.getId()).borrowerId(userId).damageType("broken").build());
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
+        when(idleItemRepository.findAll()).thenReturn(List.of(i1, i2));
+        when(helpRequestRepository.findAll()).thenReturn(Collections.emptyList());
+        when(borrowRequestRepository.findAll()).thenReturn(borrows);
+        when(helpApplicationRepository.findAll()).thenReturn(Collections.emptyList());
+        when(ratingRepository.findAll()).thenReturn(Collections.emptyList());
+        when(userRepository.findAll()).thenReturn(List.of(user));
+
+        DashboardDTO result = adminService.getDashboard(adminId);
+
+        assertThat(result.getDamage().getNormal()).isEqualTo(2);
+        assertThat(result.getDamage().getSevere()).isEqualTo(1);
+        assertThat(result.getDamage().getBroken()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("趋势 - 周/月/季分桶结构与当日计数")
+    void should_computeTrendBuckets() {
+        LocalDateTime now = LocalDateTime.now();
+        // 今日发布 1 条闲置、今日归还 1 条借用（应落在 week 最后一个桶「今日」）
+        IdleItem todayIdle = IdleItem.builder().id(itemId).userId(userId).tenantId(tenantId)
+                .postType("LEND").status("online").createdAt(now).build();
+        BorrowRequest todayReturned = BorrowRequest.builder().id(300L).idleId(itemId).borrowerId(userId)
+                .status(BizStatus.RETURNED).createdAt(now).returnedAt(now).build();
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
+        when(idleItemRepository.findAll()).thenReturn(List.of(todayIdle));
+        when(helpRequestRepository.findAll()).thenReturn(Collections.emptyList());
+        when(borrowRequestRepository.findAll()).thenReturn(List.of(todayReturned));
+        when(helpApplicationRepository.findAll()).thenReturn(Collections.emptyList());
+        when(ratingRepository.findAll()).thenReturn(Collections.emptyList());
+        when(userRepository.findAll()).thenReturn(List.of(user));
+
+        DashboardDTO result = adminService.getDashboard(adminId);
+
+        DashboardDTO.TrendData week = result.getTrends().getWeek();
+        assertThat(week.getLabels()).hasSize(7);
+        assertThat(week.getLabels().get(6)).isEqualTo("今日");
+        assertThat(week.getPublish().get(6)).isEqualTo(1);
+        assertThat(week.getCompleted().get(6)).isEqualTo(1);
+
+        DashboardDTO.TrendData month = result.getTrends().getMonth();
+        assertThat(month.getLabels().get(0)).isEqualTo("第1周");
+        assertThat(month.getPublish()).contains(1L);   // 今日发布落入本月某一周桶
+
+        assertThat(result.getTrends().getQuarter().getLabels()).hasSize(3);
+    }
+
+    @Test
+    @DisplayName("排行 - 按住户合并闲置借入与技能接单次数")
+    void should_computeRanking_groupedByUserAndType() {
+        LocalDateTime now = LocalDateTime.now();
+        Building building = Building.builder().id(1L).name("3栋").tenantId(tenantId).build();
+        Unit unit = Unit.builder().id(1L).name("2单元").building(building).build();
+        Room room = Room.builder().id(1L).roomNumber("1502").unit(unit).build();
+        User borrower = User.builder().id(3L).name("借入住户").userType(UserType.OWNER)
+                .tenantId(tenantId).room(room).authStatus("approved").createdAt(now).build();
+        User helper = User.builder().id(4L).name("接单住户").userType(UserType.TENANT)
+                .tenantId(tenantId).authStatus("approved").createdAt(now).build();
+        IdleItem i1 = IdleItem.builder().id(itemId).userId(3L).tenantId(tenantId)
+                .postType("LEND").status("online").createdAt(now).build();
+        HelpRequest hr = HelpRequest.builder().id(helpId).userId(4L).tenantId(tenantId)
+                .title("求助").status("completed").createdAt(now).build();
+        // 3 号住户：2 次借入 + 1 次完成接单 → 合并 3 次；4 号住户：1 次完成接单 → 1 次
+        HelpApplication appForBorrower = HelpApplication.builder().id(401L).helpId(helpId).helperId(3L)
+                .status(BizStatus.COMPLETED).createdAt(now).completedAt(now).build();
+        HelpApplication appForHelper = HelpApplication.builder().id(402L).helpId(helpId).helperId(4L)
+                .status(BizStatus.COMPLETED).createdAt(now).completedAt(now).build();
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
+        when(idleItemRepository.findAll()).thenReturn(List.of(i1));
+        when(helpRequestRepository.findAll()).thenReturn(List.of(hr));
+        when(borrowRequestRepository.findAll()).thenReturn(List.of(buildBorrow(itemId, 3L), buildBorrow(itemId, 3L)));
+        when(helpApplicationRepository.findAll()).thenReturn(List.of(appForBorrower, appForHelper));
+        when(ratingRepository.findAll()).thenReturn(Collections.emptyList());
+        when(userRepository.findAll()).thenReturn(List.of(borrower, helper));
+
+        DashboardDTO result = adminService.getDashboard(adminId);
+
+        List<DashboardDTO.RankingItem> ranking = result.getRanking();
+        // 同一住户只出现一条：3 号合并 3 次排第一，展示名含房号
+        assertThat(ranking).hasSize(2);
+        assertThat(ranking.get(0).getName()).isEqualTo("3栋2单元1502号(业主)");
+        assertThat(ranking.get(0).getCount()).isEqualTo(3);
+        assertThat(ranking.get(1).getCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("仪表盘 - 无数据时全 0 不抛异常")
+    void should_returnZeroDashboard_when_empty() {
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
+        when(idleItemRepository.findAll()).thenReturn(Collections.emptyList());
+        when(helpRequestRepository.findAll()).thenReturn(Collections.emptyList());
+        when(borrowRequestRepository.findAll()).thenReturn(Collections.emptyList());
+        when(helpApplicationRepository.findAll()).thenReturn(Collections.emptyList());
+        when(ratingRepository.findAll()).thenReturn(Collections.emptyList());
+        when(userRepository.findAll()).thenReturn(Collections.emptyList());
+
+        DashboardDTO result = adminService.getDashboard(adminId);
+
+        assertThat(result.getKpis()).hasSize(4);
+        for (DashboardDTO.KpiStat k : result.getKpis()) {
+            assertThat(k.getValue()).isZero();
+            assertThat(k.getMomChange()).isZero();
+        }
+        assertThat(result.getCompletion().getRate()).isZero();
+        assertThat(result.getDamage().getNormal()).isZero();
+        assertThat(result.getRanking()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("仪表盘 - 跨租户数据不计入")
+    void should_exclude_otherTenant_when_dashboard() {
+        LocalDateTime now = LocalDateTime.now();
+        IdleItem otherTenant = IdleItem.builder().id(900L).userId(9L).tenantId(99L)
+                .postType("LEND").status("online").createdAt(now).build();
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
+        when(idleItemRepository.findAll()).thenReturn(List.of(otherTenant));
+        when(helpRequestRepository.findAll()).thenReturn(Collections.emptyList());
+        when(borrowRequestRepository.findAll()).thenReturn(Collections.emptyList());
+        when(helpApplicationRepository.findAll()).thenReturn(Collections.emptyList());
+        when(ratingRepository.findAll()).thenReturn(Collections.emptyList());
+        when(userRepository.findAll()).thenReturn(Collections.emptyList());
+
+        DashboardDTO result = adminService.getDashboard(adminId);
+
+        assertThat(result.getKpis().get(0).getValue()).isZero();   // 他租户闲置不计入
+        assertThat(result.getTrends().getWeek().getPublish()).allMatch(v -> v == 0L);
     }
 
     // ==================== getAudits ====================

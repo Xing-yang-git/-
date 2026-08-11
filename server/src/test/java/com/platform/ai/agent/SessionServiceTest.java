@@ -156,6 +156,38 @@ class SessionServiceTest {
     }
 
     @Test
+    @DisplayName("消息截断 - 丢弃已归档回填前缀时同步减小前缀计数")
+    void should_truncate_decreaseArchivedPrefixCount() throws Exception {
+        ReflectionTestUtils.setField(sessionService, "maxTurns", 1);   // 上限 2 条，触发强截断
+        AtomicReference<AgentSession> store = new AtomicReference<>();
+        when(valueOperations.get(anyString())).thenAnswer(inv -> {
+            AgentSession s = store.get();
+            return s == null ? null : objectMapper.writeValueAsString(s);
+        });
+        doAnswer(inv -> {
+            store.set(objectMapper.readValue((String) inv.getArgument(1), AgentSession.class));
+            return null;
+        }).when(valueOperations).set(anyString(), anyString(), any(Duration.class));
+
+        // 初始会话：2 条已归档回填（前缀）+ 1 条新增
+        AgentSession initial = new AgentSession();
+        initial.setArchivedPrefixCount(2);
+        initial.setMessages(new ArrayList<>(List.of(
+                new AgentSession.AgentMessageItem(AgentMessageRole.USER, "回填1", null, null),
+                new AgentSession.AgentMessageItem(AgentMessageRole.ASSISTANT, "回填2", null, null),
+                new AgentSession.AgentMessageItem(AgentMessageRole.USER, "新增1", null, null))));
+        store.set(initial);
+
+        // 再追加 1 条，共 4 条 > 上限 2 → 截断丢最旧 2 条（均为回填前缀），前缀计数归零
+        sessionService.append(1L, AgentMessageRole.ASSISTANT, "新增2", null, null);
+
+        AgentSession result = sessionService.getSession(1L);
+        assertThat(result.getMessages()).hasSize(2);
+        assertThat(result.getMessages().get(0).content()).isEqualTo("新增1");
+        assertThat(result.getArchivedPrefixCount()).isZero();
+    }
+
+    @Test
     @DisplayName("字符裁剪 - 超 max-history-chars 时从头部裁剪且至少保留 6 条")
     void should_trimChars_keepAtLeastSix() throws Exception {
         ReflectionTestUtils.setField(sessionService, "maxHistoryChars", 5);   // 极小值触发裁剪

@@ -250,8 +250,8 @@ async function handleLogin(): Promise<void> {
   box-shadow: 0 0 0 0.5px var(--border-soft);
 }
 
-:deep(.el-input.is-focus .el-input__wrapper) {
-  box-shadow: 0 0 0 1px var(--accent);
+:deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 0.5px var(--border-soft);
   background: var(--surface);
 }
 

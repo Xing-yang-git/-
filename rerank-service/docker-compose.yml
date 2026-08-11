@@ -12,6 +12,14 @@ services:
     volumes:
       # 模型持久化卷：下载一次，容器重启/重建不重复下载
       - rerank-models:/models
+    # GPU 透传：rerank 走 RTX 3060 加速（CPU 推 8 条要 ~10s，GPU 亚秒级）；需宿主机已装 nvidia-container-toolkit
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     restart: unless-stopped
 
 volumes:

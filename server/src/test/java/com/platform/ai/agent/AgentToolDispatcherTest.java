@@ -2,6 +2,7 @@ package com.platform.ai.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.platform.ai.PolishingClient;
+import com.platform.ai.common.PromptRepository;
 import com.platform.ai.search.KnowledgeHit;
 import com.platform.ai.search.KnowledgeRetrievalService;
 import com.platform.common.BizStatus;
@@ -81,7 +82,8 @@ class AgentToolDispatcherTest {
     @BeforeEach
     void setUp() {
         dispatcher = new AgentToolDispatcher(idleService, borrowService, polishingClient, objectMapper,
-                retrievalService, userRepository, notificationService, helpService, userActivityService);
+                retrievalService, userRepository, notificationService, helpService, userActivityService,
+                new PromptRepository());
         // @Value 字段默认 0（int）会让工具计数关卡永远命中，测试须显式注入上限
         ReflectionTestUtils.setField(dispatcher, "maxToolCalls", 5);
     }

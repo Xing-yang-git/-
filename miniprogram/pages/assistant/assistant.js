@@ -335,14 +335,6 @@ Page({
    * 微信不感知）开着时返回手势被当成根页面返回而直接退出小程序；
    * 弹层关闭状态交还系统正常 pop 回中转页（中转页据 assistantReturning 切回首页 tab）。
    */
-  onBackPress() {
-    if (this.data.historyVisible) {
-      this.onCloseHistory();
-      return true;
-    }
-    return false;
-  },
-
   /** 返回按钮：退回中转页（中转页据此回首页 tab），无栈时兜底直接切首页 */
   onNavBack() {
     wx.navigateBack({

@@ -822,6 +822,10 @@ Page({
     this.setData({ showMsgMenu: false, menuTarget: null });
   },
 
+  /**
+   * 返回手势/返回键处理（Android 返回键 + iOS 侧滑返回）：
+   * 长按消息的操作菜单打开时先关闭菜单并拦截路由回退，避免菜单开着时返回手势直接 pop 离开聊天页。
+   */
   _deleteMsg(msgId) {
     const messages = this.data.messages.filter(m => m.id !== msgId);
     this.setData({ messages });

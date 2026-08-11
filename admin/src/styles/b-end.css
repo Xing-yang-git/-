@@ -11,11 +11,16 @@
   --accent: #0071e3;
   --accent-hover: #0077ed;
   --accent-active: #0066cc;
-  --bg: rgba(120, 120, 128, 0.16);
-  --surface: #ffffff;
+  --bg: #f3ece6;
+  --surface: #ffffff56;
+  --surface-shallow: #ffffff21;
+  /* 表单控件皮肤：输入框/下拉/日期/文本域统一底色与软阴影 */
+  --control-bg: var(--surface-shallow);
+  --control-shadow: 0 2px 3px rgba(0, 0, 0, 0.04);
+  --control-shadow-hover: 0 4px 5px rgba(0, 0, 0, 0.05);
   --sidebar-width: 240px;
   --topbar-height: 56px;
-  --text: #1d1d1f;
+  --text: #6b5c4f;
   --text-secondary: #6e6e73;
   --text-tertiary: #86868b;
   --border: #d2d2d7;
@@ -41,6 +46,12 @@
   --el-color-primary-light-8: #b3d7f7;
   --el-color-primary-light-9: #e6f1fc;
   --el-color-primary-dark-2: #005ab6;
+
+  /* 侧边栏暖色 token（AppSidebar scoped 样式引用，集中管理避免局部硬编码十六进制） */
+  --sidebar-item-hover: #d3aa68;                   /* 侧边栏项 hover 文字色（暖金） */
+  --sidebar-item-active: #4f3d22c5;                /* 侧边栏项 active 文字色（深棕半透明） */
+  --sidebar-item-hover-bg: linear-gradient(to left, #b5976913 0%, #ebe2d8 80%);    /* hover 渐变底 */
+  --sidebar-item-active-bg: linear-gradient(to left, #91764e49 0%, #ebe2d8 80%);   /* active 渐变底 */
 }
 
 /* ─── CSS 重置（原型对齐版） ─── */
@@ -85,20 +96,25 @@ textarea {
 }
 
 .admin-layout .el-aside {
-  background: #fafafc;
+  background: linear-gradient(to right, #ebe2d8 0%, #f7f2ed 100%);
   border-right: 0.5px solid var(--border-soft);
   overflow: hidden;
 }
 
 .admin-layout .el-main {
-  background: var(--bg);
+  background: linear-gradient(135deg, #f7f2ed 0%, #ebe2d8 100%);
   padding: 24px;
   overflow-y: auto;
 }
 
+/* Dashboard 宽松内边距 — 覆盖默认 24px（特异性 0,3,0 高于 .admin-layout .el-main 的 0,2,0） */
+.admin-layout .el-main.el-main--comfortable {
+  padding: 32px 40px;
+}
+
 /* ─── 顶部栏 ─── */
 .topbar {
-  background: rgba(255, 255, 255, 0.82);
+  background: linear-gradient(45deg, #f7f2ed 0%, #efe6dc 100%);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   padding: 12px 24px;
@@ -110,8 +126,8 @@ textarea {
 
 .topbar-left {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  align-items: baseline;
+  gap: 8px;
 }
 
 .topbar-title {
@@ -119,6 +135,21 @@ textarea {
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--text);
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  padding: 14px 20px 0;
+  background: var(--surface-shallow);
+}
+
+/* 顶部栏副标题（AppLayout #subtitle 插槽）— 替代各页内联 text-sm text-secondary */
+.topbar-subtitle {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 400;
+  white-space: nowrap;
 }
 
 .topbar-right {
@@ -137,6 +168,67 @@ textarea {
 }
 .logout-btn:hover {
   color: var(--red);
+}
+
+.btn-kong {
+  padding: 6px 25px;
+  border-radius: 8px;
+  background: #eeece9;
+  border: 1.5px solid #d4c8bc;
+  color: #6b5c4f;
+}
+
+.btn-kong:hover {
+  background-color: #ece8e3;
+}
+
+/* disabled 态：降低透明度 + 禁用光标，让 :disabled 状态肉眼可见 */
+.btn-kong:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-kong:disabled:hover {
+  background-color: #eeece9;
+}
+
+/* ─── 全局 el-button 统一 btn-kong 风格 ─── */
+/* 让所有常规 el-button（含 primary/success/warning/danger/info 各 type 变体）
+   统一为 btn-kong 的米色幽灵外观：米色底、暖棕描边、棕灰文字。
+   通过覆盖 Element Plus 的 --el-button-* CSS 变量实现，一处生效于全部 el-button。
+   link / text 变体（表格行内 编辑/删除/移除 等轻量操作）保持文本样式，不在本覆盖范围。 */
+.el-button,
+.el-button--primary,
+.el-button--success,
+.el-button--warning,
+.el-button--danger,
+.el-button--info {
+  --el-button-bg-color: #eeece9;
+  --el-button-border-color: #d4c8bc;
+  --el-button-text-color: #6b5c4f;
+  --el-button-outline-color: #c9bca9;
+  --el-button-active-color: #6b5c4f;
+  --el-button-hover-text-color: #6b5c4f;
+  --el-button-hover-link-text-color: #6b5c4f;
+  --el-button-hover-bg-color: #ece8e3;
+  --el-button-hover-border-color: #c9bca9;
+  --el-button-active-bg-color: #e4dfd9;
+  --el-button-active-border-color: #c9bca9;
+  --el-button-active-text-color: #6b5c4f;
+  --el-button-disabled-text-color: #b0a69a;
+  --el-button-disabled-bg-color: #f2f0ed;
+  --el-button-disabled-border-color: #e0d8cd;
+  border-radius: 8px;
+  border-width: 1.5px;
+}
+/* 默认尺寸加宽内边距对齐 btn-kong；small/large 保持各自紧凑/宽松比例 */
+.el-button {
+  padding: 6px 25px;
+}
+.el-button--small {
+  padding: 5px 11px;
+}
+.el-button--large {
+  padding: 12px 19px;
 }
 
 /* ─── 统计卡片 ─── */
@@ -218,7 +310,7 @@ textarea {
   background: var(--surface);
   border-radius: 16px;
   padding: 32px 28px 28px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 3px 4px rgba(0, 0, 0, 0.04);
   transition:
     box-shadow 0.4s var(--ease),
     transform 0.4s var(--ease);
@@ -257,10 +349,11 @@ textarea {
 }
 
 /* ─── 面板 ─── */
+/* 卡片外观对齐数据看板 luxe 卡片：16px 圆角 + 0 2px 4px 阴影 */
 .panel {
   background: var(--surface);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  border-radius: 16px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
   margin-bottom: 18px;
   overflow: hidden;
 }
@@ -287,16 +380,28 @@ textarea {
 }
 
 .panel-header {
-  padding: 14px 20px;
+  padding: 32px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 0.5px solid var(--border-soft);
 }
 
 .panel-title {
-  font-size: 15px;
+  font-size: 20px;
   font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* 面板内表格背景透明，露出 .panel 的半透明米色底（导出/设置页日志表） */
+.panel .el-table {
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-header-bg-color: transparent;
+  background: transparent;
+}
+.panel .el-table th.el-table__cell,
+.panel .el-table td.el-table__cell {
+  background: transparent;
 }
 
 /* ─── 分段标签页 ─── */
@@ -304,8 +409,9 @@ textarea {
   display: inline-flex;
   gap: 4px;
   padding: 4px;
-  background: var(--bg);
+  background: linear-gradient(135deg, #ece6e0e2 0%, #f1eeda 100%);
   border-radius: 8px;
+  box-shadow: 0 3px 4px rgba(0, 0, 0, 0.05);
 }
 
 .segment-btn {
@@ -321,7 +427,7 @@ textarea {
 }
 
 .segment-btn:hover {
-  background: rgba(0, 113, 227, 0.04);
+  background: linear-gradient(135deg, #ebe1d5 0%, #f8f1ea 120%);
 }
 
 .segment-btn.active {
@@ -398,6 +504,8 @@ textarea {
 /* ─── 表格样式覆盖 ─── */
 .el-table {
   --el-table-border-color: var(--border-soft);
+  /* 全局行 hover 底色统一为暖金色 */
+  --el-table-row-hover-bg-color: #8b704834;
   font-size: 14px;
 }
 
@@ -459,7 +567,7 @@ textarea {
 
 /* ─── 统一面板（原型对齐：标签页 + 筛选 + 表格容器） ─── */
 .unified-panel {
-  background: var(--surface);
+  background: transparent;
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   overflow: hidden;
@@ -499,13 +607,82 @@ textarea {
 .el-main.panel-fill .uf-body {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  /* 表格自身内部滚动（height:100%），容器不再滚动 */
+  overflow: hidden;
+  background: var(--surface-shallow);
 }
 /* ContentView 的表格容器自带 max-height/scroll；
    在固定面板内 .uf-body 是唯一的滚动容器，因此将其中性化。 */
 .el-main.panel-fill .uf-body .panel-body-scroll {
   max-height: none;
   overflow: visible;
+}
+
+/* ─── 固定高度表格（住户管理/内容管理/互助记录/知识库） ─── */
+/* 表格自身撑满剩余高度并内部滚动（对齐知识库），背景统一 surface-shallow。
+   el-table 通过 height 属性（100%）启用固定高度模式，内部 el-scrollbar 滚动。 */
+.el-main.panel-fill .uf-body .panel,
+.el-main.panel-fill .uf-body .panel-body-scroll {
+  height: 100%;
+  overflow: hidden;
+}
+.el-main.panel-fill .el-table,
+.el-main.panel-fill .el-table th.el-table__cell,
+.el-main.panel-fill .el-table td.el-table__cell {
+  background: var(--surface-shallow);
+}
+/* 恢复这些表格的内部滚动条（全局默认隐藏，与知识库同款） */
+.el-main.panel-fill .el-table .el-scrollbar__wrap {
+  overflow: auto !important;
+  scrollbar-width: auto !important;
+}
+.el-main.panel-fill .el-table .el-scrollbar__wrap::-webkit-scrollbar {
+  display: block !important;
+}
+.el-main.panel-fill .el-table .el-scrollbar__bar {
+  display: block !important;
+}
+
+/* ─── 弹窗表格背景（统一为 surface-shallow） ─── */
+/* el-dialog 背景已是米色渐变，若不覆盖，el-table 默认纯白
+   （--el-table-bg-color / --el-table-tr-bg-color = --el-fill-color-blank）
+   会在弹窗内形成一块突兀的白底。这里与列表页表格同款：
+   表格根元素 + th/td 统一为 surface-shallow，透出弹窗米色背景。 */
+.el-dialog .el-table {
+  --el-table-bg-color: var(--surface-shallow);
+  --el-table-tr-bg-color: var(--surface-shallow);
+  --el-table-header-bg-color: var(--surface-shallow);
+  background: var(--surface-shallow);
+}
+.el-dialog .el-table th.el-table__cell,
+.el-dialog .el-table td.el-table__cell {
+  background: var(--surface-shallow);
+}
+
+/* ─── 列表透明背景 + hover（住户管理 / 内容管理 / 互助记录 / 知识库） ─── */
+/* uf-body 内的所有子盒子背景设为完全透明（透明度 100%），
+   让 .uf-body 自身的 background: var(--surface-shallow) 均匀透出；
+   仅数据行 hover 时该行背景变为青蓝色（30% 不透明）。
+   关键：必须覆盖 Element Plus 表格的 CSS 变量——th/td/tr/表格根元素
+   的背景都取自这些变量（默认 --el-fill-color-blank 纯白），
+   否则 tr 的纯白背景会在透明单元格后面透出，列表仍是白色。 */
+.el-main.panel-fill.list-transparent .el-table {
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-header-bg-color: transparent;
+  --el-table-row-hover-bg-color: #8b704834;
+  background: transparent;
+}
+.el-main.panel-fill.list-transparent .uf-body .panel,
+.el-main.panel-fill.list-transparent .el-table th.el-table__cell,
+.el-main.panel-fill.list-transparent .el-table td.el-table__cell {
+  background: transparent;
+}
+.el-main.panel-fill.list-transparent
+  .el-table
+  .el-table__row:hover
+  > td.el-table__cell {
+  background: #8b704834;
 }
 
 /* 为所有列表/数据表格设置粘性表头。每个 el-table 在其滚动容器中
@@ -531,7 +708,10 @@ textarea {
   position: sticky;
   top: 0;
   z-index: 3;
-  background: var(--surface);
+  /* 表头背景与列表一致（透明露出卡片底），backdrop blur 模糊滚动穿透的行 */
+  background: transparent;
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
 }
 
 /* ─── 分区标签（全部 tab 分组） ─── */
@@ -563,7 +743,7 @@ textarea {
   align-items: center;
   flex-wrap: wrap;
   padding: 8px 20px 12px;
-  background: var(--surface);
+  background: var(--surface-shallow);
 }
 
 /* ─── 筛选下拉框 ─── */
@@ -588,7 +768,7 @@ textarea {
 .search-box {
   padding: 6px 12px;
   border-radius: 6px;
-  background: var(--bg);
+  background: #000;
   font-size: 13px;
   border: 0.5px solid var(--border-soft);
   width: 180px;
@@ -700,7 +880,7 @@ textarea {
   background: var(--surface);
   border-radius: 16px;
   padding: 32px 32px 24px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
 }
 
 .two-col-luxe {
@@ -713,7 +893,7 @@ textarea {
   background: var(--surface);
   border-radius: 16px;
   padding: 32px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
 }
 
 .stat-row {
@@ -727,7 +907,7 @@ textarea {
   background: var(--surface);
   border-radius: 16px;
   padding: 28px 32px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
   margin: 0;
 }
 
@@ -877,6 +1057,7 @@ textarea {
   font-weight: 500;
   background: var(--bg);
   color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   transition: all var(--transition);
 }
 .btn-sm-toggle.active {
@@ -884,7 +1065,8 @@ textarea {
   color: #fff;
 }
 .btn-sm-toggle:not(.active):hover {
-  background: var(--border-soft);
+  background: linear-gradient(135deg, #ebe2d8 0%, #f7f2ed 100%);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 /* ─── 自定义复选框（下架弹窗） ─── */
@@ -1004,6 +1186,11 @@ textarea {
 }
 
 /* ─── Element Plus 覆盖样式 — 弹窗/对话框 ─── */
+.el-dialog,
+.el-message-box {
+  /* 与主内容区 (.el-main) 同款米色渐变，统一所有弹窗/确认框背景 */
+  background: linear-gradient(135deg, #f7f2ed 0%, #ebe2d8 100%);
+}
 .el-dialog {
   border-radius: var(--radius-lg);
 }
@@ -1017,14 +1204,16 @@ textarea {
 
 /* ─── Element Plus 覆盖样式 — 输入框 ─── */
 .el-input__wrapper {
+  background: var(--control-bg);
   border-radius: 6px;
-  box-shadow: 0 0 0 0.5px var(--border-soft);
+  box-shadow: var(--control-shadow);
 }
 .el-input__wrapper:hover {
-  box-shadow: 0 0 0 0.5px var(--border);
+  box-shadow: 0 4px 5px rgba(0, 0, 0, 0.05);
 }
-.el-input.is-focus .el-input__wrapper {
-  box-shadow: 0 0 0 1px var(--accent);
+.el-input__wrapper.is-focus {
+  box-shadow: var(--control-shadow);
+  background: var(--surface);
 }
 
 /* ─── Element Plus 覆盖样式 — 选择器（对齐原生 .filter-select） ─── */
@@ -1037,18 +1226,18 @@ textarea {
   padding: 0;
 }
 .el-select.filter-select .el-select__wrapper {
-  background: var(--bg);
-  box-shadow: 0 0 0 0.5px var(--border-soft);
+  background: linear-gradient(135deg, #ece6e0d3 0%, #f1eedad8 100%);
+  box-shadow: var(--control-shadow);
   border-radius: 6px;
   min-height: 30px;
   padding: 3px 12px;
   font-size: 13px;
 }
 .el-select.filter-select .el-select__wrapper:hover {
-  box-shadow: 0 0 0 0.5px var(--border);
+  box-shadow: 0 4px 5px rgba(0, 0, 0, 0.05);
 }
 .el-select.filter-select .el-select__wrapper.is-focused {
-  box-shadow: 0 0 0 1px var(--accent);
+  box-shadow: var(--control-shadow);
 }
 
 /* ─── Element Plus 覆盖样式 — 搜索输入框（对齐原生 .search-box） ─── */
@@ -1056,13 +1245,14 @@ textarea {
   border: none;
   background: none;
   padding: 0;
+  box-shadow: var(--control-shadow);
 }
 .el-input.search-box .el-input__wrapper {
-  background: var(--bg);
+  background: linear-gradient(135deg, #ece6e0e2 0%, #f1eeda 100%);
   border-radius: 6px;
 }
-.el-input.search-box.is-focus .el-input__wrapper {
-  box-shadow: 0 0 0 1px var(--accent);
+.el-input.search-box .el-input__wrapper.is-focus {
+  box-shadow: var(--control-shadow);
   background: var(--surface);
 }
 .el-input.search-box .el-input__inner::placeholder {
@@ -1084,14 +1274,14 @@ textarea {
   padding: 0;
 }
 .el-input.field-input .el-input__wrapper {
-  background: var(--bg);
-  box-shadow: 0 0 0 0.5px var(--border-soft);
+  background: var(--control-bg);
+  box-shadow: var(--control-shadow);
   border-radius: 6px;
   padding: 3px 10px;
   font-size: 13px;
 }
-.el-input.field-input.is-focus .el-input__wrapper {
-  box-shadow: 0 0 0 1px var(--accent);
+.el-input.field-input .el-input__wrapper.is-focus {
+  box-shadow: 0 3px 4px rgba(0, 0, 0, 0.05);
   background: var(--surface);
 }
 .el-select.field-input .el-select__wrapper {
@@ -1103,18 +1293,41 @@ textarea {
   font-size: 13px;
 }
 .el-select.field-input .el-select__wrapper.is-focused {
-  box-shadow: 0 0 0 1px var(--accent);
+  box-shadow: 0 0 0 0.5px var(--border-soft);
+}
+
+/* 通用控件下拉（代发时长、上传分类等）— 与表单字段一致的 surface-shallow 底 + 软阴影 */
+.el-select.control-select .el-select__wrapper {
+  background: var(--control-bg);
+  box-shadow: var(--control-shadow);
+  border-radius: 6px;
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+/* 输入框主渐变底（系统设置密码输入框等）— 背景用页面主渐变 */
+.el-input.gradient-field {
+  box-shadow: var(--control-shadow);
+}
+.el-input.gradient-field .el-input__wrapper {
+  background: linear-gradient(to right, #ede9e4 0%, #f0ebe8 100%);
+  box-shadow: var(--control-shadow);
+  border-radius: 6px;
+}
+.el-input.gradient-field .el-input__wrapper:hover {
+  box-shadow: var(--control-shadow-hover);
 }
 .el-textarea.field-input .el-textarea__inner {
-  background: var(--bg);
-  box-shadow: 0 0 0 0.5px var(--border-soft);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   border-radius: 6px;
+  background: var(--control-bg);
   padding: 6px 10px;
   font-size: 13px;
   color: var(--text);
 }
 .el-textarea.field-input .el-textarea__inner:focus {
-  box-shadow: 0 0 0 1px var(--accent);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   background: var(--surface);
 }
 .el-textarea.field-input .el-textarea__inner::placeholder,
@@ -1122,19 +1335,32 @@ textarea {
   color: var(--text-tertiary);
 }
 
+/* 兜底：未带定制类的 el-select / el-textarea 聚焦时同样不显示蓝色边框 */
+.el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1px var(--border-soft);
+}
+.el-textarea__inner:focus {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
 /* ─── Element Plus 覆盖样式 — 日期选择器（对齐 field-input） ─── */
 .el-date-editor.el-input {
   --el-input-bg-color: var(--bg);
   height: auto;
 }
-.el-date-editor .el-input__wrapper {
-  background: var(--bg);
-  box-shadow: 0 0 0 0.5px var(--border-soft);
+/* daterange 编辑器是同一元素带 el-date-editor + el-input__wrapper 类，需与单日期编辑器一并覆盖 */
+.el-date-editor .el-input__wrapper,
+.el-date-editor.el-range-editor {
+  background: linear-gradient(135deg, #ece6e0d3 0%, #f1eedad8 100%);
+  box-shadow: var(--control-shadow);
   border-radius: 6px;
+}
+.el-date-editor .el-input__wrapper {
   padding: 6px 10px;
 }
-.el-date-editor .el-input__wrapper:hover {
-  box-shadow: 0 0 0 0.5px var(--border);
+.el-date-editor .el-input__wrapper:hover,
+.el-date-editor.el-range-editor:hover {
+  box-shadow: var(--control-shadow-hover);
 }
 .el-date-editor .el-input__inner {
   font-size: 13px;
@@ -1142,6 +1368,20 @@ textarea {
 }
 .el-date-editor .el-input__inner::placeholder {
   color: var(--text-tertiary);
+}
+
+/* ─── 控件 hover 统一阴影（对齐物品标题输入框 hover） ─── */
+/* 输入框 / 搜索框 / 表单字段 / 下拉 / 日期编辑器统一 hover 阴影，
+   放在各组件规则之后，覆盖 Element 默认 hover 边框。 */
+.el-input__wrapper:hover,
+.el-input.search-box .el-input__wrapper:hover,
+.el-input.field-input .el-input__wrapper:hover,
+.el-select.filter-select .el-select__wrapper:hover,
+.el-select.field-input .el-select__wrapper:hover,
+.el-select.control-select .el-select__wrapper:hover,
+.el-date-editor .el-input__wrapper:hover,
+.el-date-editor.el-range-editor:hover {
+  box-shadow: var(--control-shadow-hover);
 }
 
 /* ─── Element Plus 覆盖样式 — 复选框 ─── */
@@ -1164,7 +1404,7 @@ textarea {
 
 /* Vue3 ::v-deep 或 :deep() */
 .el-checkbox__input .el-checkbox__inner {
-  border-color: #d1e5ff !important;
+  border-color: #b1cff6 !important;
   /* 未选中边框 */
   background-color: #ffffff !important;
 }
@@ -1180,6 +1420,11 @@ textarea {
 .el-checkbox__input.is-checked .el-checkbox__inner {
   border-color: #409eff !important;
   background-color: #409eff !important;
+}
+
+.el-select__placeholder,
+.el-select__placeholder.is-transparent {
+  color: #7e6f61;
 }
 
 /* ─── 评分标签 ─── */
@@ -1209,10 +1454,8 @@ textarea {
 .field-input {
   padding: 6px 10px;
   border-radius: 6px;
-  background: var(--bg);
   font-size: 13px;
   color: var(--text);
-  border: 0.5px solid var(--border-soft);
   transition: border-color var(--transition);
 }
 .field-input:focus {

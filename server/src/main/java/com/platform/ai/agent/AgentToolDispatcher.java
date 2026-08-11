@@ -2,6 +2,7 @@ package com.platform.ai.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.platform.ai.PolishingClient;
+import com.platform.ai.common.PromptRepository;
 import com.platform.ai.search.KnowledgeHit;
 import com.platform.ai.search.KnowledgeRetrievalService;
 import com.platform.common.BizStatus;
@@ -21,6 +22,7 @@ import com.platform.service.NotificationService;
 import com.platform.service.UserActivityService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import java.util.Properties;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -57,22 +59,22 @@ public class AgentToolDispatcher {
 
     // ==================== 工具兜底文案常量 ====================
 
-    /** 工具调用上限应答（模块 4a：达到 max-tool-calls 后不再执行） */
-    private static final String TOOL_LIMIT_REPLY = "已达到本轮工具调用上限，请直接回答用户";
+    /** 工具调用上限应答（模块 4a：达到 max-tool-calls 后不再执行）；文案来自 prompts/agent/replies.md */
+    private final String toolLimitReply;
     /** 知识检索：无 tenantId（非业主/租客） */
-    private static final String KB_NO_PERMISSION_REPLY = "仅业主/租客可使用小区知识库";
+    private final String kbNoPermissionReply;
     /** 知识检索：关键词去空白后为空或纯符号 */
-    private static final String KB_INVALID_KEYWORD_REPLY = "检索关键词无效，请换个说法描述你想查什么";
+    private final String kbInvalidKeywordReply;
     /** 知识检索：关键词为单字 */
-    private static final String KB_KEYWORD_TOO_SHORT_REPLY = "检索关键词太短，请提供更具体的关键词";
+    private final String kbKeywordTooShortReply;
     /** 知识检索：无命中 */
-    private static final String KB_NO_RESULT_REPLY = "知识库未找到相关内容";
+    private final String kbNoResultReply;
     /** 知识检索：内部异常 */
-    private static final String KB_ERROR_REPLY = "知识检索暂不可用，请稍后再试";
+    private final String kbErrorReply;
     /** 日期解析失败 */
-    private static final String DATE_PARSE_FAIL_REPLY = "无法识别该日期描述，请换个说法";
+    private final String dateParseFailReply;
     /** 日期查询内部异常（防御性兜底，本地解析理论不抛） */
-    private static final String DATE_ERROR_REPLY = "查询日期暂不可用，请稍后再试";
+    private final String dateErrorReply;
 
     // ==================== 知识检索相关常量 ====================
 
@@ -143,7 +145,18 @@ public class AgentToolDispatcher {
                                UserRepository userRepository,
                                NotificationService notificationService,
                                HelpService helpService,
-                               UserActivityService userActivityService) {
+                               UserActivityService userActivityService,
+                               PromptRepository promptRepository) {
+        // 兜底文案统一从提示词仓库读取（prompts/agent/replies.md），改文案不动代码
+        Properties replies = promptRepository.getProps("agent.replies");
+        this.toolLimitReply = replies.getProperty("tool.limit", "");
+        this.kbNoPermissionReply = replies.getProperty("kb.no-permission", "");
+        this.kbInvalidKeywordReply = replies.getProperty("kb.invalid-keyword", "");
+        this.kbKeywordTooShortReply = replies.getProperty("kb.keyword-too-short", "");
+        this.kbNoResultReply = replies.getProperty("kb.no-result", "");
+        this.kbErrorReply = replies.getProperty("kb.error", "");
+        this.dateParseFailReply = replies.getProperty("date.parse-fail", "");
+        this.dateErrorReply = replies.getProperty("date.error", "");
         this.idleService = idleService;
         this.borrowService = borrowService;
         this.polishingClient = polishingClient;
@@ -179,10 +192,10 @@ public class AgentToolDispatcher {
             String keyword = raw == null ? "" : raw.trim();
             String noSpace = keyword.replaceAll("\\s", "");
             if (noSpace.isEmpty() || noSpace.matches("\\p{P}+")) {
-                return KB_INVALID_KEYWORD_REPLY;
+                return kbInvalidKeywordReply;
             }
             if (keyword.length() == 1) {
-                return KB_KEYWORD_TOO_SHORT_REPLY;
+                return kbKeywordTooShortReply;
             }
             if (keyword.length() > KB_KEYWORD_MAX_LENGTH) {
                 keyword = keyword.substring(0, KB_KEYWORD_MAX_LENGTH);
@@ -191,14 +204,19 @@ public class AgentToolDispatcher {
             // 用户权限：无 tenantId（非业主/租客）不可使用小区知识库
             User user = userRepository.findById(userId).orElse(null);
             if (user == null || user.getTenantId() == null) {
-                return KB_NO_PERMISSION_REPLY;
+                return kbNoPermissionReply;
             }
 
             // 检索：召回 top-8（向量 ∪ 关键词）→ 必走重排 top-3 → 重排分数关卡过滤
+            long searchStartMs = System.currentTimeMillis();
             List<KnowledgeHit> hits = retrievalService.searchForAgent(user.getTenantId(), keyword);
+            // 知识检索耗时（embedding + 向量召回 + 重排），用于定位 RAG 阶段耗时；
+            // 关键词为内容类数据，仅 DEBUG 记录避免日志堆积与敏感内容落盘
+            log.debug("Agent 知识检索耗时: userId={}, 关键词={}, 检索耗时={}ms, 命中={}",
+                    userId, keyword, System.currentTimeMillis() - searchStartMs, hits == null ? 0 : hits.size());
             if (hits == null || hits.isEmpty()) {
                 logToolCall(userId, "search_knowledge", keyword, 0);
-                return KB_NO_RESULT_REPLY;
+                return kbNoResultReply;
             }
 
             // 同一请求内多次调用命中合并去重后存入缓存（供流结束取回引用来源）
@@ -208,7 +226,7 @@ public class AgentToolDispatcher {
             return formatKnowledgeResults(hits);
         } catch (Exception e) {
             log.warn("search_knowledge 工具执行失败: userId={}, {}", userId, e.getMessage());
-            return KB_ERROR_REPLY;
+            return kbErrorReply;
         }
     }
 
@@ -231,13 +249,13 @@ public class AgentToolDispatcher {
         }
         try {
             String resolved = resolveDate(p == null ? null : p.expression());
-            String result = resolved != null ? resolved : DATE_PARSE_FAIL_REPLY;
+            String result = resolved != null ? resolved : dateParseFailReply;
             logToolCall(userId, "query_date", p == null ? null : p.expression(), resolved != null ? 1 : 0);
             return result;
         } catch (Exception e) {
             // 兜底：本地日期解析异常（理论不抛，防御性保护工具契约「绝不抛异常给模型」）
             log.warn("query_date 工具执行失败: userId={}, {}", userId, e.getMessage());
-            return DATE_ERROR_REPLY;
+            return dateErrorReply;
         }
     }
 
@@ -539,7 +557,7 @@ public class AgentToolDispatcher {
         }
         AtomicInteger counter = toolCounts.computeIfAbsent(requestId, k -> new AtomicInteger());
         if (counter.get() >= maxToolCalls) {
-            return TOOL_LIMIT_REPLY;
+            return toolLimitReply;
         }
         counter.incrementAndGet();
         return null;

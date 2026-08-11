@@ -11,6 +11,7 @@
     }
   },
   "pages": [
+    "pages/boot/boot",
     "pages/login/login",
     "pages/register/register",
     "pages/review-status/review-status",

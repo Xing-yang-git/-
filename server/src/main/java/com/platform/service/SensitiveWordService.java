@@ -87,7 +87,7 @@ public class SensitiveWordService {
     // ==================== 契约方法（消息前置过滤器调用，签名不可改） ====================
 
     /**
-     * 归一化匹配 — 命中任一启用词（或激活缩写）返回 true。
+     * 归一化匹配 — 命中任一启用词（或独立成词的激活缩写）返回 true。
      *
      * @param text 待检测文本
      * @return true 表示命中敏感词，应拦截
@@ -106,11 +106,59 @@ public class SensitiveWordService {
             }
         }
         for (String abbr : abbrSet) {
-            if (normalized.contains(abbr)) {
+            if (containsBoundedAbbr(normalized, abbr)) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * 缩写独立成词判定：在归一化文本中查找缩写，且其两侧不得紧邻字母/数字才命中。
+     *
+     * <p>短拉丁缩写（sb/md/fk 等）常作为正常单词子串出现（usb 含 sb、cmd 含 md），
+     * 必须独立成词才算脏话，避免误拦截「usb 连接」「cmd 命令」等正常内容。</p>
+     *
+     * @param normalized 归一化文本
+     * @param abbr       归一化后的缩写
+     * @return true 表示存在独立成词的缩写命中
+     */
+    private boolean containsBoundedAbbr(String normalized, String abbr) {
+        int from = 0;
+        while ((from = normalized.indexOf(abbr, from)) >= 0) {
+            if (hasWordBoundary(normalized, from, abbr.length())) {
+                return true;
+            }
+            from += abbr.length();
+        }
+        return false;
+    }
+
+    /**
+     * 判定归一化文本区间 [start, start+length) 是否独立成词：两侧不得紧邻字母/数字。
+     *
+     * <p>归一化文本仅保留字母/数字/汉字；以字母/数字为"词内字符"，缩写前后是字母或数字时视为
+     * 长单词的一部分（如 usb 中的 sb），不是独立脏话缩写。CJK 与其他字符均视为自然边界。</p>
+     *
+     * @param text   归一化文本
+     * @param start  模式起始下标
+     * @param length 模式长度
+     * @return true 表示两侧无字母/数字紧邻
+     */
+    private static boolean hasWordBoundary(String text, int start, int length) {
+        boolean leftOk = start == 0 || !isAsciiWordChar(text.charAt(start - 1));
+        boolean rightOk = start + length >= text.length() || !isAsciiWordChar(text.charAt(start + length));
+        return leftOk && rightOk;
+    }
+
+    /**
+     * ASCII 词字符判定（字母/数字）：缩写独立成词边界判定的相邻字符排除依据。
+     *
+     * @param c 字符
+     * @return true 表示字母或数字
+     */
+    private static boolean isAsciiWordChar(char c) {
+        return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
     }
 
     /**
@@ -130,10 +178,10 @@ public class SensitiveWordService {
         if (normalizedText.text.isEmpty()) {
             return text;
         }
-        // 收集全部命中区间（原文半开区间 [start, end)）
+        // 收集全部命中区间（原文半开区间 [start, end)）；缩写需独立成词（boundaryRequired=true）
         List<int[]> spans = new ArrayList<>();
-        collectMatchSpans(normalizedText, wordSet, spans);
-        collectMatchSpans(normalizedText, abbrSet, spans);
+        collectMatchSpans(normalizedText, wordSet, false, spans);
+        collectMatchSpans(normalizedText, abbrSet, true, spans);
         if (spans.isEmpty()) {
             return text;
         }
@@ -315,11 +363,12 @@ public class SensitiveWordService {
     /**
      * 收集归一化文本中全部命中区间的原文下标范围（半开区间 [start, end)）。
      *
-     * @param normalized 归一化结果（含原文下标映射）
-     * @param patterns   待匹配模式集合（启用词库或激活缩写）
-     * @param spans      输出区间列表
+     * @param normalized       归一化结果（含原文下标映射）
+     * @param patterns         待匹配模式集合（启用词库或激活缩写）
+     * @param boundaryRequired 是否要求独立成词（缩写为 true：两侧不得紧邻字母/数字）
+     * @param spans            输出区间列表
      */
-    private void collectMatchSpans(NormalizedText normalized, Set<String> patterns, List<int[]> spans) {
+    private void collectMatchSpans(NormalizedText normalized, Set<String> patterns, boolean boundaryRequired, List<int[]> spans) {
         String text = normalized.text;
         for (String pattern : patterns) {
             if (pattern.length() > text.length()) {
@@ -327,9 +376,11 @@ public class SensitiveWordService {
             }
             int from = 0;
             while ((from = text.indexOf(pattern, from)) >= 0) {
-                spans.add(new int[]{
-                        normalized.positions[from],
-                        normalized.positions[from + pattern.length() - 1] + 1});
+                if (!boundaryRequired || hasWordBoundary(text, from, pattern.length())) {
+                    spans.add(new int[]{
+                            normalized.positions[from],
+                            normalized.positions[from + pattern.length() - 1] + 1});
+                }
                 from += pattern.length();
             }
         }

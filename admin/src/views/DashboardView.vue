@@ -1,65 +1,27 @@
 <template>
-  <el-container class="admin-layout">
-    <el-aside width="240px">
-      <AppSidebar />
-    </el-aside>
-    <el-container>
-      <el-header class="topbar">
-        <div class="topbar-left">
-          <span
-            class="topbar-title"
-            style="display: flex; align-items: baseline; gap: 8px"
-          >
-            <span>翠湖花园 · 运营看板</span>
-            <span
-              class="text-sm text-secondary"
-              style="white-space: nowrap; font-weight: 400"
-              >{{ today }}</span
-            >
-          </span>
-        </div>
-        <div class="topbar-right">
-          <el-dropdown @command="handleCommand">
-            <span
-              style="
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                gap: 4px;
-              "
-            >
-              {{ authStore.userName }} <el-icon><ArrowDown /></el-icon>
-            </span>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="logout">退出登录</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
-      </el-header>
-      <el-main>
+  <AppLayout title="翠湖花园 · 运营看板" main-class="el-main--comfortable" :loading="loading">
+    <template #subtitle>{{ today }}</template>
         <!-- KPI 卡片 -->
         <div class="stat-grid-luxe">
           <div class="stat-card-luxe">
             <div class="luxe-label">在线闲置物品</div>
             <div class="luxe-value">{{ animatedStats.idle }}</div>
-            <div class="luxe-change up">↑ 12% 较上月</div>
+            <div class="luxe-change" :class="momClass('idle')">{{ momText('idle') }}</div>
           </div>
           <div class="stat-card-luxe">
             <div class="luxe-label">在线技能求助</div>
             <div class="luxe-value">{{ animatedStats.help }}</div>
-            <div class="luxe-change up">↑ 8% 较上月</div>
+            <div class="luxe-change" :class="momClass('help')">{{ momText('help') }}</div>
           </div>
           <div class="stat-card-luxe">
             <div class="luxe-label">本月发布总数</div>
             <div class="luxe-value">{{ animatedStats.pub }}</div>
-            <div class="luxe-change up">↑ 15% 较上月</div>
+            <div class="luxe-change" :class="momClass('pub')">{{ momText('pub') }}</div>
           </div>
           <div class="stat-card-luxe">
             <div class="luxe-label">本月活跃住户</div>
             <div class="luxe-value">{{ animatedStats.mau }}</div>
-            <div class="luxe-change up">↑ 10% 较上月</div>
+            <div class="luxe-change" :class="momClass('mau')">{{ momText('mau') }}</div>
           </div>
         </div>
 
@@ -105,15 +67,15 @@
               <div class="stat-row">
                 <div>
                   <div class="panel-value text-green">
-                    52<span style="font-size: 18px">次</span>
+                    {{ completion.completed }}<span style="font-size: 18px">次</span>
                   </div>
-                  <div class="panel-label">已互助（68%）</div>
+                  <div class="panel-label">已互助（{{ completionRate }}%）</div>
                 </div>
                 <div>
                   <div class="panel-value" style="color: var(--text-secondary)">
-                    24<span style="font-size: 18px">次</span>
+                    {{ completion.removed }}<span style="font-size: 18px">次</span>
                   </div>
-                  <div class="panel-label">直接下架（32%）</div>
+                  <div class="panel-label">直接下架（{{ 100 - completionRate }}%）</div>
                 </div>
               </div>
             </div>
@@ -132,21 +94,21 @@
               <div class="stat-row">
                 <div>
                   <div class="panel-value text-green">
-                    38<span style="font-size: 18px">次</span>
+                    {{ damage.normal }}<span style="font-size: 18px">次</span>
                   </div>
                   <div class="panel-label">正常耗损</div>
                 </div>
                 <div>
                   <div class="panel-value text-orange">
-                    2<span style="font-size: 18px">次</span>
+                    {{ damage.severe }}<span style="font-size: 18px">次</span>
                   </div>
-                  <div class="panel-label">损坏已赔偿</div>
+                  <div class="panel-label">非正常损坏</div>
                 </div>
                 <div>
                   <div class="panel-value text-red">
-                    1<span style="font-size: 18px">次</span>
+                    {{ damage.broken }}<span style="font-size: 18px">次</span>
                   </div>
-                  <div class="panel-label">损坏未赔偿</div>
+                  <div class="panel-label">完全损坏</div>
                 </div>
               </div>
             </div>
@@ -173,43 +135,13 @@
           </ol>
         </div>
 
-        <!-- 全部记录弹窗 -->
-        <el-dialog v-model="showAllRecords" title="全部互助记录" width="640px">
-          <div class="filter-row" style="padding: 0; margin-bottom: 8px">
-            <el-select
-              v-model="arFilterType"
-              placeholder="全部类型"
-              size="small"
-              style="width: 120px"
-              clearable
-              @change="filteredAllRecords"
-            >
-              <el-option label="闲置" value="idle" />
-              <el-option label="技能" value="help" />
-            </el-select>
-            <span style="flex: 1"></span>
-            <span class="text-sm text-secondary"
-              >共 {{ filteredAllRecords.length }} 条</span
-            >
-          </div>
-          <el-table :data="filteredAllRecords" size="small" max-height="400">
+        <!-- 全部互助记录弹窗：仅 排名/住户/互助次数，固定最大高度可滚动 -->
+        <el-dialog v-model="showAllRecords" title="全部互助记录" width="560px">
+          <el-table :data="allRecords" max-height="420">
             <el-table-column label="排名" width="60">
               <template #default="{ $index }">{{ $index + 1 }}</template>
             </el-table-column>
             <el-table-column prop="name" label="住户" />
-            <el-table-column prop="room" label="房号" width="80" />
-            <el-table-column label="类型" width="80">
-              <template #default="{ row }">
-                <span
-                  :class="[
-                    'badge',
-                    row.type === 'idle' ? 'badge-info' : 'badge-warning',
-                  ]"
-                >
-                  {{ row.type === "idle" ? "闲置" : "技能" }}
-                </span>
-              </template>
-            </el-table-column>
             <el-table-column
               prop="count"
               label="互助次数"
@@ -221,9 +153,7 @@
             <el-button @click="showAllRecords = false">关闭</el-button>
           </template>
         </el-dialog>
-      </el-main>
-    </el-container>
-  </el-container>
+  </AppLayout>
 </template>
 
 <!--
@@ -241,27 +171,32 @@ import {
   onUnmounted,
   nextTick,
 } from "vue";
-import { useRouter } from "vue-router";
-import { ElMessageBox } from "element-plus";
-import { ArrowDown } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
 import * as echarts from "echarts";
 
-import { useAuthStore } from "../stores/auth";
-import AppSidebar from "../components/AppSidebar.vue";
-import { connect, close } from "../utils/ws";
-
-const router = useRouter();
-const authStore = useAuthStore();
+import AppLayout from "@/layouts/AppLayout.vue";
+import { connect, close } from "@/utils/ws";
+import {
+  getDashboard,
+  type DashboardDTO,
+  type DashboardKpi,
+  type DashboardTrendData,
+} from "@/api/admin";
 
 /** echarts 图表容器 DOM 引用 */
 const chartRef = ref<HTMLElement | null>(null);
 /** echarts 实例 */
 let chartInstance: echarts.ECharts | null = null;
 
+/** 看板数据（后端 /api/admin/dashboard） */
+const dashboard = ref<DashboardDTO | null>(null);
+/** 加载中 */
+const loading = ref(false);
+
 /** 四个统计卡片的动画数值 */
 const animatedStats = reactive({ idle: 0, help: 0, pub: 0, mau: 0 });
-/** 目标数值（动画终点） */
-const targets = { idle: 128, help: 35, pub: 256, mau: 89 };
+/** 目标数值（动画终点，由后端 KPI 填充） */
+const targets = reactive({ idle: 0, help: 0, pub: 0, mau: 0 });
 
 /** 时间周期选项 */
 const periods = [
@@ -272,56 +207,58 @@ const periods = [
 /** 当前选中时间周期 */
 const currentPeriod = ref<'week' | 'month' | 'quarter'>('week');
 
-/** 不同时间周期的图表数据 */
-const chartData = {
-  week: {
-    labels: ["6/24", "6/25", "6/26", "6/27", "6/28", "6/29", "今日"],
-    pub: [40, 55, 70, 50, 65, 80, 72],
-    done: [25, 32, 45, 38, 42, 55, 48],
-  },
-  month: {
-    labels: ["第1周", "第2周", "第3周", "第4周"],
-    pub: [180, 210, 256, 190],
-    done: [120, 145, 170, 135],
-  },
-  quarter: {
-    labels: ["4月", "5月", "6月"],
-    pub: [620, 710, 780],
-    done: [430, 490, 540],
-  },
-};
+/** 由后端 trends 映射的图表数据（done ← 后端 completed 数组） */
+const chartData = computed(() => {
+  const t = dashboard.value?.trends;
+  const empty = { labels: [], pub: [], done: [] };
+  if (!t) {
+    return { week: empty, month: empty, quarter: empty };
+  }
+  const map = (d: DashboardTrendData) => ({
+    labels: d.labels,
+    pub: d.publish,
+    done: d.completed,
+  });
+  return { week: map(t.week), month: map(t.month), quarter: map(t.quarter) };
+});
 
-/** 住户排行榜（Top 5） */
-const topList = [
-  { name: "3栋2单元1502号(业主)", count: 12, room: "3栋", type: "idle" },
-  { name: "6栋1单元401号(业主)", count: 9, room: "6栋", type: "idle" },
-  { name: "7栋1单元1201号(业主)", count: 8, room: "7栋", type: "idle" },
-  { name: "5栋1单元802号(租客)", count: 7, room: "5栋", type: "help" },
-  { name: "2栋1单元301号(租客)", count: 6, room: "2栋", type: "idle" },
-];
+/** 本月互助完成率（后端数据，缺失时兜底 0） */
+const completion = computed(
+  () => dashboard.value?.completion ?? { completed: 0, removed: 0, rate: 0 },
+);
+/** 完成率百分比（取整展示） */
+const completionRate = computed(() => Math.round(completion.value.rate));
 
-/** 完整记录列表（"查看全部"弹窗用） */
-const allRecords = [
-  { name: "3栋2单元1502号(业主)", room: "3栋", type: "idle", count: 12 },
-  { name: "6栋1单元401号(业主)", room: "6栋", type: "idle", count: 9 },
-  { name: "7栋1单元1201号(业主)", room: "7栋", type: "idle", count: 8 },
-  { name: "5栋1单元802号(租客)", room: "5栋", type: "help", count: 7 },
-  { name: "2栋1单元301号(租客)", room: "2栋", type: "idle", count: 6 },
-  { name: "1栋2单元303号(业主)", room: "1栋", type: "help", count: 5 },
-  { name: "4栋1单元502号(租客)", room: "4栋", type: "idle", count: 5 },
-  { name: "8栋3单元1502号(业主)", room: "8栋", type: "help", count: 4 },
-];
+/** 损坏三态统计 */
+const damage = computed(
+  () => dashboard.value?.damage ?? { normal: 0, severe: 0, broken: 0 },
+);
+
+/** 住户排行 Top 5（后端返回全量，前端切片） */
+const topList = computed(() => (dashboard.value?.ranking ?? []).slice(0, 5));
+/** 完整排行记录（"查看全部"弹窗用） */
+const allRecords = computed(() => dashboard.value?.ranking ?? []);
+
+/** 查询指定 key 的 KPI 项 */
+function kpi(key: DashboardKpi["key"]): DashboardKpi | undefined {
+  return dashboard.value?.kpis.find((k) => k.key === key);
+}
+
+/** 较上月文案：↑/↓ + 绝对值百分比（无数据时占位 —） */
+function momText(key: DashboardKpi["key"]): string {
+  const k = kpi(key);
+  if (!k) return "—";
+  return `${k.momChange >= 0 ? "↑" : "↓"} ${Math.abs(k.momChange)}% 较上月`;
+}
+
+/** 较上月方向样式：上升 up（绿）/ 下降 down（红） */
+function momClass(key: DashboardKpi["key"]): string {
+  const k = kpi(key);
+  return k && k.momChange < 0 ? "down" : "up";
+}
 
 /** "查看全部"弹窗可见性 */
 const showAllRecords = ref(false);
-/** 全部记录的类型筛选 */
-const arFilterType = ref("");
-
-/** 按类型筛选后的完整记录 */
-const filteredAllRecords = computed(() => {
-  if (!arFilterType.value) return allRecords;
-  return allRecords.filter((r) => r.type === arFilterType.value);
-});
 
 /** 格式化的今日日期（含星期） */
 const today = computed(() => {
@@ -357,21 +294,27 @@ function initChart(): void {
 /** 根据当前时间周期渲染图表 */
 function renderChart(): void {
   if (!chartInstance) return;
-  const d = chartData[currentPeriod.value];
+  const d = chartData.value[currentPeriod.value];
   chartInstance.setOption({
     tooltip: { trigger: "axis" },
     legend: {
       data: ["发布数", "完成互助"],
       bottom: 0,
     },
-    grid: { left: 20, right: 20, top: 20, bottom: 40 },
+    // containLabel: 自动为纵轴刻度标签预留空间，防止数值被图表左边缘截断
+    grid: { left: 20, right: 20, top: 20, bottom: 40, containLabel: true },
     xAxis: {
       type: "category",
       data: d.labels,
       axisLine: { lineStyle: { color: "#e8e8ed" } },
       axisLabel: { color: "#525256" },
     },
-    yAxis: { type: "value", splitLine: { lineStyle: { color: "#f5f5f7" } } },
+    // minInterval: 1 — 次数轴数据为整数，强制刻度间隔不小于 1，避免出现 0.5 这类小数刻度
+    yAxis: {
+      type: "value",
+      minInterval: 1,
+      splitLine: { lineStyle: { color: "#f5f5f7" } },
+    },
     series: [
       {
         name: "发布数",
@@ -405,26 +348,6 @@ function handleResize(): void {
   chartInstance?.resize();
 }
 
-/** 顶部下拉菜单命令处理 */
-function handleCommand(cmd: string): void {
-  if (cmd === "logout") handleLogout();
-}
-
-/** 退出登录确认 */
-async function handleLogout(): Promise<void> {
-  try {
-    await ElMessageBox.confirm("确认退出登录？", "提示", {
-      confirmButtonText: "退出",
-      cancelButtonText: "取消",
-      type: "warning",
-    });
-    authStore.logout();
-    router.push("/login");
-  } catch {
-    /* 已取消 */
-  }
-}
-
 // WebSocket 消息处理函数
 function onWsMessage(data: Record<string, number>): void {
   // 从实时数据更新统计数值
@@ -435,11 +358,34 @@ function onWsMessage(data: Record<string, number>): void {
   animateStats();
 }
 
+/** 拉取看板数据并刷新全部展示（KPI 动画、趋势图、完成率/损坏、排行） */
+async function fetchDashboard(): Promise<void> {
+  loading.value = true;
+  try {
+    const res = await getDashboard();
+    const d = res?.data?.data as DashboardDTO;
+    dashboard.value = d;
+    if (d?.kpis) {
+      const byKey = Object.fromEntries(d.kpis.map((k) => [k.key, k]));
+      targets.idle = byKey.idle?.value ?? 0;
+      targets.help = byKey.help?.value ?? 0;
+      targets.pub = byKey.pub?.value ?? 0;
+      targets.mau = byKey.mau?.value ?? 0;
+    }
+    animateStats();
+    renderChart();
+  } catch {
+    ElMessage.error("看板数据加载失败");
+  } finally {
+    loading.value = false;
+  }
+}
+
 onMounted(() => {
   nextTick(() => {
     initChart();
-    animateStats();
   });
+  fetchDashboard();
   // 取消注释以启用 WebSocket 实时更新
   // connect(onWsMessage);
 });
@@ -453,10 +399,6 @@ onUnmounted(() => {
 
 <style scoped>
 /* 不设最大宽度限制 —— 4列 KPI 网格和2列分析区域在任何宽度下等比缩放，不会显得稀疏。 */
-:deep(.el-main) {
-  padding: 32px 40px !important;
-}
-
 .panel-value {
   font-size: 40px;
   font-weight: 300;

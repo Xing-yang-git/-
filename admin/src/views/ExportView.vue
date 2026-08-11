@@ -1,127 +1,89 @@
 <template>
-  <el-container class="admin-layout">
-    <el-aside width="240px">
-      <AppSidebar />
-    </el-aside>
-    <el-container>
-      <el-header class="topbar">
-        <div class="topbar-left">
-          <span class="topbar-title">数据导出</span>
+  <AppLayout title="数据导出">
+    <!-- 导出选项 -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">导出内容（可多选）</span>
+      </div>
+      <div style="padding: 32px">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
+          <el-checkbox v-model="exportOptions.residents"
+            >住户清单（含认证状态、互助统计）</el-checkbox
+          >
+          <el-checkbox v-model="exportOptions.posts"
+            >发布记录（闲置借出/需求借入/技能求助合并）</el-checkbox
+          >
+          <el-checkbox v-model="exportOptions.borrows"
+            >互借记录 + 互助记录（闲置物品借用 & 技能求助交易）</el-checkbox
+          >
+          <el-checkbox v-model="exportOptions.removals"
+            >内容下架记录（物业操作日志）</el-checkbox
+          >
+          <el-checkbox v-model="exportOptions.ratings">评分数据</el-checkbox>
         </div>
-        <div class="topbar-right">
-          <el-dropdown @command="handleCommand">
-            <span
-              style="
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                gap: 4px;
-              "
-            >
-              {{ authStore.userName }} <el-icon><ArrowDown /></el-icon>
-            </span>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="logout">退出登录</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
-      </el-header>
-      <el-main>
-        <!-- 导出选项 -->
-        <div class="panel">
-          <div class="panel-header">
-            <span class="panel-title">导出内容（可多选）</span>
+        <div class="dv-divider"></div>
+        <div style="display: flex; gap: 24px; align-items: flex-end">
+          <div>
+            <div class="text-sm text-secondary mb-8">时间范围</div>
+            <el-date-picker
+              v-model="dateRange"
+              type="daterange"
+              range-separator="~"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              format="YYYY-MM-DD"
+              value-format="YYYY-MM-DD"
+            />
           </div>
-          <div style="padding: 20px">
-            <div
-              style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px"
-            >
-              <el-checkbox v-model="exportOptions.residents"
-                >住户清单（含认证状态、互助统计）</el-checkbox
-              >
-              <el-checkbox v-model="exportOptions.posts"
-                >发布记录（闲置借出/需求借入/技能求助合并）</el-checkbox
-              >
-              <el-checkbox v-model="exportOptions.borrows"
-                >互借记录 + 互助记录（闲置物品借用 & 技能求助交易）</el-checkbox
-              >
-              <el-checkbox v-model="exportOptions.removals"
-                >内容下架记录（物业操作日志）</el-checkbox
-              >
-              <el-checkbox v-model="exportOptions.ratings"
-                >评分数据</el-checkbox
-              >
-            </div>
-            <div class="dv-divider"></div>
-            <div style="display: flex; gap: 24px; align-items: flex-end">
-              <div>
-                <div class="text-sm text-secondary mb-8">时间范围</div>
-                <el-date-picker
-                  v-model="dateRange"
-                  type="daterange"
-                  range-separator="~"
-                  start-placeholder="开始日期"
-                  end-placeholder="结束日期"
-                  size="small"
-                  format="YYYY-MM-DD"
-                  value-format="YYYY-MM-DD"
-                />
-              </div>
-              <div>
-                <div class="text-sm text-secondary mb-8">导出格式</div>
-                <span style="font-size: 14px; color: #333">Excel (.xlsx)</span>
-              </div>
-            </div>
-            <div class="mt-16" style="display: flex; gap: 8px">
-              <el-button
-                type="primary"
-                :loading="exporting"
-                @click="confirmExport"
-              >
-                <el-icon><Download /></el-icon> 立即导出
-              </el-button>
-            </div>
+          <div>
+            <div class="text-sm text-secondary mb-8">导出格式</div>
+            <span style="font-size: 14px; color: #333">Excel (.xlsx)</span>
           </div>
         </div>
+        <div class="mt-16" style="display: flex; gap: 8px">
+          <el-button type="primary" :loading="exporting" @click="confirmExport">
+            <el-icon><Download /></el-icon> 立即导出
+          </el-button>
+        </div>
+      </div>
+    </div>
 
-        <!-- 导出日志（固定高度，约6条，内部滚动） -->
-        <div class="panel">
-          <div class="panel-header">
-            <span class="panel-title">导出日志</span>
-            <el-button size="small" :loading="exportingLogs" @click="handleExportLogs">导出日志</el-button>
-          </div>
-          <div style="overflow: hidden; border-radius: 0 0 10px 10px">
-            <div style="max-height: 298px; overflow-y: auto">
-              <el-table
-                :data="exportLogs"
-                style="width: 100%"
-                v-loading="loadingLogs"
-              >
-                <el-table-column label="时间" width="175">
-                  <template #default="{ row }">
-                    {{ fmtTime(row.createdAt) }}
-                  </template>
-                </el-table-column>
-                <el-table-column prop="adminName" label="操作人" width="130" />
-                <el-table-column label="导出项目" width="250">
-                  <template #default="{ row }">
-                    {{ row.selectedOptions }}
-                  </template>
-                </el-table-column>
-                <el-table-column label="状态" width="80">
-                  <template #default>
-                    <span class="badge badge-success">成功</span>
-                  </template>
-                </el-table-column>
-              </el-table>
-            </div>
-          </div>
+    <!-- 导出日志（固定高度，约6条，内部滚动） -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">导出日志</span>
+        <el-button :loading="exportingLogs" @click="handleExportLogs"
+          >导出日志</el-button
+        >
+      </div>
+      <div style="overflow: hidden; border-radius: 0 0 16px 16px">
+        <div style="max-height: 298px; overflow-y: auto">
+          <el-table
+            :data="exportLogs"
+            style="width: 100%"
+            v-loading="loadingLogs"
+          >
+            <el-table-column label="时间" width="175">
+              <template #default="{ row }">
+                {{ fmtTime(row.createdAt) }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="adminName" label="操作人" width="130" />
+            <el-table-column label="导出项目" width="250">
+              <template #default="{ row }">
+                {{ row.selectedOptions }}
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="80">
+              <template #default>
+                <span class="badge badge-success">成功</span>
+              </template>
+            </el-table-column>
+          </el-table>
         </div>
-      </el-main>
-    </el-container>
-  </el-container>
+      </div>
+    </div>
+  </AppLayout>
 </template>
 
 <!--
@@ -132,17 +94,12 @@
 -->
 <script setup lang="ts">
 import { ref, reactive, onMounted } from "vue";
-import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { ArrowDown, Download } from "@element-plus/icons-vue";
+import { Download } from "@element-plus/icons-vue";
 
-import { useAuthStore } from "../stores/auth";
-import { exportData, getExportLogs, exportExportLogs } from "../api/admin";
-import type { ExportLogItem } from "../api/admin";
-import AppSidebar from "../components/AppSidebar.vue";
-
-const router = useRouter();
-const authStore = useAuthStore();
+import { exportData, getExportLogs, exportExportLogs } from "@/api/admin";
+import type { ExportLogItem } from "@/api/admin";
+import AppLayout from "@/layouts/AppLayout.vue";
 
 /** 导出数据的时间范围（可选，不选则导出全部） */
 const dateRange = ref<string[] | null>(null);
@@ -296,24 +253,6 @@ async function handleExportLogs(): Promise<void> {
     ElMessage.error(err.message || "导出失败");
   } finally {
     exportingLogs.value = false;
-  }
-}
-
-function handleCommand(cmd: string): void {
-  if (cmd === "logout") handleLogout();
-}
-
-async function handleLogout(): Promise<void> {
-  try {
-    await ElMessageBox.confirm("确认退出登录？", "提示", {
-      confirmButtonText: "退出",
-      cancelButtonText: "取消",
-      type: "warning",
-    });
-    authStore.logout();
-    router.push("/login");
-  } catch {
-    /* 已取消 */
   }
 }
 

@@ -126,14 +126,19 @@ public class SessionService {
     /**
      * 会话截断：超 max-turns×2 条丢最旧；超 max-history-chars 字符从头部裁剪（至少保留 6 条）。
      *
+     * <p>丢弃最旧消息时，若丢掉的属于已归档回填前缀（resume 回填），同步减小
+     * {@code archivedPrefixCount}，避免前缀计数超过消息条数导致归档判断错乱。</p>
+     *
      * @param session 会话
      * @return 截断后的会话
      */
     private AgentSession truncate(AgentSession session) {
         List<AgentSession.AgentMessageItem> messages = session.getMessages();
         int maxCount = maxTurns * 2;
+        int dropped = 0;
         if (messages.size() > maxCount) {
-            messages = new ArrayList<>(messages.subList(messages.size() - maxCount, messages.size()));
+            dropped = messages.size() - maxCount;
+            messages = new ArrayList<>(messages.subList(dropped, messages.size()));
         }
         // 字符裁剪（至少保留 keepMin 条，避免丢失最近上下文）
         int totalChars = messages.stream().mapToInt(m -> len(m.content())).sum();
@@ -141,8 +146,11 @@ public class SessionService {
         while (totalChars > maxHistoryChars && messages.size() > keepMin) {
             totalChars -= len(messages.get(0).content());
             messages = new ArrayList<>(messages.subList(1, messages.size()));
+            dropped++;
         }
         session.setMessages(messages);
+        // 丢弃的总是最旧消息，最旧的正是已归档回填前缀，故前缀计数减去丢弃条数（下限 0）
+        session.setArchivedPrefixCount(Math.max(0, session.getArchivedPrefixCount() - dropped));
         return session;
     }
 

@@ -1,6 +1,6 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
-const { POST_TYPE, STORAGE_KEY } = require('../../utils/constants');
+const { POST_TYPE, STORAGE_KEY, DURATION_UNIT } = require('../../utils/constants');
 
 /**
  * 发布页 — 闲置物品 / 互助求助发布。
@@ -48,13 +48,37 @@ Page({
     const draft = wx.getStorageSync(STORAGE_KEY.AGENT_DRAFT);
     if (draft && draft.params) {
       wx.removeStorageSync(STORAGE_KEY.AGENT_DRAFT);
+      const p = draft.params || {};
       const patch = {
-        title: draft.params.title || '',
-        description: draft.params.description || ''
+        title: p.title || '',
+        description: p.description || ''
       };
-      if (draft.params.category) patch.category = draft.params.category;
-      if (draft.type === 'publish_wanted') patch.postType = POST_TYPE.WANTED;
-      if (draft.type === 'publish_help') patch.postType = POST_TYPE.HELP;
+      if (p.category) patch.category = p.category;
+      // 需求借入：切 tab + 期望时长预填（day 档 1-7 天 / hour 档 1-23 小时；超范围不覆盖留默认）
+      if (draft.type === 'publish_wanted') {
+        patch.postType = POST_TYPE.WANTED;
+        if (p.durationUnit === DURATION_UNIT.HOUR) {
+          patch.durationUnit = DURATION_UNIT.HOUR;
+          patch.durationOptions = Array.from({ length: 23 }, (_, i) => (i + 1) + ' 小时');
+          if (typeof p.expectedDuration === 'number' && p.expectedDuration >= 1 && p.expectedDuration <= 23) {
+            patch.durationIndex = p.expectedDuration - 1;
+          }
+        } else if (typeof p.expectedDuration === 'number' && p.expectedDuration >= 1 && p.expectedDuration <= 7) {
+          patch.durationIndex = p.expectedDuration - 1;
+        }
+      }
+      // 技能求助：切 tab + 紧急标记预填 + 初始化默认时间范围（草稿分支原 return 跳过，导致日期为空）
+      if (draft.type === 'publish_help') {
+        patch.postType = POST_TYPE.HELP;
+        if (p.urgency) patch.urgency = p.urgency;
+        const now = new Date();
+        patch.helpStartDate = this._fmtDate(now);
+        patch.helpEndDate = this._fmtDate(new Date(now.getTime() + 3 * 24 * 3600000));
+      }
+      // 闲置借出：成色/价格/取货方式仅在模型明确提取到时覆盖，其余留用户手填
+      if (p.condition) patch.condition = p.condition;
+      if (p.price != null && p.price !== '') patch.price = String(p.price);
+      if (p.pickupMethod) patch.pickupMethod = p.pickupMethod;
       this.setData(patch);
       return;   // 草稿优先，跳过 options.type
     }
@@ -71,16 +95,18 @@ Page({
 
     // 设置求助默认时间范围（HELP 表单：今天 ~ 今天+3 天）
     const now = new Date();
-    const y = now.getFullYear();
-    const m = (now.getMonth() + 1).toString().padStart(2, '0');
-    const d = now.getDate().toString().padStart(2, '0');
-    this.setData({ helpStartDate: y + '-' + m + '-' + d });
+    this.setData({
+      helpStartDate: this._fmtDate(now),
+      helpEndDate: this._fmtDate(new Date(now.getTime() + 3 * 24 * 3600000))
+    });
+  },
 
-    const end = new Date(now.getTime() + 3 * 24 * 3600000);
-    const ey = end.getFullYear();
-    const em = (end.getMonth() + 1).toString().padStart(2, '0');
-    const ed = end.getDate().toString().padStart(2, '0');
-    this.setData({ helpEndDate: ey + '-' + em + '-' + ed });
+  /** 格式化日期为 yyyy-MM-dd（求助默认时间范围用） */
+  _fmtDate(date) {
+    const y = date.getFullYear();
+    const m = (date.getMonth() + 1).toString().padStart(2, '0');
+    const d = date.getDate().toString().padStart(2, '0');
+    return y + '-' + m + '-' + d;
   },
 
   onShow() {

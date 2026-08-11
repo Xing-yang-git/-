@@ -1,351 +1,329 @@
 <template>
-  <el-container class="admin-layout">
-    <el-aside width="240px">
-      <AppSidebar />
-    </el-aside>
-    <el-container>
-      <el-header class="topbar">
-        <div class="topbar-left">
-          <span class="topbar-title">互助记录</span>
+  <AppLayout title="互助记录" :main-class="LIST_PAGE_MAIN_CLASS">
+    <div class="unified-panel">
+      <!-- 筛选 — 第1行：仅日期选择器 -->
+      <div class="filter-row" style="width: 100%; padding-bottom: 2px">
+        <div style="width: 40%">
+          <el-date-picker
+            class="filter-select date-picker-no-arrow"
+            v-model="filterDateRange"
+            type="daterange"
+            range-separator="~"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD"
+          />
         </div>
-        <div class="topbar-right">
-          <el-dropdown @command="handleCommand">
-            <span
-              style="
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                gap: 4px;
-              "
-            >
-              {{ authStore.userName }} <el-icon><ArrowDown /></el-icon>
-            </span>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="logout">退出登录</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+      </div>
+
+      <!-- 筛选 — 第2行：其他筛选 + 操作 -->
+      <div class="filter-row">
+        <el-select
+          class="filter-select"
+          v-model="filterType"
+          placeholder="类型"
+          style="width: 110px"
+        >
+          <el-option label="全部" value="" />
+          <el-option label="物品互借" value="borrow" />
+          <el-option label="技能互助" value="help" />
+        </el-select>
+        <el-select
+          class="filter-select"
+          v-model="filterBuilding"
+          placeholder="楼栋"
+          style="width: 110px"
+          @change="filterUnit = ''"
+        >
+          <el-option label="全部" value="" />
+          <el-option
+            v-for="b in communityStore.buildingOptions"
+            :key="b.id"
+            :label="b.name"
+            :value="b.name"
+          />
+        </el-select>
+        <el-select
+          class="filter-select"
+          v-model="filterUnit"
+          placeholder="单元"
+          style="width: 100px"
+          :disabled="!filterBuilding"
+        >
+          <el-option label="全部" value="" />
+          <el-option
+            v-for="u in filterUnitOptions"
+            :key="u.id"
+            :label="u.name"
+            :value="u.name"
+          />
+        </el-select>
+        <el-input
+          class="search-box"
+          v-model="search"
+          placeholder="搜索住户名称或房号..."
+          style="width: 210px"
+          clearable
+        />
+        <el-button
+          type="primary"
+          size="default"
+          style="margin-left: 8px"
+          :disabled="!selectedRows.length"
+          @click="openDetailFromSelection"
+          >详细</el-button
+        >
+        <span style="flex: 1"></span>
+        <span class="text-sm text-secondary"
+          >共 {{ filteredRecords.length }} 条</span
+        >
+      </div>
+
+      <!-- 表格（填充面板高度，内部滚动）-->
+      <div class="uf-body">
+        <div class="panel">
+          <el-table
+            :data="filteredRecords"
+            height="100%"
+            style="width: 100%"
+            @selection-change="handleSelectionChange"
+          >
+            <el-table-column type="selection" width="50" />
+            <el-table-column label="类型" align="center" width="100">
+              <template #default="{ row }">
+                <el-tag>{{ row.type === "borrow" ? "互借" : "互助" }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="publisher" label="发布者" />
+            <el-table-column prop="peer" label="互助对象" />
+            <el-table-column label="内容">
+              <template #default="{ row }">
+                <span class="content-link" @click="openDetailByRow(row)">{{
+                  row.content
+                }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="时间范围" width="300">
+              <template #default="{ row }">
+                {{ row.timeStart }} ~ {{ row.timeEnd }}
+              </template>
+            </el-table-column>
+          </el-table>
         </div>
-      </el-header>
-      <el-main class="panel-fill">
-        <div class="unified-panel">
-          <!-- 筛选 — 第1行：仅日期选择器 -->
-          <div class="filter-row" style="width: 500px; padding-bottom: 2px">
-            <el-date-picker
-              class="filter-select date-picker-no-arrow"
-              v-model="filterDateRange"
-              type="daterange"
-              range-separator="~"
-              start-placeholder="开始日期"
-              end-placeholder="结束日期"
-              format="YYYY-MM-DD"
-              value-format="YYYY-MM-DD"
-              style="width: 240px"
-            />
-          </div>
+      </div>
+    </div>
 
-          <!-- 筛选 — 第2行：其他筛选 + 操作 -->
-          <div class="filter-row">
-            <el-select
-              class="filter-select"
-              v-model="filterType"
-              placeholder="类型"
-              style="width: 110px"
-            >
-              <el-option label="全部" value="" />
-              <el-option label="物品互借" value="borrow" />
-              <el-option label="技能互助" value="help" />
-            </el-select>
-            <el-select
-              class="filter-select"
-              v-model="filterBuilding"
-              placeholder="楼栋"
-              style="width: 110px"
-              @change="filterUnit = ''"
-            >
-              <el-option label="全部" value="" />
-              <el-option
-                v-for="b in communityStore.buildingOptions"
-                :key="b.id"
-                :label="b.name"
-                :value="b.name"
-              />
-            </el-select>
-            <el-select
-              class="filter-select"
-              v-model="filterUnit"
-              placeholder="单元"
-              style="width: 100px"
-              :disabled="!filterBuilding"
-            >
-              <el-option label="全部" value="" />
-              <el-option
-                v-for="u in filterUnitOptions"
-                :key="u.id"
-                :label="u.name"
-                :value="u.name"
-              />
-            </el-select>
-            <el-input
-              class="search-box"
-              v-model="search"
-              placeholder="搜索住户名称或房号..."
-              style="width: 210px"
-            />
-            <el-button
-              type="primary"
-              size="default"
-              style="margin-left: 8px"
-              :disabled="!selectedRows.length"
-              @click="openDetailFromSelection"
-              >详细</el-button
-            >
-            <span style="flex: 1"></span>
-            <span class="text-sm text-secondary"
-              >共 {{ filteredRecords.length }} 条</span
-            >
-          </div>
-
-          <!-- 表格（填充面板高度，内部滚动）-->
-          <div class="uf-body">
-            <div class="panel">
-              <el-table
-                :data="filteredRecords"
-                style="width: 100%"
-                @selection-change="handleSelectionChange"
-              >
-                <el-table-column type="selection" width="50" />
-                <el-table-column label="类型" align="center" width="70">
-                  <template #default="{ row }">
-                    <span
-                      :class="[
-                        'tag',
-                        row.type === 'borrow' ? 'tag-blue' : 'tag-orange',
-                      ]"
-                    >
-                      {{ row.type === "borrow" ? "互借" : "互助" }}
-                    </span>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="publisher" label="发布者" />
-                <el-table-column prop="peer" label="互助对象" />
-                <el-table-column prop="content" label="内容" />
-                <el-table-column label="时间范围" width="300">
-                  <template #default="{ row }">
-                    {{ row.timeStart }} ~ {{ row.timeEnd }}
-                  </template>
-                </el-table-column>
-              </el-table>
-
-            </div>
-          </div>
+    <!-- 详情弹窗 -->
+    <el-dialog
+      v-model="detailVisible"
+      title="互助记录详情"
+      width="680px"
+      top="10vh"
+    >
+      <div v-if="detailItem">
+        <!-- 基本信息 -->
+        <div class="detail-row">
+          <span class="dl">内容</span
+          ><span class="dv">{{ detailItem.content }}</span>
         </div>
+        <div class="detail-row">
+          <span class="dl">类型</span
+          ><span class="dv">
+            <el-tag>{{
+              detailItem.type === "borrow" ? "互借" : "互助"
+            }}</el-tag>
+          </span>
+        </div>
+        <div class="detail-row">
+          <span class="dl">小区</span><span class="dv">翠湖花园</span>
+        </div>
+        <!-- 互助：预计开始 / 预计结束（发布时选填，未填显示 --） -->
+        <template v-if="detailItem.type === 'help'">
+          <div class="detail-row">
+            <span class="dl">预计开始</span
+            ><span class="dv">{{ detailItem.timeStart || "--" }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="dl">预计结束</span
+            ><span class="dv">{{ detailItem.timeEnd || "--" }}</span>
+          </div>
+        </template>
+        <!-- 互借：借出时长 -->
+        <template v-if="detailItem.type === 'borrow'">
+          <div class="detail-row">
+            <span class="dl">借出时长</span
+            ><span class="dv">{{ detailItem.lendDuration || "--" }}</span>
+          </div>
+        </template>
 
-        <!-- 详情弹窗 -->
-        <el-dialog v-model="detailVisible" title="互助记录详情" width="680px" top="10vh">
-          <div v-if="detailItem">
-            <!-- 基本信息 -->
-            <div class="detail-row">
-              <span class="dl">内容</span
-              ><span class="dv">{{ detailItem.content }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="dl">类型</span
-              ><span class="dv">
-                <span
-                  :class="[
-                    'tag',
-                    detailItem.type === 'borrow' ? 'tag-blue' : 'tag-orange',
-                  ]"
-                >
-                  {{ detailItem.type === "borrow" ? "互借" : "互助" }}
-                </span>
-              </span>
-            </div>
-            <div class="detail-row">
-              <span class="dl">小区</span><span class="dv">翠湖花园</span>
-            </div>
-            <!-- 互助：预计开始 / 预计结束（发布时选填，未填显示 --） -->
-            <template v-if="detailItem.type === 'help'">
-              <div class="detail-row">
-                <span class="dl">预计开始</span
-                ><span class="dv">{{ detailItem.timeStart || "--" }}</span>
-              </div>
-              <div class="detail-row">
-                <span class="dl">预计结束</span
-                ><span class="dv">{{ detailItem.timeEnd || "--" }}</span>
-              </div>
-            </template>
-            <!-- 互借：借出时长 -->
+        <div class="dv-divider"></div>
+
+        <!-- 互助双方 + 时间线（左右布局） -->
+        <div style="display: flex; gap: 20px">
+          <!-- 左侧：互助双方信息 -->
+          <div style="flex: 1; min-width: 0">
+            <p class="text-sm text-secondary" style="margin-bottom: 8px">
+              互助双方
+            </p>
             <template v-if="detailItem.type === 'borrow'">
               <div class="detail-row">
-                <span class="dl">借出时长</span
-                ><span class="dv">{{ detailItem.lendDuration || "--" }}</span>
-              </div>
-            </template>
-
-            <div class="dv-divider"></div>
-
-            <!-- 互助双方 + 时间线（左右布局） -->
-            <div style="display: flex; gap: 20px">
-              <!-- 左侧：互助双方信息 -->
-              <div style="flex: 1; min-width: 0">
-                <p class="text-sm text-secondary" style="margin-bottom: 8px">
-                  互助双方
-                </p>
-                <template v-if="detailItem.type === 'borrow'">
-                  <div class="detail-row">
-                    <span class="dl">借出方</span>
-                    <span class="dv"
-                      >{{ detailItem.publisher }}
-                      <span
-                        v-if="detailItem.pubRatingScore"
-                        class="rating-tag"
-                        style="margin-left: 6px"
-                      >
-                        <span class="stars">{{ toStars(detailItem.pubRatingScore) }}</span>
-                        <span class="rlabel">获评</span>
-                      </span>
-                    </span>
-                  </div>
-                  <div class="detail-row" style="align-items: flex-start">
-                    <span class="dl">互助感想</span>
-                    <span class="dv" style="white-space: pre-wrap">{{
-                      detailItem.pubComment || "无"
-                    }}</span>
-                  </div>
-                  <div class="detail-row">
-                    <span class="dl">借入方</span>
-                    <span class="dv"
-                      >{{ detailItem.peer }}
-                      <span
-                        v-if="detailItem.peerRatingScore"
-                        class="rating-tag"
-                        style="margin-left: 6px"
-                      >
-                        <span class="stars">{{ toStars(detailItem.peerRatingScore) }}</span>
-                        <span class="rlabel">获评</span>
-                      </span>
-                    </span>
-                  </div>
-                  <div class="detail-row" style="align-items: flex-start">
-                    <span class="dl">互助感想</span>
-                    <span class="dv" style="white-space: pre-wrap">{{
-                      detailItem.peerComment || "无"
-                    }}</span>
-                  </div>
-                </template>
-                <template v-else>
-                  <div class="detail-row">
-                    <span class="dl">求助方</span>
-                    <span class="dv"
-                      >{{ detailItem.publisher }}
-                      <span
-                        v-if="detailItem.pubRatingScore"
-                        class="rating-tag"
-                        style="margin-left: 6px"
-                      >
-                        <span class="stars">{{ toStars(detailItem.pubRatingScore) }}</span>
-                        <span class="rlabel">获评</span>
-                      </span>
-                    </span>
-                  </div>
-                  <div class="detail-row" style="align-items: flex-start">
-                    <span class="dl">互助感想</span>
-                    <span class="dv" style="white-space: pre-wrap">{{
-                      detailItem.pubComment || "无"
-                    }}</span>
-                  </div>
-                  <div class="detail-row">
-                    <span class="dl">相助方</span>
-                    <span class="dv"
-                      >{{ detailItem.peer }}
-                      <span
-                        v-if="detailItem.peerRatingScore"
-                        class="rating-tag"
-                        style="margin-left: 6px"
-                      >
-                        <span class="stars">{{ toStars(detailItem.peerRatingScore) }}</span>
-                        <span class="rlabel">获评</span>
-                      </span>
-                    </span>
-                  </div>
-                  <div class="detail-row" style="align-items: flex-start">
-                    <span class="dl">互助感想</span>
-                    <span class="dv" style="white-space: pre-wrap">{{
-                      detailItem.peerComment || "无"
-                    }}</span>
-                  </div>
-                </template>
-              </div>
-
-              <!-- 右侧：互助进度时间线 -->
-              <div style="width: 190px; flex-shrink: 0; padding-top: 4px">
-                <el-timeline>
-                  <el-timeline-item
-                    v-for="node in recordTimelineNodes"
-                    :key="node.label"
-                    :color="node.color"
-                    :hollow="!node.time"
-                    :timestamp="node.time || '—'"
+                <span class="dl">借出方</span>
+                <span class="dv"
+                  >{{ detailItem.publisher }}
+                  <span
+                    v-if="detailItem.pubRatingScore"
+                    class="rating-tag"
+                    style="margin-left: 6px"
                   >
-                    {{ node.label }}
-                  </el-timeline-item>
-                </el-timeline>
+                    <span class="stars">{{
+                      toStars(detailItem.pubRatingScore)
+                    }}</span>
+                    <span class="rlabel">获评</span>
+                  </span>
+                </span>
               </div>
-            </div>
-
-            <!-- 互借：物品状况记录 -->
-            <template v-if="detailItem.type === 'borrow' && detailItem.condBefore">
-              <div class="dv-divider"></div>
-              <p class="text-sm text-secondary" style="margin-bottom: 8px">
-                物品状况记录
-              </p>
-              <div class="detail-row">
-                <span class="dl">借出前</span
-                ><span class="dv">{{ detailItem.condBefore }}</span>
+              <div class="detail-row" style="align-items: flex-start">
+                <span class="dl">互助感想</span>
+                <span class="dv" style="white-space: pre-wrap">{{
+                  detailItem.pubComment || "无"
+                }}</span>
               </div>
               <div class="detail-row">
-                <span class="dl">归还后</span
-                ><span class="dv">{{ detailItem.condAfter }}</span>
+                <span class="dl">借入方</span>
+                <span class="dv"
+                  >{{ detailItem.peer }}
+                  <span
+                    v-if="detailItem.peerRatingScore"
+                    class="rating-tag"
+                    style="margin-left: 6px"
+                  >
+                    <span class="stars">{{
+                      toStars(detailItem.peerRatingScore)
+                    }}</span>
+                    <span class="rlabel">获评</span>
+                  </span>
+                </span>
               </div>
-              <div class="detail-row">
-                <span class="dl">归还情况</span
-                ><span class="dv">{{ detailItem.returnStatus || "--" }}</span>
+              <div class="detail-row" style="align-items: flex-start">
+                <span class="dl">互助感想</span>
+                <span class="dv" style="white-space: pre-wrap">{{
+                  detailItem.peerComment || "无"
+                }}</span>
               </div>
             </template>
-
-            <div class="dv-divider"></div>
-            <p class="text-sm text-secondary">
-              评分由双方互评完成：发布者评分为互助对象的评价，互助对象评分为发布者的评价。
-            </p>
+            <template v-else>
+              <div class="detail-row">
+                <span class="dl">求助方</span>
+                <span class="dv"
+                  >{{ detailItem.publisher }}
+                  <span
+                    v-if="detailItem.pubRatingScore"
+                    class="rating-tag"
+                    style="margin-left: 6px"
+                  >
+                    <span class="stars">{{
+                      toStars(detailItem.pubRatingScore)
+                    }}</span>
+                    <span class="rlabel">获评</span>
+                  </span>
+                </span>
+              </div>
+              <div class="detail-row" style="align-items: flex-start">
+                <span class="dl">互助感想</span>
+                <span class="dv" style="white-space: pre-wrap">{{
+                  detailItem.pubComment || "无"
+                }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="dl">相助方</span>
+                <span class="dv"
+                  >{{ detailItem.peer }}
+                  <span
+                    v-if="detailItem.peerRatingScore"
+                    class="rating-tag"
+                    style="margin-left: 6px"
+                  >
+                    <span class="stars">{{
+                      toStars(detailItem.peerRatingScore)
+                    }}</span>
+                    <span class="rlabel">获评</span>
+                  </span>
+                </span>
+              </div>
+              <div class="detail-row" style="align-items: flex-start">
+                <span class="dl">互助感想</span>
+                <span class="dv" style="white-space: pre-wrap">{{
+                  detailItem.peerComment || "无"
+                }}</span>
+              </div>
+            </template>
           </div>
-          <template #footer>
-            <div style="display: flex; align-items: center; gap: 8px">
-              <el-button
-                :icon="ArrowLeft"
-                circle
-                :disabled="detailPos === 0"
-                @click="detailGo(-1)"
-              />
-              <span class="text-sm text-secondary"
-                >{{ detailPos + 1 }} / {{ detailList.length }}</span
+
+          <!-- 右侧：互助进度时间线 -->
+          <div style="width: 190px; flex-shrink: 0; padding-top: 4px">
+            <el-timeline>
+              <el-timeline-item
+                v-for="node in recordTimelineNodes"
+                :key="node.label"
+                :color="node.color"
+                :hollow="!node.time"
+                :timestamp="node.time || '—'"
               >
-              <el-button
-                :icon="ArrowRight"
-                circle
-                :disabled="detailPos === detailList.length - 1"
-                @click="detailGo(1)"
-              />
-              <span style="flex: 1"></span>
-              <el-button @click="detailVisible = false">关闭</el-button>
-            </div>
-          </template>
-        </el-dialog>
-      </el-main>
-    </el-container>
-  </el-container>
+                {{ node.label }}
+              </el-timeline-item>
+            </el-timeline>
+          </div>
+        </div>
+
+        <!-- 互借：物品状况记录 -->
+        <template v-if="detailItem.type === 'borrow' && detailItem.condBefore">
+          <div class="dv-divider"></div>
+          <p class="text-sm text-secondary" style="margin-bottom: 8px">
+            物品状况记录
+          </p>
+          <div class="detail-row">
+            <span class="dl">借出前</span
+            ><span class="dv">{{ detailItem.condBefore }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="dl">归还后</span
+            ><span class="dv">{{ detailItem.condAfter }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="dl">归还情况</span
+            ><span class="dv">{{ detailItem.returnStatus || "--" }}</span>
+          </div>
+        </template>
+
+        <div class="dv-divider"></div>
+        <p class="text-sm text-secondary">
+          评分由双方互评完成：发布者评分为互助对象的评价，互助对象评分为发布者的评价。
+        </p>
+      </div>
+      <template #footer>
+        <div style="display: flex; align-items: center; gap: 8px">
+          <el-button
+            :icon="ArrowLeft"
+            circle
+            :disabled="detailPos === 0"
+            @click="detailGo(-1)"
+          />
+          <span class="text-sm text-secondary"
+            >{{ detailPos + 1 }} / {{ detailList.length }}</span
+          >
+          <el-button
+            :icon="ArrowRight"
+            circle
+            :disabled="detailPos === detailList.length - 1"
+            @click="detailGo(1)"
+          />
+          <span style="flex: 1"></span>
+          <el-button @click="detailVisible = false">关闭</el-button>
+        </div>
+      </template>
+    </el-dialog>
+  </AppLayout>
 </template>
 
 <!--
@@ -356,17 +334,14 @@
 -->
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
-import { useRouter } from "vue-router";
-import { ElMessage, ElMessageBox } from "element-plus";
-import { ArrowDown, ArrowLeft, ArrowRight } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
+import { ArrowLeft, ArrowRight } from "@element-plus/icons-vue";
 
-import { useAuthStore } from "../stores/auth";
-import { useCommunityStore } from "../stores/community";
-import AppSidebar from "../components/AppSidebar.vue";
+import { useCommunityStore } from "@/stores/community";
+import AppLayout from "@/layouts/AppLayout.vue";
+import { LIST_PAGE_MAIN_CLASS } from "@/layouts/main-classes";
 import { getRecords, type RecordItemDTO } from "../api/admin";
 
-const router = useRouter();
-const authStore = useAuthStore();
 const communityStore = useCommunityStore();
 
 onMounted(() => {
@@ -411,7 +386,10 @@ async function fetchRecords(): Promise<void> {
 const filteredRecords = computed(() => {
   return tableData.value.filter((item) => {
     if (filterType.value && item.type !== filterType.value) return false;
-    if (filterBuilding.value && !(item.room || "").startsWith(filterBuilding.value))
+    if (
+      filterBuilding.value &&
+      !(item.room || "").startsWith(filterBuilding.value)
+    )
       return false;
     if (filterUnit.value && !matchUnit(item.room || "", filterUnit.value))
       return false;
@@ -480,6 +458,15 @@ function openDetailFromSelection(): void {
   detailVisible.value = true;
 }
 
+/** 从「内容」列链接直接打开该条记录的详情弹窗（保留左右切换） */
+function openDetailByRow(row: RecordItemDTO): void {
+  const idx = filteredRecords.value.findIndex((r) => r.id === row.id);
+  if (idx < 0) return;
+  detailList.value = [...filteredRecords.value];
+  detailPos.value = idx;
+  detailVisible.value = true;
+}
+
 /**
  * 详情弹窗左右翻页。
  * @param delta - 翻页偏移（-1 上一页，1 下一页）
@@ -497,16 +484,32 @@ const recordTimelineNodes = computed(() => {
   const isBorrow = it.type === "borrow";
   const nodes: { label: string; time: string; color: string }[] = [
     { label: "发布时间", time: it.publishedAt || "—", color: "#909399" },
-    { label: isBorrow ? "借入申请" : "申请主动帮忙", time: it.applyAt || "—", color: "#409eff" },
-    { label: isBorrow ? "同意借出" : "同意帮助", time: it.approveAt || "—", color: "#e6a23c" },
+    {
+      label: isBorrow ? "借入申请" : "申请主动帮忙",
+      time: it.applyAt || "—",
+      color: "#409eff",
+    },
+    {
+      label: isBorrow ? "同意借出" : "同意帮助",
+      time: it.approveAt || "—",
+      color: "#e6a23c",
+    },
   ];
   // 归还·评价（第一个评价）
   if (it.rating1Label) {
-    nodes.push({ label: `归还·${it.rating1Label}`, time: it.rating1Time || "—", color: "#67c23a" });
+    nodes.push({
+      label: `归还·${it.rating1Label}`,
+      time: it.rating1Time || "—",
+      color: "#67c23a",
+    });
   }
   // 对方评价（第二个评价）
   if (it.rating2Label) {
-    nodes.push({ label: it.rating2Label, time: it.rating2Time || "—", color: "#f56c6c" });
+    nodes.push({
+      label: it.rating2Label,
+      time: it.rating2Time || "—",
+      color: "#f56c6c",
+    });
   }
   return nodes;
 });
@@ -515,26 +518,6 @@ const recordTimelineNodes = computed(() => {
 function toStars(score: number | null | undefined): string {
   if (score == null || score < 1 || score > 5) return "";
   return "★★★★★".slice(0, score) + "☆☆☆☆☆".slice(0, 5 - score);
-}
-
-/** 顶部下拉菜单命令处理 */
-function handleCommand(cmd: string): void {
-  if (cmd === "logout") handleLogout();
-}
-
-/** 退出登录确认 */
-async function handleLogout(): Promise<void> {
-  try {
-    await ElMessageBox.confirm("确认退出登录？", "提示", {
-      confirmButtonText: "退出",
-      cancelButtonText: "取消",
-      type: "warning",
-    });
-    authStore.logout();
-    router.push("/login");
-  } catch {
-    /* cancelled */
-  }
 }
 </script>
 
@@ -560,6 +543,14 @@ async function handleLogout(): Promise<void> {
 .date-picker-no-arrow {
   background-image: none !important;
   padding-right: 12px !important;
+}
+/* 内容列链接 — 无下划线（hover 仅加深颜色，不描下划线） */
+.content-link {
+  color: var(--accent);
+  cursor: pointer;
+}
+.content-link:hover {
+  color: var(--accent-hover);
 }
 /* 发布者是第3列 */
 :deep(.el-table__body tr td:nth-child(3)) {

@@ -64,3 +64,6 @@ miniprogram/project.private.config.json
 # ===== 本地执行脚手架 =====
 # 子代理执行台账与任务简报（本地暂存，不入库）
 .superpowers/
+
+# rerank-service 本地预下载的 Python wheel（torch 2.7.1+cu126 等，793MB，主机下载注入构建用）
+rerank-service/wheels/

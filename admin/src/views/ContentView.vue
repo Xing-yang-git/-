@@ -1,1635 +1,1587 @@
 <template>
-  <el-container class="admin-layout">
-    <el-aside width="240px">
-      <AppSidebar />
-    </el-aside>
-    <el-container>
-      <el-header class="topbar">
-        <div class="topbar-left">
-          <span class="topbar-title">内容管理</span>
-        </div>
-        <div class="topbar-right">
-          <el-dropdown @command="handleCommand">
-            <span
-              style="
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                gap: 4px;
-              "
-            >
-              {{ authStore.userName }} <el-icon><ArrowDown /></el-icon>
-            </span>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="logout">退出登录</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
-      </el-header>
-      <el-main class="panel-fill">
-        <div class="unified-panel">
-          <!-- 标签页 -->
-          <div style="display: flex; align-items: center; padding: 14px 20px 0">
-            <div class="segment-row">
-              <button
-                v-for="t in contentTabs"
-                :key="t.key"
-                class="segment-btn"
-                :class="{ active: activeTab === t.key }"
-                @click="switchTab(t.key)"
-              >
-                {{ t.label }}
-                <span
-                  v-if="t.key === 'moderation' && moderationTabCount > 0"
-                  class="tab-badge"
-                  >{{ moderationTabCount }}</span
-                >
-                <template v-if="t.key === 'pending'">
-                  <el-tooltip content="住户之间的申请审核" placement="top">
-                    <el-icon style="margin-left: 2px; cursor: help"
-                      ><QuestionFilled
-                    /></el-icon>
-                  </el-tooltip>
-                </template>
-              </button>
-            </div>
-          </div>
-
-          <!-- 筛选 -->
-          <div class="filter-row">
-            <!-- 审核 tab 专属筛选 -->
-            <template v-if="activeTab === 'moderation'">
-              <el-select
-                class="filter-select"
-                v-model="moderationFilter.status"
-                placeholder="审核状态"
-                style="width: 140px"
-                @change="applyModerationFilters"
-              >
-                <el-option label="全部" value="" />
-                <el-option label="待人工复核" value="yellow" />
-                <el-option label="审核驳回" value="red" />
-              </el-select>
-              <el-select
-                class="filter-select"
-                v-model="moderationFilter.moderatedBy"
-                placeholder="审核员"
-                style="width: 110px"
-                @change="applyModerationFilters"
-              >
-                <el-option label="全部" value="" />
-                <el-option label="AI" value="ai" />
-                <el-option label="管理员" value="admin" />
-              </el-select>
-              <el-select
-                class="filter-select"
-                v-model="moderationFilter.type"
-                placeholder="类型"
-                style="width: 120px"
-                @change="applyModerationFilters"
-              >
-                <el-option label="全部" value="" />
-                <el-option label="物品互借" value="idle" />
-                <el-option label="技能互助" value="help" />
-              </el-select>
-              <el-select
-                class="filter-select"
-                v-model="moderationFilter.building"
-                placeholder="楼栋"
-                style="width: 110px"
-                @change="moderationFilter.unit = ''; applyModerationFilters()"
-              >
-                <el-option label="全部" value="" />
-                <el-option
-                  v-for="b in communityStore.buildingOptions"
-                  :key="b.id"
-                  :label="b.name"
-                  :value="b.name"
-                />
-              </el-select>
-              <el-select
-                class="filter-select"
-                v-model="moderationFilter.unit"
-                placeholder="单元"
-                style="width: 100px"
-                :disabled="!moderationFilter.building"
-                @change="applyModerationFilters"
-              >
-                <el-option label="全部" value="" />
-                <el-option
-                  v-for="u in moderationUnitOptions"
-                  :key="u.id"
-                  :label="u.name"
-                  :value="u.name"
-                />
-              </el-select>
-              <el-input
-                class="search-box"
-                v-model="moderationFilter.search"
-                placeholder="搜索内容标题..."
-                style="width: 150px"
-                clearable
-                @keydown.enter="onModerationSearchEnter"
-                @clear="applyModerationFilters"
-                @input="onModerationSearchInput"
-              />
-              <el-button
-                size="default"
-                type="primary"
-                style="margin-left: 8px"
-                :disabled="!moderationSelected.length"
-                @click="openModerationDetail()"
-                >详细</el-button
-              >
-              <span style="flex: 1"></span>
-              <span class="text-sm text-secondary"
-                >共 {{ moderationTotal }} 条</span
-              >
-            </template>
-            <!-- 常规 tab 筛选 -->
-            <template v-else>
-              <el-select
-                class="filter-select"
-                v-model="filterType"
-                placeholder="类型"
-                style="width: 120px"
-                @change="applyFilters"
-              >
-                <el-option label="全部" value="" />
-                <el-option label="物品互借" value="idle" />
-                <el-option label="技能互助" value="help" />
-              </el-select>
-              <el-select
-                class="filter-select"
-                v-model="filterBuilding"
-                placeholder="楼栋"
-                style="width: 110px"
-                @change="filterUnit = ''; applyFilters()"
-              >
-                <el-option label="全部" value="" />
-                <el-option
-                  v-for="b in communityStore.buildingOptions"
-                  :key="b.id"
-                  :label="b.name"
-                  :value="b.name"
-                />
-              </el-select>
-              <el-select
-                class="filter-select"
-                v-model="filterUnit"
-                placeholder="单元"
-                style="width: 100px"
-                :disabled="!filterBuilding"
-                @change="applyFilters"
-              >
-                <el-option label="全部" value="" />
-                <el-option
-                  v-for="u in filterUnitOptions"
-                  :key="u.id"
-                  :label="u.name"
-                  :value="u.name"
-                />
-              </el-select>
-              <el-select
-                v-if="activeTab === 'offline'"
-                class="filter-select"
-                v-model="filterModeratedBy"
-                placeholder="审核员"
-                style="width: 110px"
-                @change="applyFilters"
-              >
-                <el-option label="全部" value="" />
-                <el-option label="AI" value="ai" />
-                <el-option label="管理员" value="admin" />
-              </el-select>
-              <el-input
-                class="search-box"
-                v-model="search"
-                placeholder="搜索内容标题..."
-                style="width: 150px"
-                clearable
-                @keydown.enter="onSearchEnter"
-                @clear="applyFilters"
-                @input="onSearchInput"
-              />
-              <el-button
-                size="default"
-                type="primary"
-                style="margin-left: 8px"
-                :disabled="!selectedRows.length"
-                @click="openDetailFromSelection"
-                >详细</el-button
-              >
-              <el-button type="primary" size="default" @click="openPublish"
-                >物业代发</el-button
-              >
-              <span style="flex: 1"></span>
-              <span class="text-sm text-secondary">共 {{ totalCount }} 条</span>
-            </template>
-          </div>
-
-          <!-- 面板主体（填充面板高度，内部滚动）-->
-          <div class="uf-body">
-            <!-- 加载中 -->
-            <div v-if="loading" class="panel-empty">加载中...</div>
-
-            <!-- 审核 tab 表格 -->
-            <div
-              class="panel-body-scroll"
-              v-else-if="activeTab === 'moderation' && moderationList.length"
-            >
-              <el-table
-                :data="moderationList"
-                style="width: 100%"
-                :row-class-name="getModerationRowClass"
-                @selection-change="onModerationSelect"
-                @row-dblclick="viewModerationDetail"
-              >
-                <el-table-column type="selection" width="50" />
-                <el-table-column label="发布住户" min-width="70">
-                  <template #default="{ row }">
-                    {{ row.publisherRoom }}
-                  </template>
-                </el-table-column>
-                <el-table-column label="标题" min-width="120">
-                  <template #default="{ row }">
-                    <a
-                      class="moderation-title-link"
-                      @click="viewModerationDetail(row)"
-                      >{{ row.title }}</a
-                    >
-                  </template>
-                </el-table-column>
-                <el-table-column label="类型" width="120" align="center">
-                  <template #default="{ row }">
-                    <el-tag>{{ postTypeLabel(row.postType) }}</el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column label="AI原因" min-width="160">
-                  <template #default="{ row }">
-                    {{ row.delistReason || "—" }}
-                  </template>
-                </el-table-column>
-                <el-table-column label="审核员" width="100" align="center">
-                  <template #default="{ row }">
-                    {{ row.reviewedByName || "AI" }}
-                  </template>
-                </el-table-column>
-                <el-table-column
-                  prop="updatedAt"
-                  label="审核时间"
-                  width="160"
-                  align="center"
-                >
-                  <template #default="{ row }">
-                    {{ formatTime(row.updatedAt) }}
-                  </template>
-                </el-table-column>
-              </el-table>
-            </div>
-
-            <!-- 常规 tab 表格 -->
-            <div
-              class="panel-body-scroll"
-              v-else-if="activeTab !== 'moderation' && tableData.length"
-            >
-              <el-table
-                ref="contentTableRef"
-                :data="tableData"
-                style="width: 100%"
-                @selection-change="handleSelectionChange"
-              >
-                <el-table-column type="selection" width="30" />
-                <el-table-column label="类型" align="center" min-width="30">
-                  <template #default="{ row }">
-                    <span
-                      :class="[
-                        'tag',
-                        row.type === 'idle' ? 'tag-blue' : 'tag-orange',
-                      ]"
-                    >
-                      {{ row.type === "idle" ? "互借" : "互助" }}
-                    </span>
-                  </template>
-                </el-table-column>
-
-                <!-- 待审批 tab 专属列：标题 + 审批人 + 申请人 -->
-                <template v-if="activeTab === 'pending'">
-                  <el-table-column label="标题" min-width="120">
-                    <template #default="{ row }">
-                      <span class="title-link" @click="openDetailById(row)">{{
-                        row.title
-                      }}</span>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="审批住户" min-width="100">
-                    <template #default="{ row }">{{
-                      row.approverName || "—"
-                    }}</template>
-                  </el-table-column>
-                  <el-table-column label="申请住户" min-width="100">
-                    <template #default="{ row }">{{
-                      row.applicantName || row.publisherName || "—"
-                    }}</template>
-                  </el-table-column>
-                </template>
-
-                <!-- 违规下架 tab 专属列 -->
-                <template v-else-if="activeTab === 'offline'">
-                  <el-table-column label="发布者" min-width="100">
-                    <template #default="{ row }">
-                      {{ row.publisherRoom
-                      }}<template v-if="row.isProxy"> - 物业代发</template>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="标题" min-width="100">
-                    <template #default="{ row }">
-                      <span class="title-link" @click="openDetailById(row)">{{
-                        row.title
-                      }}</span>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="下架时间" min-width="80">
-                    <template #default="{ row }">{{
-                      formatTime(row.updatedAt)
-                    }}</template>
-                  </el-table-column>
-                  <el-table-column label="原因" min-width="130">
-                    <template #default="{ row }">{{
-                      row.delistReason || "—"
-                    }}</template>
-                  </el-table-column>
-                  <el-table-column label="审核员" min-width="80" align="center">
-                    <template #default="{ row }">{{
-                      row.reviewedByName || "AI"
-                    }}</template>
-                  </el-table-column>
-                </template>
-
-                <!-- 默认 tab（在线中 / 进行中 / 已完成） -->
-                <template v-else>
-                  <el-table-column label="发布者" min-width="100">
-                    <template #default="{ row }">
-                      {{ row.publisherRoom
-                      }}<template v-if="row.isProxy"> - 物业代发</template>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="标题" min-width="100">
-                    <template #default="{ row }">
-                      <span class="title-link" @click="openDetailById(row)">{{
-                        row.title
-                      }}</span>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="发布时间" min-width="100">
-                    <template #default="{ row }">{{
-                      formatTime(row.createdAt)
-                    }}</template>
-                  </el-table-column>
-                  <el-table-column label="状态" align="center" min-width="56">
-                    <template #default="{ row }">
-                      <span :class="statusTag(row.displayStatus)">{{
-                        statusLabel(row.displayStatus)
-                      }}</span>
-                    </template>
-                  </el-table-column>
-                </template>
-              </el-table>
-            </div>
-            <!-- 无数据 -->
-            <div
-              v-else-if="
-                (activeTab === 'moderation' && !moderationList.length) ||
-                (activeTab !== 'moderation' && !tableData.length)
-              "
-              class="panel-empty"
-            >
-              暂无内容
-            </div>
-          </div>
-
-        </div>
-
-        <!-- 详情弹窗 -->
-        <el-dialog
-          v-model="detailVisible"
-          title="发布内容详情"
-          width="560px"
-          top="10vh"
-        >
-          <div v-if="detailLoading" style="text-align: center; padding: 20px">
-            加载中...
-          </div>
-          <div v-else-if="detailItem">
-            <!-- 待审批 tab：精简详情（标题 / 借出时长或时间段 / 发布住户 / 申请住户） -->
-            <template v-if="activeTab === 'pending'">
-              <div class="detail-row">
-                <span class="dl">标题</span
-                ><span class="dv">{{ detailItem.title }}</span>
-              </div>
-              <template v-if="detailItem.type === 'idle'">
-                <div class="detail-row">
-                  <span class="dl">借出时长</span
-                  ><span class="dv">{{
-                    detailItem.maxDuration != null
-                      ? detailItem.maxDuration +
-                        (detailItem.durationUnit === "hour" ? "小时" : "天")
-                      : "—"
-                  }}</span>
-                </div>
-              </template>
-              <template v-if="detailItem.type === 'help'">
-                <div class="detail-row">
-                  <span class="dl">预计开始</span
-                  ><span class="dv">{{
-                    formatTime(detailItem.timeStart) || "—"
-                  }}</span>
-                </div>
-                <div class="detail-row">
-                  <span class="dl">预计结束</span
-                  ><span class="dv">{{
-                    formatTime(detailItem.timeEnd) || "—"
-                  }}</span>
-                </div>
-              </template>
-              <div class="detail-row">
-                <span class="dl">发布住户</span
-                ><span class="dv">{{
-                  detailItem.approverName || detailItem.publisherRoom || "—"
-                }}</span>
-              </div>
-              <div class="detail-row">
-                <span class="dl">申请住户</span
-                ><span class="dv">{{
-                  detailItem.applicantName || detailItem.publisherName || "—"
-                }}</span>
-              </div>
-              <div class="dv-divider"></div>
-              <p class="text-sm text-secondary" style="line-height: 1.6">
-                此申请由住户发起。物业管理员可对其进行巡查，如发现违规内容可执行下架操作。下架后系统将通知发布者。
-              </p>
-            </template>
-            <!-- 其他 tab：原有完整详情 -->
-            <template v-else>
-              <div class="detail-row">
-                <span class="dl">标题</span
-                ><span class="dv">{{ detailItem.title }}</span>
-              </div>
-              <div class="detail-row">
-                <span class="dl">发布者</span
-                ><span class="dv">{{ detailItem.publisherRoom }}</span>
-              </div>
-              <div class="detail-row">
-                <span class="dl">小区</span><span class="dv">翠湖花园</span>
-              </div>
-              <div class="detail-row">
-                <span class="dl">类型</span
-                ><span class="dv">
-                  <span
-                    :class="[
-                      'tag',
-                      detailItem.type === 'idle' ? 'tag-blue' : 'tag-orange',
-                    ]"
-                  >
-                    {{ detailItem.type === "idle" ? "互借" : "互助" }}
-                  </span>
-                </span>
-              </div>
-              <!-- 详情描述：C端选填，未获取到时显示「无」 -->
-              <div class="detail-row" style="align-items: flex-start">
-                <span class="dl">详情描述</span>
-                <span class="dv" style="white-space: pre-wrap">{{
-                  detailItem.description || "无"
-                }}</span>
-              </div>
-              <!-- 互助：预计开始/预计结束（来自发布时填写的值） -->
-              <template v-if="detailItem.type === 'help'">
-                <div class="detail-row">
-                  <span class="dl">预计开始</span
-                  ><span class="dv">{{
-                    formatTime(detailItem.timeStart) || "--"
-                  }}</span>
-                </div>
-                <div class="detail-row">
-                  <span class="dl">预计结束</span
-                  ><span class="dv">{{
-                    formatTime(detailItem.timeEnd) || "--"
-                  }}</span>
-                </div>
-              </template>
-              <!-- 互借：借用时长（来自发布时填写的最大借出/需要借入时长） -->
-              <template
-                v-if="
-                  detailItem.type === 'idle' && detailItem.maxDuration != null
-                "
-              >
-                <div class="detail-row">
-                  <span class="dl">借用时长</span
-                  ><span class="dv">{{
-                    detailItem.maxDuration +
-                    (detailItem.durationUnit === "hour" ? "小时" : "天")
-                  }}</span>
-                </div>
-              </template>
-              <!-- 图片：C端选填，未获取到时显示「无」 -->
-              <div class="detail-row" style="align-items: flex-start">
-                <span class="dl">图片</span>
-                <span class="dv">
-                  <span
-                    v-if="validDetailImages.length"
-                    style="display: flex; gap: 8px; flex-wrap: wrap"
-                  >
-                    <el-image
-                      v-for="(img, i) in validDetailImages"
-                      :key="i"
-                      :src="img"
-                      :preview-src-list="validDetailImages"
-                      :initial-index="i"
-                      fit="cover"
-                      preview-teleported
-                      hide-on-click-modal
-                      @error="onImageError(i)"
-                      style="
-                        width: 80px;
-                        height: 80px;
-                        border-radius: 8px;
-                        cursor: pointer;
-                      "
-                    />
-                  </span>
-                  <template v-else>无</template>
-                </span>
-              </div>
-
-              <template v-if="detailItem.displayStatus === '已下架'">
-                <div class="dv-divider"></div>
-                <p class="text-sm text-secondary" style="margin-bottom: 8px">
-                  下架信息
-                </p>
-                <div class="detail-row">
-                  <span class="dl">下架原因</span
-                  ><span class="dv">{{ detailItem.delistReason || "—" }}</span>
-                </div>
-                <div class="detail-row">
-                  <span class="dl">下架时间</span
-                  ><span class="dv">{{
-                    formatTime(detailItem.updatedAt) || "—"
-                  }}</span>
-                </div>
-                <div class="detail-row">
-                  <span class="dl">审核管理员</span
-                  ><span class="dv">{{
-                    detailItem.reviewedByName || "AI"
-                  }}</span>
-                </div>
-              </template>
-
-              <div class="dv-divider"></div>
-              <p class="text-sm text-secondary" style="line-height: 1.6">
-                此内容由住户自主发布。物业管理员可对其进行巡查，如发现违规内容可执行下架操作。下架后系统将通知发布者。
-              </p>
-            </template>
-          </div>
-          <template #footer>
-            <div style="display: flex; align-items: center; gap: 8px">
-              <template v-if="detailIdList.length > 1">
-                <el-button
-                  :icon="ArrowLeft"
-                  circle
-                  :disabled="detailIdPos === 0"
-                  @click="detailGo(-1)"
-                />
-                <span class="text-sm text-secondary"
-                  >{{ detailIdPos + 1 }} / {{ detailIdList.length }}</span
-                >
-                <el-button
-                  :icon="ArrowRight"
-                  circle
-                  :disabled="detailIdPos === detailIdList.length - 1"
-                  @click="detailGo(1)"
-                />
-              </template>
-              <span style="flex: 1"></span>
-              <el-button @click="detailVisible = false">关闭</el-button>
-              <el-button
-                v-if="detailItem && detailItem.displayStatus !== '已下架'"
-                type="danger"
-                @click="offlineFromDetail"
-                >下架</el-button
-              >
-            </div>
-          </template>
-        </el-dialog>
-
-        <!-- 审核详情弹窗 -->
-        <el-dialog
-          v-model="moderationDialogVisible"
-          title="审核详情"
-          width="560px"
-          top="10vh"
-        >
+  <AppLayout title="内容管理" :main-class="LIST_PAGE_MAIN_CLASS">
+    <div class="unified-panel">
+      <!-- 标签页 -->
+      <div class="tab">
+        <div class="segment-row">
           <div
-            v-if="moderationDetailLoading"
-            style="text-align: center; padding: 20px"
+            v-for="t in contentTabs"
+            :key="t.key"
+            class="segment-btn"
+            :class="{ active: activeTab === t.key }"
+            @click="switchTab(t.key)"
           >
-            加载中...
-          </div>
-          <div v-else-if="moderationDetailItem">
-            <!-- 帖子详情区 -->
-            <div class="detail-row">
-              <span class="dl">标题</span
-              ><span class="dv">{{ moderationDetailItem.title }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="dl">描述</span
-              ><span class="dv">{{
-                moderationDetailItem.description || "无"
-              }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="dl">发布者</span
-              ><span class="dv">{{ moderationDetailItem.publisherRoom }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="dl">发布时间</span
-              ><span class="dv">{{
-                formatModerationTime(moderationDetailItem.createdAt)
-              }}</span>
-            </div>
-            <!-- 图片 -->
-            <div
-              class="detail-row"
-              style="align-items: flex-start"
-              v-if="validModerationImages.length"
+            {{ t.label }}
+            <span
+              v-if="t.key === 'moderation' && moderationTabCount > 0"
+              class="tab-badge"
+              >{{ moderationTabCount }}</span
             >
-              <span class="dl">图片</span>
-              <span class="dv">
-                <span style="display: flex; gap: 8px; flex-wrap: wrap">
-                  <el-image
-                    v-for="(img, i) in validModerationImages"
-                    :key="i"
-                    :src="img"
-                    :preview-src-list="validModerationImages"
-                    :initial-index="i"
-                    fit="cover"
-                    preview-teleported
-                    hide-on-click-modal
-                    style="
-                      width: 80px;
-                      height: 80px;
-                      border-radius: 8px;
-                      cursor: pointer;
-                    "
-                  />
-                </span>
-              </span>
-            </div>
+            <template v-if="t.key === 'pending'">
+              <el-tooltip content="住户之间的申请审核" placement="top">
+                <el-icon style="margin-left: 2px; cursor: help"
+                  ><QuestionFilled
+                /></el-icon>
+              </el-tooltip>
+            </template>
+          </div>
+        </div>
+      </div>
 
-            <div class="dv-divider"></div>
-            <!-- AI 审核结果区 -->
-            <p class="text-sm text-secondary" style="margin-bottom: 8px">
-              AI 审核结果
-            </p>
-            <div class="detail-row">
-              <span class="dl">审核等级</span
-              ><span class="dv">
+      <!-- 筛选 -->
+      <div class="filter-row">
+        <!-- 审核 tab 专属筛选 -->
+        <template v-if="activeTab === 'moderation'">
+          <el-select
+            class="filter-select"
+            v-model="moderationFilter.status"
+            placeholder="审核状态"
+            style="width: 140px"
+            @change="applyModerationFilters"
+          >
+            <el-option label="全部" value="" />
+            <el-option label="待人工复核" value="yellow" />
+            <el-option label="审核驳回" value="red" />
+          </el-select>
+          <el-select
+            class="filter-select"
+            v-model="moderationFilter.moderatedBy"
+            placeholder="审核员"
+            style="width: 110px"
+            @change="applyModerationFilters"
+          >
+            <el-option label="全部" value="" />
+            <el-option label="AI" value="ai" />
+            <el-option label="管理员" value="admin" />
+          </el-select>
+          <el-select
+            class="filter-select"
+            v-model="moderationFilter.type"
+            placeholder="类型"
+            style="width: 120px"
+            @change="applyModerationFilters"
+          >
+            <el-option label="全部" value="" />
+            <el-option label="物品互借" value="idle" />
+            <el-option label="技能互助" value="help" />
+          </el-select>
+          <el-select
+            class="filter-select"
+            v-model="moderationFilter.building"
+            placeholder="楼栋"
+            style="width: 110px"
+            @change="
+              moderationFilter.unit = '';
+              applyModerationFilters();
+            "
+          >
+            <el-option label="全部" value="" />
+            <el-option
+              v-for="b in communityStore.buildingOptions"
+              :key="b.id"
+              :label="b.name"
+              :value="b.name"
+            />
+          </el-select>
+          <el-select
+            class="filter-select"
+            v-model="moderationFilter.unit"
+            placeholder="单元"
+            style="width: 100px"
+            :disabled="!moderationFilter.building"
+            @change="applyModerationFilters"
+          >
+            <el-option label="全部" value="" />
+            <el-option
+              v-for="u in moderationUnitOptions"
+              :key="u.id"
+              :label="u.name"
+              :value="u.name"
+            />
+          </el-select>
+          <el-input
+            class="search-box"
+            v-model="moderationFilter.search"
+            placeholder="搜索内容标题..."
+            style="width: 150px"
+            clearable
+            @keydown.enter="onModerationSearchEnter"
+            @clear="applyModerationFilters"
+            @input="onModerationSearchInput"
+          />
+          <button
+            type="button"
+            class="btn-kong"
+            style="margin-left: 8px"
+            :disabled="!moderationSelected.length"
+            @click="openModerationDetail()"
+          >
+            详细
+          </button>
+          <button
+            type="button"
+            class="btn-kong"
+            style="margin-left: 8px"
+            @click="openPublish"
+          >
+            代发
+          </button>
+          <span style="flex: 1"></span>
+          <span class="text-sm text-secondary"
+            >共 {{ moderationTotal }} 条</span
+          >
+        </template>
+        <!-- 常规 tab 筛选 -->
+        <template v-else>
+          <el-select
+            class="filter-select"
+            v-model="filterType"
+            placeholder="类型"
+            style="width: 120px"
+            @change="applyFilters"
+          >
+            <el-option label="全部" value="" />
+            <el-option label="物品互借" value="idle" />
+            <el-option label="技能互助" value="help" />
+          </el-select>
+          <el-select
+            class="filter-select"
+            v-model="filterBuilding"
+            placeholder="楼栋"
+            style="width: 110px"
+            @change="
+              filterUnit = '';
+              applyFilters();
+            "
+          >
+            <el-option label="全部" value="" />
+            <el-option
+              v-for="b in communityStore.buildingOptions"
+              :key="b.id"
+              :label="b.name"
+              :value="b.name"
+            />
+          </el-select>
+          <el-select
+            class="filter-select"
+            v-model="filterUnit"
+            placeholder="单元"
+            style="width: 100px"
+            :disabled="!filterBuilding"
+            @change="applyFilters"
+          >
+            <el-option label="全部" value="" />
+            <el-option
+              v-for="u in filterUnitOptions"
+              :key="u.id"
+              :label="u.name"
+              :value="u.name"
+            />
+          </el-select>
+          <el-select
+            v-if="activeTab === 'offline'"
+            class="filter-select"
+            v-model="filterModeratedBy"
+            placeholder="审核员"
+            style="width: 110px"
+            @change="applyFilters"
+          >
+            <el-option label="全部" value="" />
+            <el-option label="AI" value="ai" />
+            <el-option label="管理员" value="admin" />
+          </el-select>
+          <el-input
+            class="search-box"
+            v-model="search"
+            placeholder="搜索内容标题..."
+            style="width: 150px"
+            clearable
+            @keydown.enter="onSearchEnter"
+            @clear="applyFilters"
+            @input="onSearchInput"
+          />
+          <button
+            type="button"
+            class="btn-kong"
+            style="margin-left: 8px"
+            :disabled="!selectedRows.length"
+            @click="openDetailFromSelection"
+          >
+            详细
+          </button>
+          <el-button type="primary" size="default" @click="openPublish"
+            >物业代发</el-button
+          >
+          <span style="flex: 1"></span>
+          <span class="text-sm text-secondary">共 {{ totalCount }} 条</span>
+        </template>
+      </div>
+
+      <!-- 面板主体（填充面板高度，内部滚动）-->
+      <div class="uf-body">
+        <!-- 加载中 -->
+        <div v-if="loading" class="panel-empty">加载中...</div>
+
+        <!-- 审核 tab 表格 -->
+        <div
+          class="panel"
+          v-else-if="activeTab === 'moderation' && moderationList.length"
+        >
+          <el-table
+            :data="moderationList"
+            height="100%"
+            style="width: 100%"
+            :row-class-name="getModerationRowClass"
+            @selection-change="onModerationSelect"
+            @row-dblclick="viewModerationDetail"
+          >
+            <el-table-column type="selection" width="50" />
+            <el-table-column label="发布住户" min-width="70">
+              <template #default="{ row }">
+                {{ row.publisherRoom }}
+              </template>
+            </el-table-column>
+            <el-table-column label="标题" min-width="120">
+              <template #default="{ row }">
+                <a
+                  class="moderation-title-link"
+                  @click="viewModerationDetail(row)"
+                  >{{ row.title }}</a
+                >
+              </template>
+            </el-table-column>
+            <el-table-column label="类型" width="120" align="center">
+              <template #default="{ row }">
+                <el-tag>{{ postTypeLabel(row.postType) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="AI原因" min-width="160">
+              <template #default="{ row }">
+                {{ row.delistReason || "—" }}
+              </template>
+            </el-table-column>
+            <el-table-column label="审核员" width="100" align="center">
+              <template #default="{ row }">
+                {{ row.reviewedByName || "AI" }}
+              </template>
+            </el-table-column>
+            <el-table-column
+              prop="updatedAt"
+              label="审核时间"
+              width="160"
+              align="center"
+            >
+              <template #default="{ row }">
+                {{ formatTime(row.updatedAt) }}
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+
+        <!-- 常规 tab 表格 -->
+        <div
+          class="panel"
+          v-else-if="activeTab !== 'moderation' && tableData.length"
+        >
+          <el-table
+            ref="contentTableRef"
+            :data="tableData"
+            height="100%"
+            style="width: 100%"
+            @selection-change="handleSelectionChange"
+          >
+            <el-table-column type="selection" width="30" />
+            <el-table-column label="类型" align="center" min-width="30">
+              <template #default="{ row }">
                 <span
                   :class="[
                     'tag',
-                    moderationDetailItem.moderationStatus === 'green' ||
-                    moderationDetailItem.moderationStatus === 'reviewed'
-                      ? 'tag-green'
-                      : moderationDetailItem.moderationStatus === 'yellow'
-                        ? 'tag-orange'
-                        : 'tag-red',
+                    row.type === 'idle' ? 'tag-blue' : 'tag-orange',
                   ]"
                 >
-                  {{
-                    moderationDetailItem.moderationStatus === "green" ||
-                    moderationDetailItem.moderationStatus === "reviewed"
-                      ? "审核通过"
-                      : moderationDetailItem.moderationStatus === "yellow"
-                        ? "待人工复核"
-                        : "审核驳回"
-                  }}
+                  {{ row.type === "idle" ? "互借" : "互助" }}
                 </span>
-              </span>
-            </div>
-            <div class="detail-row">
-              <span class="dl">审核原因</span
-              ><span class="dv">{{
-                moderationDetailItem.delistReason || "—"
-              }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="dl">审核员</span
-              ><span class="dv">{{
-                moderationDetailItem.reviewedByName || "AI"
-              }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="dl">审核时间</span
-              ><span class="dv">{{
-                formatModerationTime(moderationDetailItem.updatedAt)
-              }}</span>
-            </div>
+              </template>
+            </el-table-column>
+
+            <!-- 待审批 tab 专属列：标题 + 审批人 + 申请人 -->
+            <template v-if="activeTab === 'pending'">
+              <el-table-column label="标题" min-width="120">
+                <template #default="{ row }">
+                  <span class="title-link" @click="openDetailById(row)">{{
+                    row.title
+                  }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="审批住户" min-width="100">
+                <template #default="{ row }">{{
+                  row.approverName || "—"
+                }}</template>
+              </el-table-column>
+              <el-table-column label="申请住户" min-width="100">
+                <template #default="{ row }">{{
+                  row.applicantName || row.publisherName || "—"
+                }}</template>
+              </el-table-column>
+            </template>
+
+            <!-- 违规下架 tab 专属列 -->
+            <template v-else-if="activeTab === 'offline'">
+              <el-table-column label="发布者" min-width="100">
+                <template #default="{ row }">
+                  {{ row.publisherRoom
+                  }}<template v-if="row.isProxy"> - 物业代发</template>
+                </template>
+              </el-table-column>
+              <el-table-column label="标题" min-width="100">
+                <template #default="{ row }">
+                  <span class="title-link" @click="openDetailById(row)">{{
+                    row.title
+                  }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="下架时间" min-width="80">
+                <template #default="{ row }">{{
+                  formatTime(row.updatedAt)
+                }}</template>
+              </el-table-column>
+              <el-table-column label="原因" min-width="130">
+                <template #default="{ row }">{{
+                  row.delistReason || "—"
+                }}</template>
+              </el-table-column>
+              <el-table-column label="审核员" min-width="80" align="center">
+                <template #default="{ row }">{{
+                  row.reviewedByName || "AI"
+                }}</template>
+              </el-table-column>
+            </template>
+
+            <!-- 默认 tab（在线中 / 进行中 / 已完成） -->
+            <template v-else>
+              <el-table-column label="发布者" min-width="100">
+                <template #default="{ row }">
+                  {{ row.publisherRoom
+                  }}<template v-if="row.isProxy"> - 物业代发</template>
+                </template>
+              </el-table-column>
+              <el-table-column label="标题" min-width="100">
+                <template #default="{ row }">
+                  <span class="title-link" @click="openDetailById(row)">{{
+                    row.title
+                  }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="发布时间" min-width="100">
+                <template #default="{ row }">{{
+                  formatTime(row.createdAt)
+                }}</template>
+              </el-table-column>
+              <el-table-column label="状态" align="center" min-width="56">
+                <template #default="{ row }">
+                  <span :class="statusTag(row.displayStatus)">{{
+                    statusLabel(row.displayStatus)
+                  }}</span>
+                </template>
+              </el-table-column>
+            </template>
+          </el-table>
+        </div>
+        <!-- 无数据 -->
+        <div
+          v-else-if="
+            (activeTab === 'moderation' && !moderationList.length) ||
+            (activeTab !== 'moderation' && !tableData.length)
+          "
+          class="panel-empty"
+        >
+          暂无内容
+        </div>
+      </div>
+    </div>
+
+    <!-- 详情弹窗 -->
+    <el-dialog
+      v-model="detailVisible"
+      title="发布内容详情"
+      width="560px"
+      top="10vh"
+    >
+      <div v-if="detailLoading" style="text-align: center; padding: 20px">
+        加载中...
+      </div>
+      <div v-else-if="detailItem">
+        <!-- 待审批 tab：精简详情（标题 / 借出时长或时间段 / 发布住户 / 申请住户） -->
+        <template v-if="activeTab === 'pending'">
+          <div class="detail-row">
+            <span class="dl">标题</span
+            ><span class="dv">{{ detailItem.title }}</span>
           </div>
-          <template #footer>
-            <div style="display: flex; align-items: center; gap: 8px">
-              <template v-if="moderationIdList.length > 1">
-                <el-button
-                  :icon="ArrowLeft"
-                  circle
-                  :disabled="moderationIdPos === 0"
-                  @click="prevModerationItem"
-                />
-                <span class="text-sm text-secondary"
-                  >{{ moderationIdPos + 1 }} /
-                  {{ moderationIdList.length }}</span
-                >
-                <el-button
-                  :icon="ArrowRight"
-                  circle
-                  :disabled="moderationIdPos >= moderationIdList.length - 1"
-                  @click="nextModerationItem"
-                />
-              </template>
-              <span style="flex: 1"></span>
-              <el-button @click="moderationDialogVisible = false"
-                >取消</el-button
-              >
-              <!-- green：只能下架 -->
-              <template
-                v-if="
-                  moderationDetailItem &&
-                  moderationDetailItem.moderationStatus === 'green'
-                "
-              >
-                <el-button type="danger" @click="offlineFromModerationDetail"
-                  >下架</el-button
-                >
-              </template>
-              <!-- reviewed + 在线中：只能下架 -->
-              <template
-                v-else-if="
-                  moderationDetailItem &&
-                  moderationDetailItem.moderationStatus === 'reviewed' &&
-                  moderationDetailItem.rawStatus !== 'offline'
-                "
-              >
-                <el-button type="danger" @click="offlineFromModerationDetail"
-                  >下架</el-button
-                >
-              </template>
-              <!-- yellow：通过 + 驳回 -->
-              <template
-                v-else-if="
-                  moderationDetailItem &&
-                  moderationDetailItem.moderationStatus === 'yellow'
-                "
-              >
-                <el-button type="primary" @click="showApproveConfirm = true"
-                  >通过</el-button
-                >
-                <el-button type="danger" @click="rejectModeration"
-                  >驳回</el-button
-                >
-              </template>
+          <template v-if="detailItem.type === 'idle'">
+            <div class="detail-row">
+              <span class="dl">借出时长</span
+              ><span class="dv">{{
+                detailItem.maxDuration != null
+                  ? detailItem.maxDuration +
+                    (detailItem.durationUnit === "hour" ? "小时" : "天")
+                  : "—"
+              }}</span>
             </div>
           </template>
-        </el-dialog>
-
-        <!-- 下架/驳回弹窗 -->
-        <el-dialog
-          v-model="offlineVisible"
-          :title="offlineIsModeration ? '驳回' : '确认下架'"
-          width="480px"
-        >
-          <p style="text-align: center; margin-bottom: 12px">
-            确认下架「<strong>{{ offlineTarget?.title }}</strong
-            >」？
+          <template v-if="detailItem.type === 'help'">
+            <div class="detail-row">
+              <span class="dl">预计开始</span
+              ><span class="dv">{{
+                formatTime(detailItem.timeStart) || "—"
+              }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="dl">预计结束</span
+              ><span class="dv">{{
+                formatTime(detailItem.timeEnd) || "—"
+              }}</span>
+            </div>
+          </template>
+          <div class="detail-row">
+            <span class="dl">发布住户</span
+            ><span class="dv">{{
+              detailItem.approverName || detailItem.publisherRoom || "—"
+            }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="dl">申请住户</span
+            ><span class="dv">{{
+              detailItem.applicantName || detailItem.publisherName || "—"
+            }}</span>
+          </div>
+          <div class="dv-divider"></div>
+          <p class="text-sm text-secondary" style="line-height: 1.6">
+            此申请由住户发起。物业管理员可对其进行巡查，如发现违规内容可执行下架操作。下架后系统将通知发布者。
           </p>
-          <div style="margin-bottom: 8px; font-weight: 600">下架原因：</div>
-          <el-checkbox-group
-            v-model="offlineReasons"
-            style="display: flex; flex-direction: column; gap: 4px"
+        </template>
+        <!-- 其他 tab：原有完整详情 -->
+        <template v-else>
+          <div class="detail-row">
+            <span class="dl">标题</span
+            ><span class="dv">{{ detailItem.title }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="dl">发布者</span
+            ><span class="dv">{{ detailItem.publisherRoom }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="dl">小区</span><span class="dv">翠湖花园</span>
+          </div>
+          <div class="detail-row">
+            <span class="dl">类型</span
+            ><span class="dv">
+              <span
+                :class="[
+                  'tag',
+                  detailItem.type === 'idle' ? 'tag-blue' : 'tag-orange',
+                ]"
+              >
+                {{ detailItem.type === "idle" ? "互借" : "互助" }}
+              </span>
+            </span>
+          </div>
+          <!-- 详情描述：C端选填，未获取到时显示「无」 -->
+          <div class="detail-row" style="align-items: flex-start">
+            <span class="dl">详情描述</span>
+            <span class="dv" style="white-space: pre-wrap">{{
+              detailItem.description || "无"
+            }}</span>
+          </div>
+          <!-- 互助：预计开始/预计结束（来自发布时填写的值） -->
+          <template v-if="detailItem.type === 'help'">
+            <div class="detail-row">
+              <span class="dl">预计开始</span
+              ><span class="dv">{{
+                formatTime(detailItem.timeStart) || "--"
+              }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="dl">预计结束</span
+              ><span class="dv">{{
+                formatTime(detailItem.timeEnd) || "--"
+              }}</span>
+            </div>
+          </template>
+          <!-- 互借：借用时长（来自发布时填写的最大借出/需要借入时长） -->
+          <template
+            v-if="detailItem.type === 'idle' && detailItem.maxDuration != null"
           >
-            <el-checkbox
-              v-for="reason in OFFLINE_REASON_OPTIONS"
-              :key="reason"
-              :value="reason"
-              :label="reason"
+            <div class="detail-row">
+              <span class="dl">借用时长</span
+              ><span class="dv">{{
+                detailItem.maxDuration +
+                (detailItem.durationUnit === "hour" ? "小时" : "天")
+              }}</span>
+            </div>
+          </template>
+          <!-- 图片：C端选填，未获取到时显示「无」 -->
+          <div class="detail-row" style="align-items: flex-start">
+            <span class="dl">图片</span>
+            <span class="dv">
+              <span
+                v-if="validDetailImages.length"
+                style="display: flex; gap: 8px; flex-wrap: wrap"
+              >
+                <el-image
+                  v-for="(img, i) in validDetailImages"
+                  :key="i"
+                  :src="img"
+                  :preview-src-list="validDetailImages"
+                  :initial-index="i"
+                  fit="cover"
+                  preview-teleported
+                  hide-on-click-modal
+                  @error="onImageError(i)"
+                  style="
+                    width: 80px;
+                    height: 80px;
+                    border-radius: 8px;
+                    cursor: pointer;
+                  "
+                />
+              </span>
+              <template v-else>无</template>
+            </span>
+          </div>
+
+          <template v-if="detailItem.displayStatus === '已下架'">
+            <div class="dv-divider"></div>
+            <p class="text-sm text-secondary" style="margin-bottom: 8px">
+              下架信息
+            </p>
+            <div class="detail-row">
+              <span class="dl">下架原因</span
+              ><span class="dv">{{ detailItem.delistReason || "—" }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="dl">下架时间</span
+              ><span class="dv">{{
+                formatTime(detailItem.updatedAt) || "—"
+              }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="dl">审核管理员</span
+              ><span class="dv">{{ detailItem.reviewedByName || "AI" }}</span>
+            </div>
+          </template>
+
+          <div class="dv-divider"></div>
+          <p class="text-sm text-secondary" style="line-height: 1.6">
+            此内容由住户自主发布。物业管理员可对其进行巡查，如发现违规内容可执行下架操作。下架后系统将通知发布者。
+          </p>
+        </template>
+      </div>
+      <template #footer>
+        <div style="display: flex; align-items: center; gap: 8px">
+          <template v-if="detailIdList.length > 1">
+            <el-button
+              :icon="ArrowLeft"
+              circle
+              :disabled="detailIdPos === 0"
+              @click="detailGo(-1)"
             />
-          </el-checkbox-group>
-          <div class="mt-8">
+            <span class="text-sm text-secondary"
+              >{{ detailIdPos + 1 }} / {{ detailIdList.length }}</span
+            >
+            <el-button
+              :icon="ArrowRight"
+              circle
+              :disabled="detailIdPos === detailIdList.length - 1"
+              @click="detailGo(1)"
+            />
+          </template>
+          <span style="flex: 1"></span>
+          <el-button @click="detailVisible = false">关闭</el-button>
+          <el-button
+            v-if="detailItem && detailItem.displayStatus !== '已下架'"
+            type="danger"
+            @click="offlineFromDetail"
+            >下架</el-button
+          >
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- 审核详情弹窗 -->
+    <el-dialog
+      v-model="moderationDialogVisible"
+      title="审核详情"
+      width="560px"
+      top="10vh"
+    >
+      <div
+        v-if="moderationDetailLoading"
+        style="text-align: center; padding: 20px"
+      >
+        加载中...
+      </div>
+      <div v-else-if="moderationDetailItem">
+        <!-- 帖子详情区 -->
+        <div class="detail-row">
+          <span class="dl">标题</span
+          ><span class="dv">{{ moderationDetailItem.title }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="dl">描述</span
+          ><span class="dv">{{
+            moderationDetailItem.description || "无"
+          }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="dl">发布者</span
+          ><span class="dv">{{ moderationDetailItem.publisherRoom }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="dl">发布时间</span
+          ><span class="dv">{{
+            formatModerationTime(moderationDetailItem.createdAt)
+          }}</span>
+        </div>
+        <!-- 图片 -->
+        <div
+          class="detail-row"
+          style="align-items: flex-start"
+          v-if="validModerationImages.length"
+        >
+          <span class="dl">图片</span>
+          <span class="dv">
+            <span style="display: flex; gap: 8px; flex-wrap: wrap">
+              <el-image
+                v-for="(img, i) in validModerationImages"
+                :key="i"
+                :src="img"
+                :preview-src-list="validModerationImages"
+                :initial-index="i"
+                fit="cover"
+                preview-teleported
+                hide-on-click-modal
+                style="
+                  width: 80px;
+                  height: 80px;
+                  border-radius: 8px;
+                  cursor: pointer;
+                "
+              />
+            </span>
+          </span>
+        </div>
+
+        <div class="dv-divider"></div>
+        <!-- AI 审核结果区 -->
+        <p class="text-sm text-secondary" style="margin-bottom: 8px">
+          AI 审核结果
+        </p>
+        <div class="detail-row">
+          <span class="dl">审核等级</span
+          ><span class="dv">
+            <el-tag>{{ moderationLevelLabel(moderationDetailItem.moderationStatus) }}</el-tag>
+          </span>
+        </div>
+        <div class="detail-row">
+          <span class="dl">审核原因</span
+          ><span class="dv">{{
+            moderationDetailItem.delistReason || "—"
+          }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="dl">审核员</span
+          ><span class="dv">{{
+            moderationDetailItem.reviewedByName || "AI"
+          }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="dl">审核时间</span
+          ><span class="dv">{{
+            formatModerationTime(moderationDetailItem.updatedAt)
+          }}</span>
+        </div>
+      </div>
+      <template #footer>
+        <div style="display: flex; align-items: center; gap: 8px">
+          <template v-if="moderationIdList.length > 1">
+            <el-button
+              :icon="ArrowLeft"
+              circle
+              :disabled="moderationIdPos === 0"
+              @click="prevModerationItem"
+            />
+            <span class="text-sm text-secondary"
+              >{{ moderationIdPos + 1 }} / {{ moderationIdList.length }}</span
+            >
+            <el-button
+              :icon="ArrowRight"
+              circle
+              :disabled="moderationIdPos >= moderationIdList.length - 1"
+              @click="nextModerationItem"
+            />
+          </template>
+          <span style="flex: 1"></span>
+          <el-button @click="moderationDialogVisible = false">取消</el-button>
+          <!-- green：只能下架 -->
+          <template
+            v-if="
+              moderationDetailItem &&
+              moderationDetailItem.moderationStatus === 'green'
+            "
+          >
+            <el-button type="danger" @click="offlineFromModerationDetail"
+              >下架</el-button
+            >
+          </template>
+          <!-- reviewed + 在线中：只能下架 -->
+          <template
+            v-else-if="
+              moderationDetailItem &&
+              moderationDetailItem.moderationStatus === 'reviewed' &&
+              moderationDetailItem.rawStatus !== 'offline'
+            "
+          >
+            <el-button type="danger" @click="offlineFromModerationDetail"
+              >下架</el-button
+            >
+          </template>
+          <!-- yellow：通过 + 驳回 -->
+          <template
+            v-else-if="
+              moderationDetailItem &&
+              moderationDetailItem.moderationStatus === 'yellow'
+            "
+          >
+            <el-button type="primary" @click="showApproveConfirm = true"
+              >通过</el-button
+            >
+            <el-button type="danger" @click="rejectModeration">驳回</el-button>
+          </template>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- 下架/驳回弹窗 -->
+    <el-dialog
+      v-model="offlineVisible"
+      :title="offlineIsModeration ? '驳回' : '确认下架'"
+      width="480px"
+    >
+      <p style="text-align: center; margin-bottom: 12px">
+        确认下架「<strong>{{ offlineTarget?.title }}</strong
+        >」？
+      </p>
+      <div style="margin-bottom: 8px; font-weight: 600">下架原因：</div>
+      <el-checkbox-group
+        v-model="offlineReasons"
+        style="display: flex; flex-direction: column; gap: 4px"
+      >
+        <el-checkbox
+          v-for="reason in OFFLINE_REASON_OPTIONS"
+          :key="reason"
+          :value="reason"
+          :label="reason"
+        />
+      </el-checkbox-group>
+      <div class="mt-8">
+        <el-input
+          v-model="offlineCustomReason"
+          placeholder="自定义原因..."
+          style="width: 100%"
+        />
+      </div>
+      <template #footer>
+        <el-button @click="cancelOffline">取消</el-button>
+        <el-button
+          type="danger"
+          :loading="offlineSubmitting"
+          @click="doOffline"
+          >{{ offlineIsModeration ? "确认驳回" : "确认下架" }}</el-button
+        >
+      </template>
+    </el-dialog>
+
+    <!-- 审核通过确认弹窗 -->
+    <el-dialog v-model="showApproveConfirm" title="确认通过" width="420px">
+      <p style="margin-bottom: 16px">
+        确认通过「<strong>{{ moderationDetailItem?.title }}</strong
+        >」的审核，该内容将公开展示？
+      </p>
+      <template #footer>
+        <el-button @click="showApproveConfirm = false">取消</el-button>
+        <el-button type="primary" @click="doApproveModeration">确认</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 代发弹窗 -->
+    <el-dialog
+      v-model="publishVisible"
+      title="物业代发"
+      width="560px"
+      top="5vh"
+    >
+      <div style="max-height: 70vh; overflow-y: auto; padding-right: 4px">
+        <!-- 目标住户选择（共用） -->
+        <div style="margin-bottom: 16px">
+          <span class="field-label" style="display: block; margin-bottom: 6px">
+            目标住户 <span style="color: var(--red)">*</span>
+          </span>
+          <el-input
+            class="field-input"
+            readonly
+            :model-value="selectedResident"
+            style="width: 100%; cursor: pointer"
+            @click="openResidentSearch"
+            placeholder="点击检索住户"
+          />
+        </div>
+
+        <!-- 发布类型 tabs（3 个） -->
+        <div class="segment-row" style="margin-bottom: 16px">
+          <button
+            class="segment-btn"
+            :class="{ active: publishMode === 'lend' }"
+            @click="switchPublishMode('lend')"
+          >
+            闲置借出
+          </button>
+          <button
+            class="segment-btn"
+            :class="{ active: publishMode === 'wanted' }"
+            @click="switchPublishMode('wanted')"
+          >
+            需求借入
+          </button>
+          <button
+            class="segment-btn"
+            :class="{ active: publishMode === 'help' }"
+            @click="switchPublishMode('help')"
+          >
+            技能求助
+          </button>
+        </div>
+
+        <!-- ============ LEND 闲置借出 ============ -->
+        <template v-if="publishMode === 'lend'">
+          <div class="publish-field">
+            <span class="field-label"
+              >物品标题 <span style="color: var(--red)">*</span></span
+            >
             <el-input
-              v-model="offlineCustomReason"
-              placeholder="自定义原因..."
+              v-model="publishForm.title"
+              placeholder="例：博世冲击钻套装 GBH 2-20"
               style="width: 100%"
             />
           </div>
-          <template #footer>
-            <el-button @click="cancelOffline">取消</el-button>
-            <el-button
-              type="danger"
-              :loading="offlineSubmitting"
-              @click="doOffline"
-              >{{ offlineIsModeration ? "确认驳回" : "确认下架" }}</el-button
+
+          <div class="publish-field">
+            <span class="field-label"
+              >物品类型 <span style="color: var(--red)">*</span></span
             >
-          </template>
-        </el-dialog>
-
-        <!-- 审核通过确认弹窗 -->
-        <el-dialog v-model="showApproveConfirm" title="确认通过" width="420px">
-          <p style="margin-bottom: 16px">
-            确认通过「<strong>{{ moderationDetailItem?.title }}</strong
-            >」的审核，该内容将公开展示？
-          </p>
-          <template #footer>
-            <el-button @click="showApproveConfirm = false">取消</el-button>
-            <el-button type="primary" @click="doApproveModeration"
-              >确认</el-button
-            >
-          </template>
-        </el-dialog>
-
-        <!-- 代发弹窗 -->
-        <el-dialog
-          v-model="publishVisible"
-          title="物业代发"
-          width="560px"
-          top="5vh"
-        >
-          <div style="max-height: 70vh; overflow-y: auto; padding-right: 4px">
-            <!-- 目标住户选择（共用） -->
-            <div style="margin-bottom: 16px">
-              <span
-                class="field-label"
-                style="display: block; margin-bottom: 6px"
-              >
-                目标住户 <span style="color: var(--red)">*</span>
-              </span>
-              <el-input
-                class="field-input"
-                readonly
-                :model-value="selectedResident"
-                style="width: 100%; cursor: pointer"
-                @click="openResidentSearch"
-                placeholder="点击检索住户"
-              />
-            </div>
-
-            <!-- 发布类型 tabs（3 个） -->
-            <div class="segment-row" style="margin-bottom: 16px">
+            <div style="display: flex; flex-wrap: wrap; gap: 6px">
               <button
-                class="segment-btn"
-                :class="{ active: publishMode === 'lend' }"
-                @click="switchPublishMode('lend')"
+                v-for="cat in IDLE_CATEGORIES"
+                :key="cat"
+                class="btn-sm-toggle"
+                :class="{ active: publishForm.category === cat }"
+                @click="
+                  publishForm.category = publishForm.category === cat ? '' : cat
+                "
               >
-                闲置借出
-              </button>
-              <button
-                class="segment-btn"
-                :class="{ active: publishMode === 'wanted' }"
-                @click="switchPublishMode('wanted')"
-              >
-                需求借入
-              </button>
-              <button
-                class="segment-btn"
-                :class="{ active: publishMode === 'help' }"
-                @click="switchPublishMode('help')"
-              >
-                技能求助
+                {{ cat }}
               </button>
             </div>
-
-            <!-- ============ LEND 闲置借出 ============ -->
-            <template v-if="publishMode === 'lend'">
-              <div class="publish-field">
-                <span class="field-label"
-                  >物品标题 <span style="color: var(--red)">*</span></span
-                >
-                <el-input
-                  v-model="publishForm.title"
-                  placeholder="例：博世冲击钻套装 GBH 2-20"
-                  style="width: 100%"
-                />
-              </div>
-
-              <div class="publish-field">
-                <span class="field-label"
-                  >物品类型 <span style="color: var(--red)">*</span></span
-                >
-                <div style="display: flex; flex-wrap: wrap; gap: 6px">
-                  <button
-                    v-for="cat in IDLE_CATEGORIES"
-                    :key="cat"
-                    class="btn-sm-toggle"
-                    :class="{ active: publishForm.category === cat }"
-                    @click="
-                      publishForm.category =
-                        publishForm.category === cat ? '' : cat
-                    "
-                  >
-                    {{ cat }}
-                  </button>
-                </div>
-                <el-input
-                  v-if="publishForm.category === '其他'"
-                  v-model="publishForm.customCategory"
-                  placeholder="手动输入类型"
-                  style="width: 100%; margin-top: 8px"
-                />
-              </div>
-
-              <div class="publish-field">
-                <span class="field-label"
-                  >参考价格
-                  <span style="color: var(--red)">*</span>（人民币）</span
-                >
-                <el-input
-                  v-model="publishForm.price"
-                  type="number"
-                  placeholder="用于损坏赔偿基准"
-                  style="width: 100%"
-                />
-              </div>
-
-              <div class="publish-field">
-                <span class="field-label">物品详细描述</span>
-                <el-input
-                  type="textarea"
-                  :rows="3"
-                  v-model="publishForm.desc"
-                  placeholder="描述物品现状、使用痕迹、附件清单、借用注意事项等"
-                  style="width: 100%"
-                />
-              </div>
-
-              <!-- 借出时长 -->
-              <div class="publish-field">
-                <span class="field-label"
-                  >借出时长 <span style="color: var(--red)">*</span></span
-                >
-                <div class="segment-row" style="margin-bottom: 8px">
-                  <button
-                    class="segment-btn"
-                    :class="{ active: publishForm.durationUnit === 'day' }"
-                    @click="publishForm.durationUnit = 'day'"
-                  >
-                    按天
-                  </button>
-                  <button
-                    class="segment-btn"
-                    :class="{ active: publishForm.durationUnit === 'hour' }"
-                    @click="publishForm.durationUnit = 'hour'"
-                  >
-                    按小时
-                  </button>
-                </div>
-                <el-select
-                  v-if="publishForm.durationUnit === 'day'"
-                  v-model="publishForm.durationValue"
-                  style="width: 100%"
-                >
-                  <el-option
-                    v-for="d in DURATION_DAY_OPTIONS"
-                    :key="d"
-                    :label="`${d} 天`"
-                    :value="d"
-                  />
-                </el-select>
-                <el-select
-                  v-else
-                  v-model="publishForm.durationValue"
-                  style="width: 100%"
-                >
-                  <el-option
-                    v-for="h in DURATION_HOUR_OPTIONS"
-                    :key="h"
-                    :label="`${h} 小时`"
-                    :value="h"
-                  />
-                </el-select>
-              </div>
-
-              <!-- 借出形式 -->
-              <div class="publish-field">
-                <span class="field-label"
-                  >借出形式 <span style="color: var(--red)">*</span></span
-                >
-                <div class="segment-row">
-                  <button
-                    class="segment-btn"
-                    :class="{
-                      active: publishForm.pickupMethod === 'self_pickup',
-                    }"
-                    @click="publishForm.pickupMethod = 'self_pickup'"
-                  >
-                    需自提
-                  </button>
-                  <button
-                    class="segment-btn"
-                    :class="{ active: publishForm.pickupMethod === 'both' }"
-                    @click="publishForm.pickupMethod = 'both'"
-                  >
-                    自提 / 可送上门
-                  </button>
-                </div>
-              </div>
-
-              <!-- 物品状况 -->
-              <div class="publish-field">
-                <span class="field-label"
-                  >物品状况 <span style="color: var(--red)">*</span></span
-                >
-                <div class="segment-row">
-                  <button
-                    class="segment-btn"
-                    :class="{ active: publishForm.condition === 'like-new' }"
-                    @click="publishForm.condition = 'like-new'"
-                  >
-                    几乎全新
-                  </button>
-                  <button
-                    class="segment-btn"
-                    :class="{ active: publishForm.condition === 'normal' }"
-                    @click="publishForm.condition = 'normal'"
-                  >
-                    正常使用痕迹
-                  </button>
-                  <button
-                    class="segment-btn"
-                    :class="{ active: publishForm.condition === 'worn' }"
-                    @click="publishForm.condition = 'worn'"
-                  >
-                    有明显磨损
-                  </button>
-                </div>
-              </div>
-
-              <!-- 图片上传（选填） -->
-              <div class="publish-field">
-                <span class="field-label">物品图片（选填，最多 4 张）</span>
-                <div
-                  style="
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 8px;
-                    margin-bottom: 8px;
-                  "
-                >
-                  <div
-                    v-for="(img, i) in publishForm.images"
-                    :key="i"
-                    style="position: relative; width: 72px; height: 72px"
-                  >
-                    <img
-                      :src="img"
-                      style="
-                        width: 72px;
-                        height: 72px;
-                        object-fit: cover;
-                        border-radius: 6px;
-                      "
-                    />
-                    <button
-                      style="
-                        position: absolute;
-                        top: -6px;
-                        right: -6px;
-                        width: 20px;
-                        height: 20px;
-                        border: none;
-                        border-radius: 50%;
-                        background: var(--red);
-                        color: #fff;
-                        font-size: 12px;
-                        cursor: pointer;
-                        line-height: 1;
-                      "
-                      @click="removePublishImage(i)"
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <div
-                    v-if="publishForm.images.length < 4"
-                    style="
-                      width: 72px;
-                      height: 72px;
-                      border: 1px dashed var(--border);
-                      border-radius: 6px;
-                      display: flex;
-                      align-items: center;
-                      justify-content: center;
-                      cursor: pointer;
-                    "
-                    :class="{ 'is-uploading': publishUploading }"
-                    @click="handlePublishImageUpload"
-                  >
-                    <span
-                      v-if="publishUploading"
-                      style="font-size: 12px; color: var(--text-tertiary)"
-                      >上传中</span
-                    >
-                    <span
-                      v-else
-                      style="font-size: 24px; color: var(--text-tertiary)"
-                      >+</span
-                    >
-                  </div>
-                </div>
-              </div>
-            </template>
-
-            <!-- ============ WANTED 需求借入 ============ -->
-            <template v-if="publishMode === 'wanted'">
-              <div class="publish-field">
-                <span class="field-label"
-                  >物品名称 <span style="color: var(--red)">*</span></span
-                >
-                <el-input
-                  v-model="publishForm.title"
-                  placeholder="例：博世冲击钻套装 GBH 2-20"
-                  style="width: 100%"
-                />
-              </div>
-
-              <div class="publish-field">
-                <span class="field-label"
-                  >物品类型 <span style="color: var(--red)">*</span></span
-                >
-                <div style="display: flex; flex-wrap: wrap; gap: 6px">
-                  <button
-                    v-for="cat in IDLE_CATEGORIES"
-                    :key="cat"
-                    class="btn-sm-toggle"
-                    :class="{ active: publishForm.category === cat }"
-                    @click="
-                      publishForm.category =
-                        publishForm.category === cat ? '' : cat
-                    "
-                  >
-                    {{ cat }}
-                  </button>
-                </div>
-                <el-input
-                  v-if="publishForm.category === '其他'"
-                  v-model="publishForm.customCategory"
-                  placeholder="手动输入类型"
-                  style="width: 100%; margin-top: 8px"
-                />
-              </div>
-
-              <div class="publish-field">
-                <span class="field-label"
-                  >用途说明 <span style="color: var(--red)">*</span></span
-                >
-                <el-input
-                  type="textarea"
-                  :rows="3"
-                  v-model="publishForm.desc"
-                  placeholder="请描述您需要借用此物品的原因和用途，让出借人更好地了解您的需求"
-                  style="width: 100%"
-                />
-              </div>
-
-              <!-- 期望借用时长 -->
-              <div class="publish-field">
-                <span class="field-label"
-                  >期望借用时长 <span style="color: var(--red)">*</span></span
-                >
-                <div class="segment-row" style="margin-bottom: 8px">
-                  <button
-                    class="segment-btn"
-                    :class="{ active: publishForm.durationUnit === 'day' }"
-                    @click="publishForm.durationUnit = 'day'"
-                  >
-                    按天
-                  </button>
-                  <button
-                    class="segment-btn"
-                    :class="{ active: publishForm.durationUnit === 'hour' }"
-                    @click="publishForm.durationUnit = 'hour'"
-                  >
-                    按小时
-                  </button>
-                </div>
-                <el-select
-                  v-if="publishForm.durationUnit === 'day'"
-                  v-model="publishForm.durationValue"
-                  style="width: 100%"
-                >
-                  <el-option
-                    v-for="d in DURATION_DAY_OPTIONS"
-                    :key="d"
-                    :label="`${d} 天`"
-                    :value="d"
-                  />
-                </el-select>
-                <el-select
-                  v-else
-                  v-model="publishForm.durationValue"
-                  style="width: 100%"
-                >
-                  <el-option
-                    v-for="h in DURATION_HOUR_OPTIONS"
-                    :key="h"
-                    :label="`${h} 小时`"
-                    :value="h"
-                  />
-                </el-select>
-              </div>
-
-              <!-- 图片上传（选填） -->
-              <div class="publish-field">
-                <span class="field-label">物品图片（选填，最多 4 张）</span>
-                <div
-                  style="
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 8px;
-                    margin-bottom: 8px;
-                  "
-                >
-                  <div
-                    v-for="(img, i) in publishForm.images"
-                    :key="i"
-                    style="position: relative; width: 72px; height: 72px"
-                  >
-                    <img
-                      :src="img"
-                      style="
-                        width: 72px;
-                        height: 72px;
-                        object-fit: cover;
-                        border-radius: 6px;
-                      "
-                    />
-                    <button
-                      style="
-                        position: absolute;
-                        top: -6px;
-                        right: -6px;
-                        width: 20px;
-                        height: 20px;
-                        border: none;
-                        border-radius: 50%;
-                        background: var(--red);
-                        color: #fff;
-                        font-size: 12px;
-                        cursor: pointer;
-                        line-height: 1;
-                      "
-                      @click="removePublishImage(i)"
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <div
-                    v-if="publishForm.images.length < 4"
-                    style="
-                      width: 72px;
-                      height: 72px;
-                      border: 1px dashed var(--border);
-                      border-radius: 6px;
-                      display: flex;
-                      align-items: center;
-                      justify-content: center;
-                      cursor: pointer;
-                    "
-                    :class="{ 'is-uploading': publishUploading }"
-                    @click="handlePublishImageUpload"
-                  >
-                    <span
-                      v-if="publishUploading"
-                      style="font-size: 12px; color: var(--text-tertiary)"
-                      >上传中</span
-                    >
-                    <span
-                      v-else
-                      style="font-size: 24px; color: var(--text-tertiary)"
-                      >+</span
-                    >
-                  </div>
-                </div>
-              </div>
-            </template>
-
-            <!-- ============ HELP 技能求助 ============ -->
-            <template v-if="publishMode === 'help'">
-              <div class="publish-field">
-                <span class="field-label"
-                  >求助标题 <span style="color: var(--red)">*</span></span
-                >
-                <el-input
-                  v-model="publishForm.title"
-                  placeholder="简要描述你需要的帮助"
-                  style="width: 100%"
-                />
-              </div>
-
-              <div class="publish-field">
-                <span class="field-label"
-                  >求助类型 <span style="color: var(--red)">*</span></span
-                >
-                <div style="display: flex; flex-wrap: wrap; gap: 6px">
-                  <button
-                    v-for="cat in HELP_CATEGORIES"
-                    :key="cat"
-                    class="btn-sm-toggle"
-                    :class="{ active: publishForm.category === cat }"
-                    @click="
-                      publishForm.category =
-                        publishForm.category === cat ? '' : cat
-                    "
-                  >
-                    {{ cat }}
-                  </button>
-                </div>
-                <el-input
-                  v-if="publishForm.category === '其他'"
-                  v-model="publishForm.customCategory"
-                  placeholder="手动输入求助类型"
-                  style="width: 100%; margin-top: 8px"
-                />
-              </div>
-
-              <div class="publish-field">
-                <span class="field-label"
-                  >详细描述 <span style="color: var(--red)">*</span></span
-                >
-                <el-input
-                  type="textarea"
-                  :rows="3"
-                  v-model="publishForm.desc"
-                  placeholder="描述具体情况、需要什么帮助、大概需要多长时间等"
-                  style="width: 100%"
-                />
-              </div>
-
-              <div class="publish-field">
-                <span class="field-label"
-                  >紧急程度 <span style="color: var(--red)">*</span></span
-                >
-                <div class="segment-row">
-                  <button
-                    class="segment-btn"
-                    :class="{ active: publishForm.urgency === '一般' }"
-                    @click="publishForm.urgency = '一般'"
-                  >
-                    一般
-                  </button>
-                  <button
-                    class="segment-btn"
-                    :class="{ active: publishForm.urgency === '紧急' }"
-                    @click="publishForm.urgency = '紧急'"
-                  >
-                    紧急
-                  </button>
-                </div>
-              </div>
-
-              <!-- 预计时间范围（选填，toggle 控制） -->
-              <div class="publish-field">
-                <div
-                  style="
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                  "
-                >
-                  <span class="field-label" style="margin-bottom: 0"
-                    >预计时间范围（选填）</span
-                  >
-                  <el-switch
-                    v-model="publishForm.enableTimeRange"
-                    size="small"
-                  />
-                </div>
-                <template v-if="publishForm.enableTimeRange">
-                  <div style="display: flex; gap: 8px; margin-top: 8px">
-                    <el-date-picker
-                      v-model="publishForm.startTime"
-                      type="datetime"
-                      placeholder="起始时间"
-                      format="YYYY-MM-DD HH:mm"
-                      value-format="YYYY-MM-DD HH:mm"
-                      style="flex: 1"
-                    />
-                    <span
-                      style="align-self: center; color: var(--text-secondary)"
-                      >—</span
-                    >
-                    <el-date-picker
-                      v-model="publishForm.endTime"
-                      type="datetime"
-                      placeholder="终了时间"
-                      format="YYYY-MM-DD HH:mm"
-                      value-format="YYYY-MM-DD HH:mm"
-                      style="flex: 1"
-                    />
-                  </div>
-                </template>
-                <p v-else class="text-xs text-tertiary" style="margin-top: 4px">
-                  打开开关可设置期望的帮助时间范围，不设置则表示时间灵活
-                </p>
-              </div>
-
-              <!-- 图片上传（选填） -->
-              <div class="publish-field">
-                <span class="field-label">物品图片（选填，最多 4 张）</span>
-                <div
-                  style="
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 8px;
-                    margin-bottom: 8px;
-                  "
-                >
-                  <div
-                    v-for="(img, i) in publishForm.images"
-                    :key="i"
-                    style="position: relative; width: 72px; height: 72px"
-                  >
-                    <img
-                      :src="img"
-                      style="
-                        width: 72px;
-                        height: 72px;
-                        object-fit: cover;
-                        border-radius: 6px;
-                      "
-                    />
-                    <button
-                      style="
-                        position: absolute;
-                        top: -6px;
-                        right: -6px;
-                        width: 20px;
-                        height: 20px;
-                        border: none;
-                        border-radius: 50%;
-                        background: var(--red);
-                        color: #fff;
-                        font-size: 12px;
-                        cursor: pointer;
-                        line-height: 1;
-                      "
-                      @click="removePublishImage(i)"
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <div
-                    v-if="publishForm.images.length < 4"
-                    style="
-                      width: 72px;
-                      height: 72px;
-                      border: 1px dashed var(--border);
-                      border-radius: 6px;
-                      display: flex;
-                      align-items: center;
-                      justify-content: center;
-                      cursor: pointer;
-                    "
-                    :class="{ 'is-uploading': publishUploading }"
-                    @click="handlePublishImageUpload"
-                  >
-                    <span
-                      v-if="publishUploading"
-                      style="font-size: 12px; color: var(--text-tertiary)"
-                      >上传中</span
-                    >
-                    <span
-                      v-else
-                      style="font-size: 24px; color: var(--text-tertiary)"
-                      >+</span
-                    >
-                  </div>
-                </div>
-              </div>
-            </template>
-          </div>
-          <template #footer>
-            <el-button @click="publishVisible = false">取消</el-button>
-            <el-button
-              type="primary"
-              :loading="publishSubmitting"
-              @click="submitPublish"
-              >确认发布</el-button
-            >
-          </template>
-        </el-dialog>
-
-        <!-- 住户检索弹窗 -->
-        <el-dialog v-model="residentVisible" title="住户查找" width="620px">
-          <!-- 筛选 -->
-          <div
-            style="
-              display: flex;
-              gap: 8px;
-              margin-bottom: 12px;
-              flex-wrap: wrap;
-            "
-          >
-            <el-select
-              class="filter-select"
-              v-model="residentFilterType"
-              placeholder="类型"
-              style="width: 90px"
-              @change="loadAllResidents"
-            >
-              <el-option label="全部" value="" />
-              <el-option label="业主" value="业主" />
-              <el-option label="租客" value="租客" />
-            </el-select>
-            <el-select
-              class="filter-select"
-              v-model="residentFilterBuilding"
-              placeholder="楼栋"
-              style="width: 90px"
-              @change="residentFilterUnit = ''; loadAllResidents()"
-            >
-              <el-option label="全部" value="" />
-              <el-option
-                v-for="b in communityStore.buildingOptions"
-                :key="b.id"
-                :label="b.name"
-                :value="b.name"
-              />
-            </el-select>
-            <el-select
-              class="filter-select"
-              v-model="residentFilterUnit"
-              placeholder="单元"
-              style="width: 100px"
-              :disabled="!residentFilterBuilding"
-              @change="loadAllResidents"
-            >
-              <el-option label="全部" value="" />
-              <el-option
-                v-for="u in residentUnitOptions"
-                :key="u.id"
-                :label="u.name"
-                :value="u.name"
-              />
-            </el-select>
             <el-input
-              class="search-box"
-              v-model="residentKeyword"
-              placeholder="搜索姓名或房号..."
-              style="width: 170px"
-              @keydown.enter="onResidentSearchEnter"
-              @blur="loadAllResidents"
+              v-if="publishForm.category === '其他'"
+              v-model="publishForm.customCategory"
+              placeholder="手动输入类型"
+              style="width: 100%; margin-top: 8px"
             />
           </div>
-          <div
-            style="max-height: 280px; overflow-y: auto"
-            v-loading="loadingResidents"
-          >
-            <template v-if="residentList.length">
-              <div v-for="r in residentList" :key="r.id">
-                <div
-                  class="rs-item"
-                  :class="{ selected: tempSelected === r.id }"
-                  @click="pickResident(r)"
+
+          <div class="publish-field">
+            <span class="field-label"
+              >参考价格 <span style="color: var(--red)">*</span>（人民币）</span
+            >
+            <el-input
+              v-model="publishForm.price"
+              type="number"
+              placeholder="用于损坏赔偿基准"
+              style="width: 100%"
+            />
+          </div>
+
+          <div class="publish-field">
+            <span class="field-label">物品详细描述</span>
+            <el-input
+              class="field-input"
+              type="textarea"
+              :rows="3"
+              v-model="publishForm.desc"
+              placeholder="描述物品现状、使用痕迹、附件清单、借用注意事项等"
+              style="width: 100%"
+            />
+          </div>
+
+          <!-- 借出时长 -->
+          <div class="publish-field">
+            <span class="field-label"
+              >借出时长 <span style="color: var(--red)">*</span></span
+            >
+            <div class="segment-row" style="margin-bottom: 8px">
+              <button
+                class="segment-btn"
+                :class="{ active: publishForm.durationUnit === 'day' }"
+                @click="publishForm.durationUnit = 'day'"
+              >
+                按天
+              </button>
+              <button
+                class="segment-btn"
+                :class="{ active: publishForm.durationUnit === 'hour' }"
+                @click="publishForm.durationUnit = 'hour'"
+              >
+                按小时
+              </button>
+            </div>
+            <el-select
+              v-if="publishForm.durationUnit === 'day'"
+              v-model="publishForm.durationValue"
+              class="control-select"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="d in DURATION_DAY_OPTIONS"
+                :key="d"
+                :label="`${d} 天`"
+                :value="d"
+              />
+            </el-select>
+            <el-select
+              v-else
+              v-model="publishForm.durationValue"
+              class="control-select"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="h in DURATION_HOUR_OPTIONS"
+                :key="h"
+                :label="`${h} 小时`"
+                :value="h"
+              />
+            </el-select>
+          </div>
+
+          <!-- 借出形式 -->
+          <div class="publish-field">
+            <span class="field-label"
+              >借出形式 <span style="color: var(--red)">*</span></span
+            >
+            <div class="segment-row">
+              <button
+                class="segment-btn"
+                :class="{
+                  active: publishForm.pickupMethod === 'self_pickup',
+                }"
+                @click="publishForm.pickupMethod = 'self_pickup'"
+              >
+                需自提
+              </button>
+              <button
+                class="segment-btn"
+                :class="{ active: publishForm.pickupMethod === 'both' }"
+                @click="publishForm.pickupMethod = 'both'"
+              >
+                自提 / 可送上门
+              </button>
+            </div>
+          </div>
+
+          <!-- 物品状况 -->
+          <div class="publish-field">
+            <span class="field-label"
+              >物品状况 <span style="color: var(--red)">*</span></span
+            >
+            <div class="segment-row">
+              <button
+                class="segment-btn"
+                :class="{ active: publishForm.condition === 'like-new' }"
+                @click="publishForm.condition = 'like-new'"
+              >
+                几乎全新
+              </button>
+              <button
+                class="segment-btn"
+                :class="{ active: publishForm.condition === 'normal' }"
+                @click="publishForm.condition = 'normal'"
+              >
+                正常使用痕迹
+              </button>
+              <button
+                class="segment-btn"
+                :class="{ active: publishForm.condition === 'worn' }"
+                @click="publishForm.condition = 'worn'"
+              >
+                有明显磨损
+              </button>
+            </div>
+          </div>
+
+          <!-- 图片上传（选填） -->
+          <div class="publish-field">
+            <span class="field-label">物品图片（选填，最多 4 张）</span>
+            <div
+              style="
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-bottom: 8px;
+              "
+            >
+              <div
+                v-for="(img, i) in publishForm.images"
+                :key="i"
+                style="position: relative; width: 72px; height: 72px"
+              >
+                <img
+                  :src="img"
+                  style="
+                    width: 72px;
+                    height: 72px;
+                    object-fit: cover;
+                    border-radius: 6px;
+                  "
+                />
+                <button
+                  style="
+                    position: absolute;
+                    top: -6px;
+                    right: -6px;
+                    width: 20px;
+                    height: 20px;
+                    border: none;
+                    border-radius: 50%;
+                    background: var(--red);
+                    color: #fff;
+                    font-size: 12px;
+                    cursor: pointer;
+                    line-height: 1;
+                  "
+                  @click="removePublishImage(i)"
                 >
-                  <span style="flex: 1; font-size: 14px"
-                    >{{ r.room }}({{ r.userType }}) -
-                    {{ displayName(r.name) }}</span
-                  >
-                  <svg
-                    v-if="tempSelected === r.id"
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="var(--accent)"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                </div>
-                <div class="rs-separator"></div>
+                  ×
+                </button>
+              </div>
+              <div
+                v-if="publishForm.images.length < 4"
+                style="
+                  width: 72px;
+                  height: 72px;
+                  border: 1px dashed var(--border);
+                  border-radius: 6px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  cursor: pointer;
+                "
+                :class="{ 'is-uploading': publishUploading }"
+                @click="handlePublishImageUpload"
+              >
+                <span
+                  v-if="publishUploading"
+                  style="font-size: 12px; color: var(--text-tertiary)"
+                  >上传中</span
+                >
+                <span
+                  v-else
+                  style="font-size: 24px; color: var(--text-tertiary)"
+                  >+</span
+                >
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- ============ WANTED 需求借入 ============ -->
+        <template v-if="publishMode === 'wanted'">
+          <div class="publish-field">
+            <span class="field-label"
+              >物品名称 <span style="color: var(--red)">*</span></span
+            >
+            <el-input
+              v-model="publishForm.title"
+              placeholder="例：博世冲击钻套装 GBH 2-20"
+              style="width: 100%"
+            />
+          </div>
+
+          <div class="publish-field">
+            <span class="field-label"
+              >物品类型 <span style="color: var(--red)">*</span></span
+            >
+            <div style="display: flex; flex-wrap: wrap; gap: 6px">
+              <button
+                v-for="cat in IDLE_CATEGORIES"
+                :key="cat"
+                class="btn-sm-toggle"
+                :class="{ active: publishForm.category === cat }"
+                @click="
+                  publishForm.category = publishForm.category === cat ? '' : cat
+                "
+              >
+                {{ cat }}
+              </button>
+            </div>
+            <el-input
+              v-if="publishForm.category === '其他'"
+              v-model="publishForm.customCategory"
+              placeholder="手动输入类型"
+              style="width: 100%; margin-top: 8px"
+            />
+          </div>
+
+          <div class="publish-field">
+            <span class="field-label"
+              >用途说明 <span style="color: var(--red)">*</span></span
+            >
+            <el-input
+              class="field-input"
+              type="textarea"
+              :rows="3"
+              v-model="publishForm.desc"
+              placeholder="请描述您需要借用此物品的原因和用途，让出借人更好地了解您的需求"
+              style="width: 100%"
+            />
+          </div>
+
+          <!-- 期望借用时长 -->
+          <div class="publish-field">
+            <span class="field-label"
+              >期望借用时长 <span style="color: var(--red)">*</span></span
+            >
+            <div class="segment-row" style="margin-bottom: 8px">
+              <button
+                class="segment-btn"
+                :class="{ active: publishForm.durationUnit === 'day' }"
+                @click="publishForm.durationUnit = 'day'"
+              >
+                按天
+              </button>
+              <button
+                class="segment-btn"
+                :class="{ active: publishForm.durationUnit === 'hour' }"
+                @click="publishForm.durationUnit = 'hour'"
+              >
+                按小时
+              </button>
+            </div>
+            <el-select
+              v-if="publishForm.durationUnit === 'day'"
+              v-model="publishForm.durationValue"
+              class="control-select"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="d in DURATION_DAY_OPTIONS"
+                :key="d"
+                :label="`${d} 天`"
+                :value="d"
+              />
+            </el-select>
+            <el-select
+              v-else
+              v-model="publishForm.durationValue"
+              class="control-select"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="h in DURATION_HOUR_OPTIONS"
+                :key="h"
+                :label="`${h} 小时`"
+                :value="h"
+              />
+            </el-select>
+          </div>
+
+          <!-- 图片上传（选填） -->
+          <div class="publish-field">
+            <span class="field-label">物品图片（选填，最多 4 张）</span>
+            <div
+              style="
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-bottom: 8px;
+              "
+            >
+              <div
+                v-for="(img, i) in publishForm.images"
+                :key="i"
+                style="position: relative; width: 72px; height: 72px"
+              >
+                <img
+                  :src="img"
+                  style="
+                    width: 72px;
+                    height: 72px;
+                    object-fit: cover;
+                    border-radius: 6px;
+                  "
+                />
+                <button
+                  style="
+                    position: absolute;
+                    top: -6px;
+                    right: -6px;
+                    width: 20px;
+                    height: 20px;
+                    border: none;
+                    border-radius: 50%;
+                    background: var(--red);
+                    color: #fff;
+                    font-size: 12px;
+                    cursor: pointer;
+                    line-height: 1;
+                  "
+                  @click="removePublishImage(i)"
+                >
+                  ×
+                </button>
+              </div>
+              <div
+                v-if="publishForm.images.length < 4"
+                style="
+                  width: 72px;
+                  height: 72px;
+                  border: 1px dashed var(--border);
+                  border-radius: 6px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  cursor: pointer;
+                "
+                :class="{ 'is-uploading': publishUploading }"
+                @click="handlePublishImageUpload"
+              >
+                <span
+                  v-if="publishUploading"
+                  style="font-size: 12px; color: var(--text-tertiary)"
+                  >上传中</span
+                >
+                <span
+                  v-else
+                  style="font-size: 24px; color: var(--text-tertiary)"
+                  >+</span
+                >
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- ============ HELP 技能求助 ============ -->
+        <template v-if="publishMode === 'help'">
+          <div class="publish-field">
+            <span class="field-label"
+              >求助标题 <span style="color: var(--red)">*</span></span
+            >
+            <el-input
+              v-model="publishForm.title"
+              placeholder="简要描述你需要的帮助"
+              style="width: 100%"
+            />
+          </div>
+
+          <div class="publish-field">
+            <span class="field-label"
+              >求助类型 <span style="color: var(--red)">*</span></span
+            >
+            <div style="display: flex; flex-wrap: wrap; gap: 6px">
+              <button
+                v-for="cat in HELP_CATEGORIES"
+                :key="cat"
+                class="btn-sm-toggle"
+                :class="{ active: publishForm.category === cat }"
+                @click="
+                  publishForm.category = publishForm.category === cat ? '' : cat
+                "
+              >
+                {{ cat }}
+              </button>
+            </div>
+            <el-input
+              v-if="publishForm.category === '其他'"
+              v-model="publishForm.customCategory"
+              placeholder="手动输入求助类型"
+              style="width: 100%; margin-top: 8px"
+            />
+          </div>
+
+          <div class="publish-field">
+            <span class="field-label"
+              >详细描述 <span style="color: var(--red)">*</span></span
+            >
+            <el-input
+              class="field-input"
+              type="textarea"
+              :rows="3"
+              v-model="publishForm.desc"
+              placeholder="描述具体情况、需要什么帮助、大概需要多长时间等"
+              style="width: 100%"
+            />
+          </div>
+
+          <div class="publish-field">
+            <span class="field-label"
+              >紧急程度 <span style="color: var(--red)">*</span></span
+            >
+            <div class="segment-row">
+              <button
+                class="segment-btn"
+                :class="{ active: publishForm.urgency === '一般' }"
+                @click="publishForm.urgency = '一般'"
+              >
+                一般
+              </button>
+              <button
+                class="segment-btn"
+                :class="{ active: publishForm.urgency === '紧急' }"
+                @click="publishForm.urgency = '紧急'"
+              >
+                紧急
+              </button>
+            </div>
+          </div>
+
+          <!-- 预计时间范围（选填，toggle 控制） -->
+          <div class="publish-field">
+            <div
+              style="
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+              "
+            >
+              <span class="field-label" style="margin-bottom: 0"
+                >预计时间范围（选填）</span
+              >
+              <el-switch v-model="publishForm.enableTimeRange" size="small" />
+            </div>
+            <template v-if="publishForm.enableTimeRange">
+              <div style="display: flex; gap: 8px; margin-top: 8px">
+                <el-date-picker
+                  v-model="publishForm.startTime"
+                  type="datetime"
+                  placeholder="起始时间"
+                  format="YYYY-MM-DD HH:mm"
+                  value-format="YYYY-MM-DD HH:mm"
+                  style="flex: 1"
+                />
+                <span style="align-self: center; color: var(--text-secondary)"
+                  >—</span
+                >
+                <el-date-picker
+                  v-model="publishForm.endTime"
+                  type="datetime"
+                  placeholder="终了时间"
+                  format="YYYY-MM-DD HH:mm"
+                  value-format="YYYY-MM-DD HH:mm"
+                  style="flex: 1"
+                />
               </div>
             </template>
-            <div v-else class="panel-empty">未找到匹配住户</div>
+            <p v-else class="text-xs text-tertiary" style="margin-top: 4px">
+              打开开关可设置期望的帮助时间范围，不设置则表示时间灵活
+            </p>
           </div>
-          <template #footer>
-            <el-button @click="residentVisible = false">取消</el-button>
-            <el-button type="primary" @click="selectResident">确认</el-button>
-          </template>
-        </el-dialog>
-      </el-main>
-    </el-container>
-  </el-container>
+
+          <!-- 图片上传（选填） -->
+          <div class="publish-field">
+            <span class="field-label">物品图片（选填，最多 4 张）</span>
+            <div
+              style="
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-bottom: 8px;
+              "
+            >
+              <div
+                v-for="(img, i) in publishForm.images"
+                :key="i"
+                style="position: relative; width: 72px; height: 72px"
+              >
+                <img
+                  :src="img"
+                  style="
+                    width: 72px;
+                    height: 72px;
+                    object-fit: cover;
+                    border-radius: 6px;
+                  "
+                />
+                <button
+                  style="
+                    position: absolute;
+                    top: -6px;
+                    right: -6px;
+                    width: 20px;
+                    height: 20px;
+                    border: none;
+                    border-radius: 50%;
+                    background: var(--red);
+                    color: #fff;
+                    font-size: 12px;
+                    cursor: pointer;
+                    line-height: 1;
+                  "
+                  @click="removePublishImage(i)"
+                >
+                  ×
+                </button>
+              </div>
+              <div
+                v-if="publishForm.images.length < 4"
+                style="
+                  width: 72px;
+                  height: 72px;
+                  border: 1px dashed var(--border);
+                  border-radius: 6px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  cursor: pointer;
+                "
+                :class="{ 'is-uploading': publishUploading }"
+                @click="handlePublishImageUpload"
+              >
+                <span
+                  v-if="publishUploading"
+                  style="font-size: 12px; color: var(--text-tertiary)"
+                  >上传中</span
+                >
+                <span
+                  v-else
+                  style="font-size: 24px; color: var(--text-tertiary)"
+                  >+</span
+                >
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+      <template #footer>
+        <el-button @click="publishVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="publishSubmitting"
+          @click="submitPublish"
+          >确认发布</el-button
+        >
+      </template>
+    </el-dialog>
+
+    <!-- 住户检索弹窗 -->
+    <el-dialog v-model="residentVisible" title="住户查找" width="620px">
+      <!-- 筛选 -->
+      <div
+        style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap"
+      >
+        <el-select
+          class="filter-select"
+          v-model="residentFilterType"
+          placeholder="类型"
+          style="width: 90px"
+          @change="loadAllResidents"
+        >
+          <el-option label="全部" value="" />
+          <el-option label="业主" value="业主" />
+          <el-option label="租客" value="租客" />
+        </el-select>
+        <el-select
+          class="filter-select"
+          v-model="residentFilterBuilding"
+          placeholder="楼栋"
+          style="width: 90px"
+          @change="
+            residentFilterUnit = '';
+            loadAllResidents();
+          "
+        >
+          <el-option label="全部" value="" />
+          <el-option
+            v-for="b in communityStore.buildingOptions"
+            :key="b.id"
+            :label="b.name"
+            :value="b.name"
+          />
+        </el-select>
+        <el-select
+          class="filter-select"
+          v-model="residentFilterUnit"
+          placeholder="单元"
+          style="width: 100px"
+          :disabled="!residentFilterBuilding"
+          @change="loadAllResidents"
+        >
+          <el-option label="全部" value="" />
+          <el-option
+            v-for="u in residentUnitOptions"
+            :key="u.id"
+            :label="u.name"
+            :value="u.name"
+          />
+        </el-select>
+        <el-input
+          class="search-box"
+          v-model="residentKeyword"
+          placeholder="搜索姓名或房号..."
+          style="width: 170px"
+          clearable
+          @keydown.enter="onResidentSearchEnter"
+          @clear="loadAllResidents"
+          @blur="loadAllResidents"
+        />
+      </div>
+      <div
+        style="max-height: 280px; overflow-y: auto"
+        v-loading="loadingResidents"
+      >
+        <template v-if="residentList.length">
+          <div v-for="r in residentList" :key="r.id">
+            <div
+              class="rs-item"
+              :class="{ selected: tempSelected === r.id }"
+              @click="pickResident(r)"
+            >
+              <span style="flex: 1; font-size: 14px"
+                >{{ r.room }}({{ r.userType }}) -
+                {{ displayName(r.name) }}</span
+              >
+              <svg
+                v-if="tempSelected === r.id"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="var(--accent)"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </div>
+            <div class="rs-separator"></div>
+          </div>
+        </template>
+        <div v-else class="panel-empty">未找到匹配住户</div>
+      </div>
+      <template #footer>
+        <el-button @click="residentVisible = false">取消</el-button>
+        <el-button type="primary" @click="selectResident">确认</el-button>
+      </template>
+    </el-dialog>
+  </AppLayout>
 </template>
 
 <!--
@@ -1641,17 +1593,10 @@
 -->
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, nextTick } from "vue";
-import { useRouter } from "vue-router";
-import { ElMessage, ElMessageBox } from "element-plus";
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  QuestionFilled,
-} from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
+import { ArrowLeft, ArrowRight, QuestionFilled } from "@element-plus/icons-vue";
 
-import { useAuthStore } from "../stores/auth";
-import { useCommunityStore } from "../stores/community";
+import { useCommunityStore } from "@/stores/community";
 import {
   getContentList,
   getContentDetail,
@@ -1668,11 +1613,12 @@ import {
   type ModerationItemDTO,
   type ModerationListParams,
   type ModerationCounts,
-} from "../api/admin";
-import { upload } from "../utils/api";
-import { POST_TYPE } from "../utils/constants";
-import AppSidebar from "../components/AppSidebar.vue";
-import type { AxiosError, AxiosResponse } from "axios";
+} from "@/api/admin";
+import { upload } from "@/utils/api";
+import { POST_TYPE } from "@/utils/constants";
+import AppLayout from "@/layouts/AppLayout.vue";
+import { LIST_PAGE_MAIN_CLASS } from "@/layouts/main-classes";
+import type { AxiosResponse } from "axios";
 
 // --- 本地类型 ---
 
@@ -1712,8 +1658,6 @@ interface ContentRow {
   [key: string]: any;
 }
 
-const router = useRouter();
-const authStore = useAuthStore();
 const communityStore = useCommunityStore();
 
 /** 内容标签页配置 */
@@ -2001,6 +1945,13 @@ function postTypeLabel(postType: string): string {
     HELP: "技能求助",
   };
   return map[postType] || postType;
+}
+
+/** 审核等级中文标签（green/reviewed→审核通过，yellow→待人工复核，其余→审核驳回） */
+function moderationLevelLabel(status?: string): string {
+  if (status === "green" || status === "reviewed") return "审核通过";
+  if (status === "yellow") return "待人工复核";
+  return "审核驳回";
 }
 
 /** 审核行背景色 */
@@ -2768,32 +2719,9 @@ function selectResident(): void {
   if (tempSelected.value) selectedResidentId.value = tempSelected.value;
   residentVisible.value = false;
 }
-
-/** 顶部下拉菜单命令处理 */
-function handleCommand(cmd: string): void {
-  if (cmd === "logout") handleLogout();
-}
-
-/** 退出登录确认 */
-async function handleLogout(): Promise<void> {
-  try {
-    await ElMessageBox.confirm("确认退出登录？", "提示", {
-      confirmButtonText: "退出",
-      cancelButtonText: "取消",
-      type: "warning",
-    });
-    authStore.logout();
-    router.push("/login");
-  } catch {
-    /* 已取消 */
-  }
-}
 </script>
 
 <style scoped>
-.admin-layout {
-  height: 100%;
-}
 .tag {
   display: inline-flex;
   align-items: center;

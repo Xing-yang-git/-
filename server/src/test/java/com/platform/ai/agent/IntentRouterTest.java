@@ -96,4 +96,51 @@ class IntentRouterTest {
         assertThat(action.type()).isEqualTo("publish_wanted");
         assertThat(action.params()).isEmpty();
     }
+
+    @Test
+    @DisplayName("解析 - 发布指引意图 goto_publish 解析成功（带 type 参数）")
+    void should_parse_gotoPublish() {
+        AgentAction action = intentRouter.parse("{\"intent\":\"goto_publish\",\"params\":{\"type\":\"help\"}}");
+
+        assertThat(action).isNotNull();
+        assertThat(action.type()).isEqualTo("goto_publish");
+        assertThat(action.label()).isEqualTo("去发布");
+        assertThat(action.params()).containsEntry("type", "help");
+    }
+
+    @Test
+    @DisplayName("兜底剥离 - 中置 JSON 意图段（前后都有文字）移除，保留两侧自然语言")
+    void should_stripIntentJson_keepSides_when_jsonInMiddle() {
+        String reply = "好的，帮你整理：{\"intent\":\"publish_wanted\",\"params\":{\"title\":\"鼠标\",\"category\":\"电子产品\"}} 请确认填写";
+
+        assertThat(intentRouter.stripIntentJson(reply))
+                .isEqualTo("好的，帮你整理： 请确认填写");
+    }
+
+    @Test
+    @DisplayName("兜底剥离 - 纯 JSON 意图段剥离后为空")
+    void should_stripIntentJson_empty_when_jsonOnly() {
+        assertThat(intentRouter.stripIntentJson("{\"intent\":\"publish_idle\",\"params\":{}}")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("兜底剥离 - 正文无 intent 的花括号不误伤（只删含 intent 的 JSON）")
+    void should_stripIntentJson_notTouchNormalBraces() {
+        assertThat(intentRouter.stripIntentJson("普通回答（无JSON） {a} 结束"))
+                .isEqualTo("普通回答（无JSON） {a} 结束");
+    }
+
+    @Test
+    @DisplayName("兜底剥离 - 嵌套 params 的 JSON 完整移除（逐层括号匹配）")
+    void should_stripIntentJson_removeNestedJson() {
+        String reply = "{\"intent\":\"publish_help\",\"params\":{\"title\":\"x\",\"nested\":{\"a\":1}}}";
+
+        assertThat(intentRouter.stripIntentJson(reply)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("兜底剥离 - null 返回空串")
+    void should_stripIntentJson_nullReturnsEmpty() {
+        assertThat(intentRouter.stripIntentJson(null)).isEmpty();
+    }
 }

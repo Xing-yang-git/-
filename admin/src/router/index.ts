@@ -6,84 +6,87 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
 import { USER_TYPE } from '../utils/constants';
 
+/** 根路径重定向 — 超级管理员进系统设置，其余回登录页（供 / 与 path:'' 子路由共用） */
+function rootRedirect(): string {
+  const ut = getUserType();
+  if (ut === USER_TYPE.SUPER_ADMIN) return '/settings';
+  return '/login';
+}
+
 /** 路由表定义 */
 const routes: RouteRecordRaw[] = [
   {
     /** 根路径 — 根据用户角色重定向 */
     path: '/',
-    redirect: () => {
-      const ut = getUserType();
-      if (ut === USER_TYPE.SUPER_ADMIN) return '/settings';
-      return '/login';
-    },
+    redirect: rootRedirect,
   },
   {
     /** 登录页 — 管理员用户名 + 密码登录，公开访问 */
     path: '/login',
     name: 'Login',
-    component: () => import('../views/LoginView.vue'),
+    component: () => import('@/views/LoginView.vue'),
   },
   {
     /** 首页 — 运营端入口布局（侧边栏 + 顶部栏 + 快捷操作入口），需登录 */
     path: '/home',
     name: 'Home',
-    component: () => import('../views/HomeView.vue'),
+    component: () => import('@/views/HomeView.vue'),
     meta: { title: '首页' },
   },
   {
     /** 数据看板 — KPI 统计 + 发布趋势图 + 排行榜，需管理员权限 */
     path: '/dashboard',
     name: 'Dashboard',
-    component: () => import('../views/DashboardView.vue'),
+    component: () => import('@/views/DashboardView.vue'),
     meta: { title: '数据看板' },
   },
   {
     /** 住户审核 — 待审核/已通过/已驳回列表 + 批量审批，需管理员权限 */
     path: '/audit',
     name: 'Audit',
-    component: () => import('../views/AuditView.vue'),
+    component: () => import('@/views/AuditView.vue'),
     meta: { title: '住户审核' },
   },
   {
     /** 内容管理 — 闲置/求助帖子列表 + 搜索 + 违规下架 + 代发，需管理员权限 */
     path: '/content',
     name: 'Content',
-    component: () => import('../views/ContentView.vue'),
+    component: () => import('@/views/ContentView.vue'),
     meta: { title: '内容管理' },
   },
   {
     /** 互助记录 — 借用/帮助历史记录 + 详情查看，需管理员权限 */
     path: '/records',
     name: 'Records',
-    component: () => import('../views/RecordsView.vue'),
+    component: () => import('@/views/RecordsView.vue'),
     meta: { title: '互助记录' },
   },
   {
     /** 知识库管理 — AI 助手「小邻」RAG 数据源管理，需管理员权限 */
     path: '/knowledge',
     name: 'Knowledge',
-    component: () => import('../views/KnowledgeView.vue'),
+    component: () => import('@/views/KnowledgeView.vue'),
     meta: { title: '知识库' },
   },
   {
     /** 敏感词管理 — AI 对话输入前置过滤词库，仅超级管理员可访问 */
     path: '/sensitive-words',
     name: 'SensitiveWords',
-    component: () => import('../views/SensitiveWordView.vue'),
+    component: () => import('@/views/SensitiveWordView.vue'),
     meta: { title: '敏感词管理' },
   },
   {
     /** 数据导出 — 多维度 Excel 导出 + 导出历史，需高级管理员权限 */
     path: '/export',
     name: 'Export',
-    component: () => import('../views/ExportView.vue'),
+    component: () => import('@/views/ExportView.vue'),
     meta: { title: '数据导出' },
   },
   {
     /** 系统设置 — 个人信息 + 管理员账号管理 + 操作日志，超级管理员可管理账号 */
     path: '/settings',
     name: 'Settings',
-    component: () => import('../views/SettingsView.vue'),
+    component: () => import('@/views/SettingsView.vue'),
     meta: { title: '系统设置' },
   },
 ];

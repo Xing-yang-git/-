@@ -1,34 +1,5 @@
 <template>
-  <el-container class="admin-layout">
-    <el-aside width="240px">
-      <AppSidebar />
-    </el-aside>
-    <el-container>
-      <el-header class="topbar">
-        <div class="topbar-left">
-          <span class="topbar-title">敏感词管理</span>
-        </div>
-        <div class="topbar-right">
-          <el-dropdown @command="handleCommand">
-            <span
-              style="
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                gap: 4px;
-              "
-            >
-              {{ authStore.userName }} <el-icon><ArrowDown /></el-icon>
-            </span>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="logout">退出登录</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
-      </el-header>
-      <el-main class="panel-fill">
+  <AppLayout title="敏感词管理" main-class="panel-fill">
         <div class="unified-panel">
           <!-- 筛选行：状态过滤 + 查询 + 新增入口 -->
           <div class="filter-row">
@@ -97,9 +68,7 @@
             />
           </div>
         </div>
-      </el-main>
-    </el-container>
-  </el-container>
+  </AppLayout>
 
   <!-- 新增/编辑敏感词对话框 -->
   <el-dialog
@@ -142,8 +111,7 @@
  */
 import { ref, reactive, onMounted } from "vue";
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from "element-plus";
-import AppSidebar from "@/components/AppSidebar.vue";
-import { useAuthStore } from "@/stores/auth";
+import AppLayout from "@/layouts/AppLayout.vue";
 import {
   SENSITIVE_WORD_STATUS,
   getSensitiveWords,
@@ -152,9 +120,6 @@ import {
   deleteSensitiveWord,
   type SensitiveWordDTO,
 } from "@/api/admin";
-
-/** 当前登录管理员信息 */
-const authStore = useAuthStore();
 
 /** 状态常量（与后端 SensitiveWordStatus 对齐） */
 const STATUS = SENSITIVE_WORD_STATUS;
@@ -336,14 +301,6 @@ async function handleDelete(row: SensitiveWordDTO): Promise<void> {
   }
 }
 
-/** 退出登录 */
-function handleCommand(command: string): void {
-  if (command === "logout") {
-    authStore.logout();
-    window.location.href = "/login";
-  }
-}
-
 onMounted(() => {
   loadList();
 });
@@ -351,16 +308,6 @@ onMounted(() => {
 
 <style scoped>
 /* 敏感词管理页样式：沿用知识库/互助记录页的 unified-panel 布局，页面不出现浏览器滚动条 */
-.admin-layout {
-  height: 100vh;
-  overflow: hidden;
-}
-
-:deep(.el-main.panel-fill) {
-  overflow: hidden;
-  display: flex;
-}
-
 .unified-panel {
   flex: 1;
   min-height: 0;

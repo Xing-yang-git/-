@@ -70,9 +70,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.time.format.DateTimeFormatter;
 
@@ -137,96 +139,95 @@ public class AdminService {
     // ==================== 仪表盘 ====================
 
     /**
-     * 获取管理员所属小区的仪表盘统计数据，包括在线数量、本月发布、完成率、活跃用户等。
+     * 获取管理员所属小区的运营看板数据：KPI（含较上月环比）、月度互助趋势（周/月/季）、
+     * 本月互助完成率、损坏三态统计、互助对象排行。
+     *
+     * <p>沿用全表 findAll + 内存聚合模式（社区数据量小）；一次性加载各实体并建映射供全部指标复用，
+     * 避免 N+1。租户隔离由 {@code tenantMatches} 保证，super_admin 仍被 {@code requireNotSuperAdmin} 拦截。</p>
+     *
+     * @param adminId 当前管理员用户 ID
+     * @return 看板统计数据
      */
     public DashboardDTO getDashboard(Long adminId) {
         requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime monthStart = now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
-        LocalDateTime monthEnd = now.withDayOfMonth(now.toLocalDate().lengthOfMonth())
-                .withHour(23).withMinute(59).withSecond(59).withNano(999999999);
+        LocalDateTime prevMonthStart = monthStart.minusMonths(1);
+        LocalDateTime prevMonthEnd = monthStart.minusNanos(1);
 
-        // 加载闲置物品数据
-        List<IdleItem> allIdle = idleItemRepository.findAll().stream()
+        // 一次性加载本小区数据（findAll + 内存过滤），建映射供全部指标复用
+        List<IdleItem> idleItems = idleItemRepository.findAll().stream()
                 .filter(i -> tenantMatches(tenantId, i.getTenantId()))
                 .collect(Collectors.toList());
-        long onlineLendCount = allIdle.stream()
-                .filter(i -> BizStatus.ONLINE.equals(i.getStatus()) && PostType.LEND.equals(i.getPostType()))
-                .count();
-        long onlineWantedCount = allIdle.stream()
-                .filter(i -> BizStatus.ONLINE.equals(i.getStatus()) && PostType.WANTED.equals(i.getPostType()))
-                .count();
-
-        // 加载求助数据
-        List<HelpRequest> allHelp = helpRequestRepository.findAll().stream()
+        List<HelpRequest> helpRequests = helpRequestRepository.findAll().stream()
                 .filter(h -> tenantMatches(tenantId, h.getTenantId()))
                 .collect(Collectors.toList());
-        long onlineHelpCount = allHelp.stream()
-                .filter(h -> BizStatus.ONLINE.equals(h.getStatus()))
-                .count();
-
-        // 加载借用数据（按租户过滤）
-        List<BorrowRequest> allBorrows = loadBorrowRequestsForTenant(tenantId);
-
-        // 本月统计
-        long monthlyIdlePublishes = allIdle.stream()
-                .filter(i -> isWithinMonth(i.getCreatedAt(), monthStart, monthEnd))
-                .count();
-        long monthlyHelpPublishes = allHelp.stream()
-                .filter(h -> isWithinMonth(h.getCreatedAt(), monthStart, monthEnd))
-                .count();
-        long monthlyCompletedBorrows = allBorrows.stream()
-                .filter(b -> BizStatus.RETURNED.equals(b.getStatus())
-                        && isWithinMonth(b.getCreatedAt(), monthStart, monthEnd))
-                .count();
-        long monthlyTotalBorrows = allBorrows.stream()
-                .filter(b -> isWithinMonth(b.getCreatedAt(), monthStart, monthEnd))
-                .count();
-        double completionRate = monthlyTotalBorrows > 0
-                ? (double) monthlyCompletedBorrows / monthlyTotalBorrows : 0.0;
-
-        long monthlyActiveUsers = userRepository.findAll().stream()
-                .filter(u -> tenantMatches(tenantId, u.getTenantId()))
-                .filter(u -> isWithinMonth(u.getCreatedAt(), monthStart, monthEnd))
-                .count();
-
-        long damageCount = allBorrows.stream()
-                .filter(b -> b.getDamageType() != null
-                        && !DamageType.NORMAL.equals(b.getDamageType()))
-                .count();
-
-        // 构建统计数据
-        List<DashboardDTO.CategoryStat> categoryStats = buildCategoryStats(allIdle);
-        long monthlyPublishes = monthlyIdlePublishes + monthlyHelpPublishes;
-        List<DashboardDTO.ItemStat> itemStats = buildItemStats(
-                onlineLendCount, onlineWantedCount, onlineHelpCount,
-                monthlyPublishes, monthlyCompletedBorrows,
-                monthlyActiveUsers, damageCount);
-
-        return DashboardDTO.builder()
-                .onlineIdleCount(onlineLendCount + onlineWantedCount)
-                .onlineHelpCount(onlineHelpCount)
-                .monthlyPublishes(monthlyPublishes)
-                .monthlyCompletedBorrows(monthlyCompletedBorrows)
-                .completionRate(Math.round(completionRate * 1000.0) / 1000.0)
-                .monthlyActiveUsers(monthlyActiveUsers)
-                .damageCount(damageCount)
-                .categoryStats(categoryStats)
-                .itemStats(itemStats)
-                .build();
-    }
-
-    /**
-     * 加载该租户下的所有借用请求（通过关联的闲置物品过滤）。
-     */
-    private List<BorrowRequest> loadBorrowRequestsForTenant(Long tenantId) {
-        return borrowRequestRepository.findAll().stream()
+        Map<Long, IdleItem> idleMap = idleItems.stream()
+                .collect(Collectors.toMap(IdleItem::getId, i -> i, (a, b) -> a));
+        List<BorrowRequest> borrows = borrowRequestRepository.findAll().stream()
                 .filter(b -> {
-                    IdleItem idle = idleItemRepository.findById(b.getIdleId()).orElse(null);
-                    return idle != null && tenantMatches(tenantId, idle.getTenantId());
+                    IdleItem item = idleMap.get(b.getIdleId());
+                    return item != null && tenantMatches(tenantId, item.getTenantId());
                 })
                 .collect(Collectors.toList());
+        Map<Long, HelpRequest> helpMap = helpRequests.stream()
+                .collect(Collectors.toMap(HelpRequest::getId, h -> h, (a, b) -> a));
+        List<HelpApplication> helpApps = helpApplicationRepository.findAll().stream()
+                .filter(a -> {
+                    HelpRequest hr = helpMap.get(a.getHelpId());
+                    return hr != null && tenantMatches(tenantId, hr.getTenantId());
+                })
+                .collect(Collectors.toList());
+        Set<Long> borrowIds = borrows.stream().map(BorrowRequest::getId).collect(Collectors.toSet());
+        Set<Long> helpAppIds = helpApps.stream().map(HelpApplication::getId).collect(Collectors.toSet());
+        List<Rating> ratings = ratingRepository.findAll().stream()
+                .filter(r -> (r.getBorrowId() != null && borrowIds.contains(r.getBorrowId()))
+                        || (r.getHelpApplicationId() != null && helpAppIds.contains(r.getHelpApplicationId())))
+                .collect(Collectors.toList());
+        Map<Long, User> userMap = userRepository.findAll().stream()
+                .filter(u -> tenantMatches(tenantId, u.getTenantId()))
+                .collect(Collectors.toMap(User::getId, u -> u, (a, b) -> a));
+
+        // KPI 四项：快照卡（在线闲置/求助）环比用发布增速，月度卡（本月发布/月活）用直接环比
+        long onlineIdle = countLendOnline(idleItems);
+        long onlineHelp = countHelpOnline(helpRequests);
+        long monthPublish = countPublishes(idleItems, helpRequests, monthStart, now);
+        long prevMonthPublish = countPublishes(idleItems, helpRequests, prevMonthStart, prevMonthEnd);
+        long monthLendPublish = countLendPublishes(idleItems, monthStart, now);
+        long prevMonthLendPublish = countLendPublishes(idleItems, prevMonthStart, prevMonthEnd);
+        long monthHelpPublish = countHelpPublishes(helpRequests, monthStart, now);
+        long prevMonthHelpPublish = countHelpPublishes(helpRequests, prevMonthStart, prevMonthEnd);
+        long monthMau = countActiveUsers(userMap, idleItems, helpRequests, borrows, helpApps, ratings, monthStart, now);
+        long prevMonthMau = countActiveUsers(userMap, idleItems, helpRequests, borrows, helpApps, ratings, prevMonthStart, prevMonthEnd);
+
+        List<DashboardDTO.KpiStat> kpis = List.of(
+                kpi("idle", onlineIdle, momChange(monthLendPublish, prevMonthLendPublish)),
+                kpi("help", onlineHelp, momChange(monthHelpPublish, prevMonthHelpPublish)),
+                kpi("pub", monthPublish, momChange(monthPublish, prevMonthPublish)),
+                kpi("mau", monthMau, momChange(monthMau, prevMonthMau)));
+
+        // 月度互助趋势（周/月/季三段）
+        DashboardDTO.Trends trends = DashboardDTO.Trends.builder()
+                .week(buildWeekTrend(now, idleItems, helpRequests, borrows, helpApps))
+                .month(buildMonthTrend(now, idleItems, helpRequests, borrows, helpApps))
+                .quarter(buildQuarterTrend(now, idleItems, helpRequests, borrows, helpApps))
+                .build();
+
+        // 本月互助完成率：已互助（完成借用+完成帮助）/ 直接下架（本月发布且 offline）
+        long completed = countCompleted(borrows, helpApps, monthStart, now);
+        long removed = countRemoved(idleItems, helpRequests, monthStart, now);
+        double rate = completed + removed == 0 ? 0
+                : Math.round(completed * 1000.0 / (completed + removed)) / 10.0;
+
+        return DashboardDTO.builder()
+                .kpis(kpis)
+                .trends(trends)
+                .completion(DashboardDTO.CompletionStat.builder()
+                        .completed(completed).removed(removed).rate(rate).build())
+                .damage(buildDamageStat(borrows))
+                .ranking(buildRanking(borrows, helpApps, userMap))
+                .build();
     }
 
     /**
@@ -236,38 +237,284 @@ public class AdminService {
         return dt != null && !dt.isBefore(start) && !dt.isAfter(end);
     }
 
-    /**
-     * 根据在线闲置物品构建分类统计。
-     */
-    private List<DashboardDTO.CategoryStat> buildCategoryStats(List<IdleItem> allIdle) {
-        Map<String, Long> categoryCountMap = allIdle.stream()
-                .filter(i -> BizStatus.ONLINE.equals(i.getStatus()))
-                .collect(Collectors.groupingBy(
-                        i -> i.getCategory() != null ? i.getCategory() : "其他",
-                        Collectors.counting()));
-        return categoryCountMap.entrySet().stream()
-                .map(e -> DashboardDTO.CategoryStat.builder()
-                        .category(e.getKey())
-                        .count(e.getValue())
-                        .build())
-                .collect(Collectors.toList());
+    /** KPI 单项构造。 */
+    private DashboardDTO.KpiStat kpi(String key, long value, double momChange) {
+        return DashboardDTO.KpiStat.builder().key(key).value(value).momChange(momChange).build();
     }
 
     /**
-     * 构建仪表盘指标列表。
+     * 环比百分比（本月 vs 上月）：(current - previous) / previous * 100，保留 1 位小数；分母为 0 返回 0。
      */
-    private List<DashboardDTO.ItemStat> buildItemStats(long onlineLend, long onlineWanted,
-            long onlineHelp, long monthlyPublishes, long monthlyCompletedBorrows,
-            long monthlyActiveUsers, long damageCount) {
-        List<DashboardDTO.ItemStat> itemStats = new ArrayList<>();
-        itemStats.add(DashboardDTO.ItemStat.builder().label("在线闲置(LEND)").value(onlineLend).build());
-        itemStats.add(DashboardDTO.ItemStat.builder().label("在线闲置(WANTED)").value(onlineWanted).build());
-        itemStats.add(DashboardDTO.ItemStat.builder().label("在线求助").value(onlineHelp).build());
-        itemStats.add(DashboardDTO.ItemStat.builder().label("本月发布").value(monthlyPublishes).build());
-        itemStats.add(DashboardDTO.ItemStat.builder().label("本月完成借入").value(monthlyCompletedBorrows).build());
-        itemStats.add(DashboardDTO.ItemStat.builder().label("月活用户").value(monthlyActiveUsers).build());
-        itemStats.add(DashboardDTO.ItemStat.builder().label("损坏物品").value(damageCount).build());
-        return itemStats;
+    private double momChange(long current, long previous) {
+        if (previous == 0) {
+            return 0;
+        }
+        return Math.round((current - previous) * 1000.0 / previous) / 10.0;
+    }
+
+    /** 在线闲置数：postType=LEND 且 status=online（不含 WANTED）。 */
+    private long countLendOnline(List<IdleItem> idleItems) {
+        return idleItems.stream()
+                .filter(i -> PostType.LEND.equals(i.getPostType()) && BizStatus.ONLINE.equals(i.getStatus()))
+                .count();
+    }
+
+    /** 在线技能求助数：status=online。 */
+    private long countHelpOnline(List<HelpRequest> helpRequests) {
+        return helpRequests.stream().filter(h -> BizStatus.ONLINE.equals(h.getStatus())).count();
+    }
+
+    /** 时间窗口内闲置+求助发布总数。 */
+    private long countPublishes(List<IdleItem> idleItems, List<HelpRequest> helpRequests,
+            LocalDateTime start, LocalDateTime end) {
+        long idle = idleItems.stream().filter(i -> isWithinMonth(i.getCreatedAt(), start, end)).count();
+        long help = helpRequests.stream().filter(h -> isWithinMonth(h.getCreatedAt(), start, end)).count();
+        return idle + help;
+    }
+
+    /** 时间窗口内 LEND 发布数（在线闲置卡环比用）。 */
+    private long countLendPublishes(List<IdleItem> idleItems, LocalDateTime start, LocalDateTime end) {
+        return idleItems.stream()
+                .filter(i -> PostType.LEND.equals(i.getPostType())
+                        && isWithinMonth(i.getCreatedAt(), start, end))
+                .count();
+    }
+
+    /** 时间窗口内求助发布数（在线求助卡环比用）。 */
+    private long countHelpPublishes(List<HelpRequest> helpRequests, LocalDateTime start, LocalDateTime end) {
+        return helpRequests.stream().filter(h -> isWithinMonth(h.getCreatedAt(), start, end)).count();
+    }
+
+    /**
+     * 时间窗口内活跃住户数：本月有行为的去重住户。
+     *
+     * <p>行为来源 union：发布闲置/求助的 userId、借入方 borrowerId、帮助接单 helperId、
+     * 评价双方 from/toUserId；仅保留小区内（userMap 存在）且非管理员身份的住户。</p>
+     */
+    private long countActiveUsers(Map<Long, User> userMap, List<IdleItem> idleItems,
+            List<HelpRequest> helpRequests, List<BorrowRequest> borrows,
+            List<HelpApplication> helpApps, List<Rating> ratings,
+            LocalDateTime start, LocalDateTime end) {
+        Set<Long> active = new HashSet<>();
+        idleItems.stream().filter(i -> isWithinMonth(i.getCreatedAt(), start, end))
+                .map(IdleItem::getUserId).forEach(active::add);
+        helpRequests.stream().filter(h -> isWithinMonth(h.getCreatedAt(), start, end))
+                .map(HelpRequest::getUserId).forEach(active::add);
+        borrows.stream().filter(b -> isWithinMonth(b.getCreatedAt(), start, end))
+                .map(BorrowRequest::getBorrowerId).forEach(active::add);
+        helpApps.stream().filter(a -> isWithinMonth(a.getCreatedAt(), start, end))
+                .map(HelpApplication::getHelperId).forEach(active::add);
+        ratings.stream().filter(r -> isWithinMonth(r.getCreatedAt(), start, end)).forEach(r -> {
+            if (r.getFromUserId() != null) {
+                active.add(r.getFromUserId());
+            }
+            if (r.getToUserId() != null) {
+                active.add(r.getToUserId());
+            }
+        });
+        // 仅保留小区内住户（排除管理员身份）
+        return active.stream()
+                .filter(userMap::containsKey)
+                .filter(id -> !ADMIN_USER_TYPES.contains(userMap.get(id).getUserType()))
+                .count();
+    }
+
+    /** 近 7 天按天趋势（末位「今日」）。 */
+    private DashboardDTO.TrendData buildWeekTrend(LocalDateTime now, List<IdleItem> idleItems,
+            List<HelpRequest> helpRequests, List<BorrowRequest> borrows, List<HelpApplication> helpApps) {
+        LocalDate today = now.toLocalDate();
+        List<String> labels = new ArrayList<>();
+        List<Long> publish = new ArrayList<>();
+        List<Long> completed = new ArrayList<>();
+        for (int i = -6; i <= 0; i++) {
+            LocalDate day = today.plusDays(i);
+            labels.add(i == 0 ? "今日" : day.format(DateTimeFormatter.ofPattern("M/d")));
+            publish.add(countPublishOn(day, idleItems, helpRequests));
+            completed.add(countCompletedOn(day, borrows, helpApps));
+        }
+        return DashboardDTO.TrendData.builder().labels(labels).publish(publish).completed(completed).build();
+    }
+
+    /** 本月按周分桶（每 7 天一桶，label 第N周）。 */
+    private DashboardDTO.TrendData buildMonthTrend(LocalDateTime now, List<IdleItem> idleItems,
+            List<HelpRequest> helpRequests, List<BorrowRequest> borrows, List<HelpApplication> helpApps) {
+        LocalDate monthStartDate = now.toLocalDate().withDayOfMonth(1);
+        int buckets = (monthStartDate.lengthOfMonth() + 6) / 7;
+        List<String> labels = new ArrayList<>();
+        List<Long> publish = new ArrayList<>();
+        List<Long> completed = new ArrayList<>();
+        for (int b = 0; b < buckets; b++) {
+            LocalDate start = monthStartDate.plusDays(b * 7L);
+            LocalDate end = start.plusDays(6L);
+            labels.add("第" + (b + 1) + "周");
+            publish.add(countPublishBetween(start, end, idleItems, helpRequests));
+            completed.add(countCompletedBetween(start, end, borrows, helpApps));
+        }
+        return DashboardDTO.TrendData.builder().labels(labels).publish(publish).completed(completed).build();
+    }
+
+    /** 本季度按月趋势（3 个月，label N月）。 */
+    private DashboardDTO.TrendData buildQuarterTrend(LocalDateTime now, List<IdleItem> idleItems,
+            List<HelpRequest> helpRequests, List<BorrowRequest> borrows, List<HelpApplication> helpApps) {
+        int quarterStartMonth = ((now.getMonthValue() - 1) / 3) * 3 + 1;
+        int year = now.getYear();
+        List<String> labels = new ArrayList<>();
+        List<Long> publish = new ArrayList<>();
+        List<Long> completed = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            int month = quarterStartMonth + i;
+            int monthYear = year;
+            if (month > 12) {
+                month -= 12;
+                monthYear += 1;
+            }
+            labels.add(month + "月");
+            publish.add(countPublishInMonth(monthYear, month, idleItems, helpRequests));
+            completed.add(countCompletedInMonth(monthYear, month, borrows, helpApps));
+        }
+        return DashboardDTO.TrendData.builder().labels(labels).publish(publish).completed(completed).build();
+    }
+
+    /** 某天发布数（闲置+求助）。 */
+    private long countPublishOn(LocalDate day, List<IdleItem> idleItems, List<HelpRequest> helpRequests) {
+        long idle = idleItems.stream().filter(i -> sameDay(i.getCreatedAt(), day)).count();
+        long help = helpRequests.stream().filter(h -> sameDay(h.getCreatedAt(), day)).count();
+        return idle + help;
+    }
+
+    /** 某天完成互助数（归还完成借用 + 完成帮助）。 */
+    private long countCompletedOn(LocalDate day, List<BorrowRequest> borrows, List<HelpApplication> helpApps) {
+        long b = borrows.stream().filter(x -> sameDay(x.getReturnedAt(), day)).count();
+        long a = helpApps.stream().filter(x -> sameDay(x.getCompletedAt(), day)).count();
+        return b + a;
+    }
+
+    /** [start, end] 闭区间内发布数。 */
+    private long countPublishBetween(LocalDate start, LocalDate end,
+            List<IdleItem> idleItems, List<HelpRequest> helpRequests) {
+        long idle = idleItems.stream().filter(i -> betweenDay(i.getCreatedAt(), start, end)).count();
+        long help = helpRequests.stream().filter(h -> betweenDay(h.getCreatedAt(), start, end)).count();
+        return idle + help;
+    }
+
+    /** [start, end] 闭区间内完成互助数。 */
+    private long countCompletedBetween(LocalDate start, LocalDate end,
+            List<BorrowRequest> borrows, List<HelpApplication> helpApps) {
+        long b = borrows.stream().filter(x -> betweenDay(x.getReturnedAt(), start, end)).count();
+        long a = helpApps.stream().filter(x -> betweenDay(x.getCompletedAt(), start, end)).count();
+        return b + a;
+    }
+
+    /** 指定年/月内发布数。 */
+    private long countPublishInMonth(int year, int month,
+            List<IdleItem> idleItems, List<HelpRequest> helpRequests) {
+        long idle = idleItems.stream().filter(i -> inMonth(i.getCreatedAt(), year, month)).count();
+        long help = helpRequests.stream().filter(h -> inMonth(h.getCreatedAt(), year, month)).count();
+        return idle + help;
+    }
+
+    /** 指定年/月内完成互助数。 */
+    private long countCompletedInMonth(int year, int month,
+            List<BorrowRequest> borrows, List<HelpApplication> helpApps) {
+        long b = borrows.stream().filter(x -> inMonth(x.getReturnedAt(), year, month)).count();
+        long a = helpApps.stream().filter(x -> inMonth(x.getCompletedAt(), year, month)).count();
+        return b + a;
+    }
+
+    /** 日期是否为指定日（null 安全）。 */
+    private boolean sameDay(LocalDateTime dt, LocalDate day) {
+        return dt != null && dt.toLocalDate().equals(day);
+    }
+
+    /** 日期是否在 [start, end] 闭区间（null 安全）。 */
+    private boolean betweenDay(LocalDateTime dt, LocalDate start, LocalDate end) {
+        if (dt == null) {
+            return false;
+        }
+        LocalDate d = dt.toLocalDate();
+        return !d.isBefore(start) && !d.isAfter(end);
+    }
+
+    /** 日期是否在指定年/月（null 安全）。 */
+    private boolean inMonth(LocalDateTime dt, int year, int month) {
+        return dt != null && dt.getYear() == year && dt.getMonthValue() == month;
+    }
+
+    /** 本月完成互助数：归还完成借用（status=returned）+ 完成帮助（status=completed）。 */
+    private long countCompleted(List<BorrowRequest> borrows, List<HelpApplication> helpApps,
+            LocalDateTime start, LocalDateTime end) {
+        long b = borrows.stream().filter(x -> BizStatus.RETURNED.equals(x.getStatus())
+                && isWithinMonth(x.getReturnedAt(), start, end)).count();
+        long a = helpApps.stream().filter(x -> BizStatus.COMPLETED.equals(x.getStatus())
+                && isWithinMonth(x.getCompletedAt(), start, end)).count();
+        return b + a;
+    }
+
+    /** 本月直接下架数：本月发布且状态 offline 的闲置+求助。 */
+    private long countRemoved(List<IdleItem> idleItems, List<HelpRequest> helpRequests,
+            LocalDateTime start, LocalDateTime end) {
+        long idle = idleItems.stream().filter(i -> BizStatus.OFFLINE.equals(i.getStatus())
+                && isWithinMonth(i.getCreatedAt(), start, end)).count();
+        long help = helpRequests.stream().filter(h -> BizStatus.OFFLINE.equals(h.getStatus())
+                && isWithinMonth(h.getCreatedAt(), start, end)).count();
+        return idle + help;
+    }
+
+    /** 损坏三态统计：按借用记录 damageType 分布（null 不计）。 */
+    private DashboardDTO.DamageStat buildDamageStat(List<BorrowRequest> borrows) {
+        long normal = 0;
+        long severe = 0;
+        long broken = 0;
+        for (BorrowRequest b : borrows) {
+            if (DamageType.NORMAL.equals(b.getDamageType())) {
+                normal++;
+            } else if (DamageType.ABNORMAL.equals(b.getDamageType())) {
+                severe++;
+            } else if (DamageType.BROKEN.equals(b.getDamageType())) {
+                broken++;
+            }
+        }
+        return DashboardDTO.DamageStat.builder().normal(normal).severe(severe).broken(broken).build();
+    }
+
+    /**
+     * 互助对象排行：按住户聚合互助总次数（闲置借入 + 技能接单完成合并），同一住户只出现一条。
+     * 展示名复用 {@link UserFormatter#formatRoomWithType}；按次数降序返回全量。
+     */
+    private List<DashboardDTO.RankingItem> buildRanking(List<BorrowRequest> borrows,
+            List<HelpApplication> helpApps, Map<Long, User> userMap) {
+        Map<Long, Long> merged = new HashMap<>();
+        // 闲置借入：借入方借用次数（全部状态）
+        borrows.stream().collect(Collectors.groupingBy(BorrowRequest::getBorrowerId, Collectors.counting()))
+                .forEach((uid, count) -> merged.merge(uid, count, Long::sum));
+        // 技能接单：帮助接单完成次数（COMPLETED）
+        helpApps.stream()
+                .filter(a -> BizStatus.COMPLETED.equals(a.getStatus()))
+                .collect(Collectors.groupingBy(HelpApplication::getHelperId, Collectors.counting()))
+                .forEach((uid, count) -> merged.merge(uid, count, Long::sum));
+        List<DashboardDTO.RankingItem> items = new ArrayList<>();
+        merged.forEach((uid, count) -> {
+            DashboardDTO.RankingItem item = toRankingItem(uid, count, userMap);
+            if (item != null) {
+                items.add(item);
+            }
+        });
+        // 次数降序，并列按展示名升序
+        items.sort(Comparator.comparingLong(DashboardDTO.RankingItem::getCount).reversed()
+                .thenComparing(DashboardDTO.RankingItem::getName, Comparator.nullsLast(String::compareTo)));
+        return items;
+    }
+
+    /** 拼排行单项：用户不在本小区映射中则返回 null（调用方跳过）。 */
+    private DashboardDTO.RankingItem toRankingItem(Long userId, long count, Map<Long, User> userMap) {
+        User user = userMap.get(userId);
+        if (user == null) {
+            return null;
+        }
+        return DashboardDTO.RankingItem.builder()
+                .name(UserFormatter.formatRoomWithType(user))
+                .count(count)
+                .build();
     }
 
     // ==================== 审核管理 ====================

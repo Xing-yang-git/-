@@ -1,37 +1,8 @@
 <template>
-  <el-container class="admin-layout">
-    <el-aside width="240px">
-      <AppSidebar />
-    </el-aside>
-    <el-container>
-      <el-header class="topbar">
-        <div class="topbar-left">
-          <span class="topbar-title">知识库管理</span>
-        </div>
-        <div class="topbar-right">
-          <el-dropdown @command="handleCommand">
-            <span
-              style="
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                gap: 4px;
-              "
-            >
-              {{ authStore.userName }} <el-icon><ArrowDown /></el-icon>
-            </span>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="logout">退出登录</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
-      </el-header>
-      <el-main class="panel-fill">
+  <AppLayout title="知识库管理" :main-class="LIST_PAGE_MAIN_CLASS">
         <div class="unified-panel">
-          <!-- 筛选行 -->
-          <div class="filter-row">
+          <!-- 筛选行（条数同行显示，底部不留间距） -->
+          <div class="filter-row" style="padding-bottom: 0">
             <el-select
               class="filter-select"
               v-model="filterCategory"
@@ -62,32 +33,32 @@
               v-model="filterKeyword"
               placeholder="搜索文件名 / 来源"
               style="width: 210px"
+              clearable
               @keyup.enter="handleSearch"
+              @clear="handleSearch"
             />
-            <el-button type="primary" @click="handleSearch">查询</el-button>
             <el-button
               type="primary"
               :disabled="!selectedDocs.length"
               @click="openDetailFromSelection"
               >详细</el-button
             >
-            <div class="filter-spacer" />
             <el-button type="success" @click="openUpload">上传文档</el-button>
-          </div>
-
-          <!-- 条数 + 列表（一次性获取 + 列表内滚动，撑满剩余高度） -->
-          <div class="list-count-row">
             <span style="flex: 1"></span>
             <span class="text-sm text-secondary"
               >共 {{ filteredDocs.length }} 条</span
             >
           </div>
-          <div ref="tableWrapRef" class="knowledge-table-wrap">
+
+          <!-- 列表（一次性获取 + 列表内滚动，撑满剩余高度） -->
+          <!-- 表格（填充面板剩余高度，内部滚动 — 与互助记录页同结构） -->
+          <div class="uf-body">
+            <div class="panel">
             <el-table
               :data="filteredDocs"
               v-loading="loading"
               stripe
-              :height="tableHeight"
+              height="100%"
               @selection-change="handleSelectionChange"
             >
               <el-table-column type="selection" width="50" />
@@ -114,16 +85,14 @@
               />
               <el-table-column label="分类" width="120" align="center">
                 <template #default="{ row }">
-                  <el-tag size="small" :type="categoryTagType(row.category)">
+                  <el-tag size="small" type="primary">
                     {{ categoryLabel(row.category) }}
                   </el-tag>
                 </template>
               </el-table-column>
               <el-table-column label="状态" width="120" align="center">
                 <template #default="{ row }">
-                  <el-tag size="small" :type="docStatusType(row.status)">
-                    {{ docStatusLabel(row.status) }}
-                  </el-tag>
+                  <span class="doc-status">{{ docStatusLabel(row.status) }}</span>
                   <el-tooltip
                     v-if="row.errorMessage"
                     :content="row.errorMessage"
@@ -139,11 +108,10 @@
                 }}</template>
               </el-table-column>
             </el-table>
+            </div>
           </div>
         </div>
-      </el-main>
-    </el-container>
-  </el-container>
+  </AppLayout>
 
   <!-- 文档详情对话框 -->
   <el-dialog v-model="detailVisible" title="文档详情" width="520px">
@@ -155,7 +123,7 @@
       <div class="detail-row">
         <span class="detail-label">分类</span>
         <span class="detail-value">
-          <el-tag size="small" :type="categoryTagType(detailDoc.category)">
+          <el-tag size="small" type="primary">
             {{ categoryLabel(detailDoc.category) }}
           </el-tag>
         </span>
@@ -163,12 +131,14 @@
       <div class="detail-row">
         <span class="detail-label">状态</span>
         <span class="detail-value">
-          <el-tag size="small" :type="docStatusType(detailDoc.status)">
-            {{ docStatusLabel(detailDoc.status) }}
-          </el-tag>
-          <span v-if="detailDoc.errorMessage" class="detail-err">{{
-            detailDoc.errorMessage
-          }}</span>
+          <span class="doc-status">{{ docStatusLabel(detailDoc.status) }}</span>
+          <el-tooltip
+            v-if="detailDoc.errorMessage"
+            :content="detailDoc.errorMessage"
+            placement="top"
+          >
+            <el-icon class="status-warn"><Warning /></el-icon>
+          </el-tooltip>
         </span>
       </div>
       <div class="detail-row">
@@ -177,19 +147,37 @@
       </div>
     </div>
     <template #footer>
-      <el-button type="warning" @click="handleDocReupload(detailDoc!)"
-        >重新上传</el-button
-      >
-      <el-button
-        v-if="detailDoc && detailDoc.status === DOC_STATUS.FAILED"
-        type="success"
-        @click="handleDocRetry(detailDoc)"
-        >重试</el-button
-      >
-      <el-button type="danger" @click="handleDocDelete(detailDoc!)"
-        >删除</el-button
-      >
-      <el-button @click="detailVisible = false">关闭</el-button>
+      <div style="display: flex; align-items: center; gap: 8px">
+        <el-button
+          :icon="ArrowLeft"
+          circle
+          :disabled="detailPos === 0"
+          @click="detailGo(-1)"
+        />
+        <span class="text-sm text-secondary"
+          >{{ detailPos + 1 }} / {{ detailList.length }}</span
+        >
+        <el-button
+          :icon="ArrowRight"
+          circle
+          :disabled="detailPos === detailList.length - 1"
+          @click="detailGo(1)"
+        />
+        <span style="flex: 1"></span>
+        <el-button type="warning" @click="handleDocReupload(detailDoc!)"
+          >重新上传</el-button
+        >
+        <el-button
+          v-if="detailDoc && detailDoc.status === DOC_STATUS.FAILED"
+          type="success"
+          @click="handleDocRetry(detailDoc)"
+          >重试</el-button
+        >
+        <el-button type="danger" @click="handleDocDelete(detailDoc!)"
+          >删除</el-button
+        >
+        <el-button @click="detailVisible = false">关闭</el-button>
+      </div>
     </template>
   </el-dialog>
 
@@ -226,7 +214,7 @@
         </div>
       </el-form-item>
       <el-form-item label="分类" required>
-        <el-select v-model="uploadCategory" style="width: 100%">
+        <el-select v-model="uploadCategory" class="control-select" style="width: 100%">
           <el-option
             v-for="opt in categoryOptions"
             :key="opt.value"
@@ -266,8 +254,9 @@
  */
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import AppSidebar from "@/components/AppSidebar.vue";
-import { useAuthStore } from "@/stores/auth";
+import { ArrowLeft, ArrowRight } from "@element-plus/icons-vue";
+import AppLayout from "@/layouts/AppLayout.vue";
+import { LIST_PAGE_MAIN_CLASS } from "@/layouts/main-classes";
 import {
   KNOWLEDGE_CATEGORY,
   KNOWLEDGE_FILE_EXTS,
@@ -277,9 +266,6 @@ import {
   retryKnowledgeDocument,
   type KnowledgeDocumentDTO,
 } from "@/api/admin";
-
-/** 当前登录管理员信息 */
-const authStore = useAuthStore();
 
 /** 文档处理状态（与后端 DocumentStatus 对齐） */
 const DOC_STATUS = {
@@ -307,13 +293,6 @@ const filterStatus = ref<string>("");
 /** 文件名/来源关键词过滤 */
 const filterKeyword = ref<string>("");
 
-/** 表格容器引用（用于实测可用高度） */
-const tableWrapRef = ref<HTMLElement | null>(null);
-/** 表格内部滚动高度（撑满容器剩余空间，容器变化时自适应） */
-const tableHeight = ref<number>(400);
-/** 容器尺寸监听器 */
-let tableResizeObserver: ResizeObserver | null = null;
-
 /** 是否轮询解析状态 */
 const docPolling = ref<boolean>(false);
 /** 轮询定时器 */
@@ -334,29 +313,6 @@ function categoryLabel(value: string): string {
     guide: "办事指南",
   };
   return map[value] ?? value;
-}
-
-/** 分类对应的 el-tag 颜色 */
-function categoryTagType(
-  value: string,
-): "success" | "warning" | "primary" | "info" {
-  const map: Record<string, "success" | "warning" | "primary" | "info"> = {
-    rules: "primary",
-    service: "success",
-    help: "warning",
-    guide: "info",
-  };
-  return map[value] ?? "info";
-}
-
-/** 文档状态标签类型 */
-function docStatusType(
-  status: string,
-): "warning" | "success" | "danger" | "info" {
-  if (status === DOC_STATUS.PARSING) return "warning";
-  if (status === DOC_STATUS.READY) return "success";
-  if (status === DOC_STATUS.FAILED) return "danger";
-  return "info";
 }
 
 /** 文档状态中文标签 */
@@ -419,36 +375,49 @@ function handleSelectionChange(rows: KnowledgeDocumentDTO[]): void {
 
 /** 详情弹窗可见性 */
 const detailVisible = ref<boolean>(false);
-/** 详情弹窗当前展示的文档 */
-const detailDoc = ref<KnowledgeDocumentDTO | null>(null);
+/** 详情弹窗待切换的文档列表（勾选集合或过滤列表的快照） */
+const detailList = ref<KnowledgeDocumentDTO[]>([]);
+/** 详情弹窗当前文档在列表中的下标 */
+const detailPos = ref<number>(0);
+/** 详情弹窗当前展示的文档（由列表与下标派生） */
+const detailDoc = computed<KnowledgeDocumentDTO | null>(
+  () => detailList.value[detailPos.value] ?? null,
+);
 
-/** 从勾选记录打开详情弹窗（无勾选时提示） */
+/** 从勾选记录打开详情弹窗（勾选集合作为切换列表，无勾选时提示） */
 function openDetailFromSelection(): void {
   if (!selectedDocs.value.length) {
     ElMessage.warning("请先勾选文档");
     return;
   }
-  detailDoc.value = selectedDocs.value[0];
+  detailList.value = [...selectedDocs.value];
+  detailPos.value = 0;
   detailVisible.value = true;
 }
 
-/** 点击文件名快速打开详情 */
+/** 点击文件名快速打开详情（以当前过滤列表为切换范围，定位到该行） */
 function openDetail(row: KnowledgeDocumentDTO): void {
-  detailDoc.value = row;
+  const idx = filteredDocs.value.findIndex((d) => d.id === row.id);
+  if (idx < 0) return;
+  detailList.value = [...filteredDocs.value];
+  detailPos.value = idx;
   detailVisible.value = true;
+}
+
+/**
+ * 详情弹窗左右切换文档。
+ * @param delta - 切换偏移（-1 上一个，1 下一个）
+ */
+function detailGo(delta: number): void {
+  const next = detailPos.value + delta;
+  if (next < 0 || next >= detailList.value.length) return;
+  detailPos.value = next;
 }
 
 /** 格式化时间为 YYYY-MM-DD HH:mm（后端返回可能含秒或 T 分隔） */
 function formatTime(value?: string): string {
   if (!value) return "";
   return value.replace("T", " ").slice(0, 16);
-}
-
-/** 实测表格容器高度并赋给 el-table，实现列表内滚动 */
-function updateTableHeight(): void {
-  if (tableWrapRef.value) {
-    tableHeight.value = tableWrapRef.value.clientHeight;
-  }
 }
 
 /** 开始轮询（每 3 秒刷新，直到无解析中文档） */
@@ -650,47 +619,17 @@ async function doUpload(): Promise<void> {
   }
 }
 
-/** 退出登录 */
-function handleCommand(command: string): void {
-  if (command === "logout") {
-    authStore.logout();
-    window.location.href = "/login";
-  }
-}
-
 onMounted(() => {
   loadDocs();
-  updateTableHeight();
-  // 容器尺寸变化（窗口缩放/布局变动）时自适应表格高度，保证列表内滚动
-  if (tableWrapRef.value && typeof ResizeObserver !== "undefined") {
-    tableResizeObserver = new ResizeObserver(() => updateTableHeight());
-    tableResizeObserver.observe(tableWrapRef.value);
-  }
-  window.addEventListener("resize", updateTableHeight);
 });
 
 onUnmounted(() => {
   stopPolling();
-  if (tableResizeObserver) {
-    tableResizeObserver.disconnect();
-    tableResizeObserver = null;
-  }
-  window.removeEventListener("resize", updateTableHeight);
 });
 </script>
 
 <style scoped>
 /* 知识库管理页样式：文档列表一次性加载 + 列表内滚动，页面不出现浏览器滚动条 */
-.admin-layout {
-  height: 100vh;
-  overflow: hidden;
-}
-
-:deep(.el-main.panel-fill) {
-  overflow: hidden;
-  display: flex;
-}
-
 .unified-panel {
   flex: 1;
   min-height: 0;
@@ -708,43 +647,17 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-.filter-spacer {
-  flex: 1;
-}
-
-/* 条数行（对齐互助记录页「共 N 条」：右内边距与筛选行一致，避免贴边） */
-.list-count-row {
-  display: flex;
-  align-items: center;
-  padding: 0 20px 8px;
-  flex-shrink: 0;
-}
-
-/* 表格容器撑满剩余高度，表格内部滚动（sticky 表头） */
-.knowledge-table-wrap {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-/* 恢复本页知识库表格的内部滚动条：全局 b-end.css 为「分页表格」隐藏了 el-scrollbar 滚动条
-   （overflow:hidden !important），本页一次性加载需表格级滚动，故作用域内覆盖恢复 */
-:deep(.knowledge-table-wrap .el-table .el-scrollbar__wrap) {
-  overflow: auto !important;
-  scrollbar-width: auto !important;
-}
-:deep(.knowledge-table-wrap .el-table .el-scrollbar__wrap::-webkit-scrollbar) {
-  display: block !important;
-}
-:deep(.knowledge-table-wrap .el-table .el-scrollbar__bar) {
-  display: block !important;
-}
-
 /* 状态警告图标 */
 .status-warn {
   margin-left: 4px;
   color: var(--orange);
   vertical-align: middle;
+}
+
+/* 列表状态列文字 — 深绿色 */
+.doc-status {
+  color: #1e7d4b;
+  font-weight: 500;
 }
 
 /* 文档详情弹窗 */
@@ -774,12 +687,6 @@ onUnmounted(() => {
   color: var(--text);
   font-size: 13px;
   word-break: break-all;
-}
-
-.detail-err {
-  margin-left: 8px;
-  color: var(--red);
-  font-size: 12px;
 }
 
 /* 上传提示 */

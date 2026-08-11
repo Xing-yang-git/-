@@ -25,8 +25,10 @@ app = FastAPI(title="bge-reranker-v2-m3 重排服务")
 # 模型文件由部署脚本从 ModelScope 下载到本地目录（hf-mirror 不支持 HEAD 导致 huggingface_hub 在线校验失败），
 # 直接用本地目录加载，绕开 HF 缓存机制；目录由 RERANK_MODEL_DIR 环境变量注入
 MODEL_DIR = os.environ.get("RERANK_MODEL_DIR", "/models/bge-reranker-v2-m3")
+# GPU 优先（容器经 docker GPU 透传可见 CUDA），无 GPU 自动回退 CPU；模型 fp32 权重约 2.2GB，6GB 显存可容纳
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR)
-model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR)
+model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR).to(device)
 model.eval()
 
 MAX_LENGTH = 512  # 与 FlagReranker 默认一致
@@ -37,24 +39,21 @@ def sigmoid(x):
 
 
 def compute_scores(query: str, passages: List[str]) -> List[float]:
-    """对 query 与每个 passage 打分，与 FlagReranker.compute_score(normalize=True) 等价。
+    """对 query 与所有 passage 批量打分（单次前向），与 FlagReranker.compute_score(normalize=True) 等价。
 
     直接传 query+passage 两段文本让 tokenizer 拼接成 <s> query </s> passage </s>，
-    与 FlagReranker 的截断拼接语义一致。不调用 prepare_for_model（XLMRobertaTokenizer 无此方法）。
+    与 FlagReranker 的截断拼接语义一致。批量推理显著快于逐条循环（GPU 上差距更大）。
     """
-    scores = []
     with torch.no_grad():
-        for passage in passages:
-            inputs = tokenizer(
-                query, passage,
-                return_tensors="pt",
-                truncation="only_second",
-                max_length=MAX_LENGTH,
-                padding=False,
-            )
-            logits = model(**inputs).logits.view(-1).float()
-            scores.append(sigmoid(float(logits[0])))
-    return scores
+        inputs = tokenizer(
+            [(query, p) for p in passages],
+            return_tensors="pt",
+            truncation="only_second",
+            max_length=MAX_LENGTH,
+            padding=True,
+        ).to(device)
+        logits = model(**inputs).logits.view(-1).float()
+    return [sigmoid(float(l)) for l in logits]
 
 
 class RerankRequest(BaseModel):

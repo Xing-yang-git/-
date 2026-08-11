@@ -346,29 +346,56 @@ export function searchResidents(params: ResidentSearchParams): Promise<AxiosResp
 }
 
 // ============================================================
-// 仪表盘
+// 运营看板
 // ============================================================
 
-export interface CategoryStat {
-  category: string;
+/** KPI 单项：key 为 idle(在线闲置)/help(在线求助)/pub(本月发布)/mau(本月活跃)，momChange 为较上月环比% */
+export interface DashboardKpi {
+  key: 'idle' | 'help' | 'pub' | 'mau';
+  value: number;
+  momChange: number;
+}
+
+/** 趋势图单段：labels 与 publish/completed 一一对应（completed 对应前端图表 series「完成互助」） */
+export interface DashboardTrendData {
+  labels: string[];
+  publish: number[];
+  completed: number[];
+}
+
+/** 趋势图三段（周/月/季） */
+export interface DashboardTrends {
+  week: DashboardTrendData;
+  month: DashboardTrendData;
+  quarter: DashboardTrendData;
+}
+
+/** 本月互助完成率：completed 已互助、removed 直接下架、rate 完成率% */
+export interface DashboardCompletion {
+  completed: number;
+  removed: number;
+  rate: number;
+}
+
+/** 损坏三态统计（damageType 分布） */
+export interface DashboardDamage {
+  normal: number;
+  severe: number;
+  broken: number;
+}
+
+/** 互助对象排行项：按住户聚合的互助总次数（闲置借入 + 技能接单合并） */
+export interface DashboardRankingItem {
+  name: string;
   count: number;
 }
 
-export interface ItemStat {
-  label: string;
-  value: number;
-}
-
 export interface DashboardDTO {
-  onlineIdleCount: number;
-  onlineHelpCount: number;
-  monthlyPublishes: number;
-  monthlyCompletedBorrows: number;
-  completionRate: number;
-  monthlyActiveUsers: number;
-  damageCount: number;
-  categoryStats: CategoryStat[];
-  itemStats: ItemStat[];
+  kpis: DashboardKpi[];
+  trends: DashboardTrends;
+  completion: DashboardCompletion;
+  damage: DashboardDamage;
+  ranking: DashboardRankingItem[];
 }
 
 export function getDashboard(): Promise<AxiosResponse> {

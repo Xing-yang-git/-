@@ -130,6 +130,27 @@ class SensitiveWordServiceTest {
         assertThat(service.contains("fk")).isFalse();
     }
 
+    @Test
+    @DisplayName("缩写 - 长单词中的缩写子串不误拦截（usb 里的 sb、cmd 里的 md）")
+    void should_notMatchAbbreviation_when_partOfWord() {
+        loadEnabled("傻逼", "妈的");
+
+        assertThat(service.contains("usb")).isFalse();
+        // 用户误报原样复现：usb 含 sb 子串，但非独立脏话缩写
+        assertThat(service.contains("物品借出，雷蛇鼠标，正常使用的痕迹，usb＋蓝牙的连接方式，有三个侧键")).isFalse();
+        assertThat(service.contains("cmd")).isFalse();
+    }
+
+    @Test
+    @DisplayName("缩写 - 独立成词的缩写仍命中（真sb / 你md / s b）")
+    void should_matchAbbreviation_when_standalone() {
+        loadEnabled("傻逼", "妈的");
+
+        assertThat(service.contains("真sb")).isTrue();
+        assertThat(service.contains("你md")).isTrue();
+        assertThat(service.contains("s b")).isTrue();
+    }
+
     // ==================== 停用词不生效 ====================
 
     @Test
@@ -174,6 +195,16 @@ class SensitiveWordServiceTest {
     void should_replaceAbbreviation_when_hit() {
         loadEnabled("傻逼");
 
+        assertThat(service.replace("sb你个sb")).isEqualTo("***你个***");
+    }
+
+    @Test
+    @DisplayName("替换 - 长单词中的缩写子串不掩码，独立缩写仍掩码")
+    void should_replace_onlyStandaloneAbbreviation() {
+        loadEnabled("傻逼");
+
+        // usb 含 sb 子串但非独立成词 → 原样保留，不掩码
+        assertThat(service.replace("usb连接口")).isEqualTo("usb连接口");
         assertThat(service.replace("sb你个sb")).isEqualTo("***你个***");
     }
 

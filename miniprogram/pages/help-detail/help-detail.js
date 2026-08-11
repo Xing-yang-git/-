@@ -269,6 +269,10 @@ Page({
     this.setData({ showHistorySheet: false });
   },
 
+  /**
+   * 返回手势/返回键处理（Android 返回键 + iOS 侧滑返回）：
+   * 发布人信息弹层打开时先关闭弹层并拦截路由回退，避免弹层开着时返回手势直接 pop/退出小程序。
+   */
   preventTouchMove() {
     // 阻止遮罩层上的触摸事件穿透
   }

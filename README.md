@@ -54,7 +54,8 @@ community-platform/
 │   ├── app.js / app.json / app.wxss
 │   ├── utils/                 # api.js, auth.js, ws.js
 │   ├── components/            # nav-bar, star-rating, empty-state, image-uploader, chat-input-bar, record-overlay
-│   └── pages/                 # 17 个页面
+│   └── pages/                 # 18 个页面
+│       ├── boot/              # 启动页（首个页面）：冷启动会话恢复与路由分发，消除登录页闪现
 │       ├── login/ register/ review-status/
 │       ├── home/ search/
 │       ├── idle-detail/ help-detail/
@@ -69,6 +70,7 @@ community-platform/
 │       # `@/` 路径别名 → src/（vite.config.js resolve + tsconfig paths）
 │       ├── views/             # 10 个视图（Dashboard, Audit, Content, Records,
 │       │                      #   Knowledge, SensitiveWord, Export, Settings, Home, Login）
+│       ├── layouts/           # AppLayout 统一布局骨架（侧边栏+顶栏+内容区）, main-classes.ts
 │       ├── components/        # AppSidebar, StatCard
 │       ├── stores/            # Pinia：auth, community
 │       ├── router/            # Vue Router + auth guard

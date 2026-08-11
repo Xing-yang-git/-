@@ -82,8 +82,22 @@ const NOTIFICATION_TYPE = {
 /**
  * 本地存储键 — 跨页面共享的 storage key 统一管理，改名安全。
  */
+/** 时长单位 — idle_items.duration_unit / 发布意图 durationUnit 取值，对齐后端 DurationUnit（含按小时档） */
+const DURATION_UNIT = {
+  DAY: 'day',     // 按天
+  HOUR: 'hour'    // 按小时（需求借入/借出可选档）
+};
+
+/** 取货方式 — idle_items.pickup_method 取值，对齐后端 PickupMethod */
+const PICKUP_METHOD = {
+  SELF_PICKUP: 'self_pickup',   // 自取
+  EXPRESS: 'express'            // 快递/邮寄
+};
+
 const STORAGE_KEY = {
-  AGENT_DRAFT: 'agent_draft',            // AI 助手动作卡片发布草稿（assistant 写入 → publish-idle 读取）
+  TOKEN: 'token',               // 登录 token（boot/登录页读写）
+  USER_INFO: 'userInfo',        // 用户信息缓存（boot/登录页读写）
+  AGENT_DRAFT: 'agent_draft',   // AI 助手动作卡片发布草稿（assistant 写入 → publish-idle 读取）
   HISTORY_FAB_POS: 'history_fab_pos',    // 小邻历史悬浮按钮位置（拖动记忆，跨会话保留）
   HOME_FAB_POS: 'home_fab_pos'           // 首页 + 悬浮按钮位置（拖动记忆，跨会话保留）
 };
@@ -97,5 +111,7 @@ module.exports = {
   DAMAGE_TYPE,
   RETURN_STATUS,
   NOTIFICATION_TYPE,
+  DURATION_UNIT,
+  PICKUP_METHOD,
   STORAGE_KEY
 };

@@ -1,0 +1,12 @@
+<!-- Boot 启动页：冷启动会话恢复中转，仅展示启动画面（已登录用户不再先看到登录页） -->
+<view class="boot-page">
+  <view class="boot-brand">
+    <view class="boot-icon-area">
+      <view class="boot-icon">
+        <image class="boot-icon-img" src="/images/login-icon.svg" mode="aspectFit"></image>
+      </view>
+    </view>
+    <text class="boot-title">邻里互助</text>
+    <text class="boot-sub">社区互助闲置平台</text>
+  </view>
+</view>

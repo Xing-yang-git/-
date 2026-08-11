@@ -343,14 +343,6 @@ Page({
    * 发布菜单打开时先关闭菜单并拦截路由回退——本页为 tabBar 根页面，
    * 菜单开着时返回手势会被当成根页面返回直接退出小程序。
    */
-  onBackPress() {
-    if (this.data.fabOpen) {
-      this.onCloseFab();
-      return true;
-    }
-    return false;
-  },
-
   onPublishIdle() {
     this.setData({ fabOpen: false });
     wx.navigateTo({ url: `/pages/publish-idle/publish-idle?type=${POST_TYPE.LEND}` });
