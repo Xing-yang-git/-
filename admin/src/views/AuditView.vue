@@ -342,21 +342,24 @@
       </div>
       <template #footer>
         <div style="display: flex; align-items: center; gap: 8px">
-          <el-button
-            :icon="ArrowLeft"
-            circle
-            :disabled="batchPos === 0"
-            @click="batchGo(-1)"
-          />
-          <span class="text-sm text-secondary"
-            >{{ batchPos + 1 }} / {{ batchList.length }}</span
-          >
-          <el-button
-            :icon="ArrowRight"
-            circle
-            :disabled="batchPos === batchList.length - 1"
-            @click="batchGo(1)"
-          />
+          <!-- 切换仅在多条时显示（对齐内容页统一架构：单条打开→隐藏，批量打开→显示） -->
+          <template v-if="batchList.length > 1">
+            <el-button
+              :icon="ArrowLeft"
+              circle
+              :disabled="batchPos === 0"
+              @click="batchGo(-1)"
+            />
+            <span class="text-sm text-secondary"
+              >{{ batchPos + 1 }} / {{ batchList.length }}</span
+            >
+            <el-button
+              :icon="ArrowRight"
+              circle
+              :disabled="batchPos === batchList.length - 1"
+              @click="batchGo(1)"
+            />
+          </template>
           <span style="flex: 1"></span>
           <el-button @click="auditVisible = false">取消</el-button>
           <el-button
@@ -454,21 +457,24 @@
       </div>
       <template #footer>
         <div style="display: flex; align-items: center; gap: 8px">
-          <el-button
-            :icon="ArrowLeft"
-            circle
-            :disabled="detailPos === 0"
-            @click="detailGo(-1)"
-          />
-          <span class="text-sm text-secondary"
-            >{{ detailPos + 1 }} / {{ detailList.length }}</span
-          >
-          <el-button
-            :icon="ArrowRight"
-            circle
-            :disabled="detailPos === detailList.length - 1"
-            @click="detailGo(1)"
-          />
+          <!-- 切换仅在多条时显示（对齐内容页统一架构：链接点击仅1条→隐藏，详细按钮多条→显示） -->
+          <template v-if="detailList.length > 1">
+            <el-button
+              :icon="ArrowLeft"
+              circle
+              :disabled="detailPos === 0"
+              @click="detailGo(-1)"
+            />
+            <span class="text-sm text-secondary"
+              >{{ detailPos + 1 }} / {{ detailList.length }}</span
+            >
+            <el-button
+              :icon="ArrowRight"
+              circle
+              :disabled="detailPos === detailList.length - 1"
+              @click="detailGo(1)"
+            />
+          </template>
           <span style="flex: 1"></span>
           <el-button @click="detailVisible = false">关闭</el-button>
         </div>

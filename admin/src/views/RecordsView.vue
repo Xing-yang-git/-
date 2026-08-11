@@ -303,21 +303,24 @@
       </div>
       <template #footer>
         <div style="display: flex; align-items: center; gap: 8px">
-          <el-button
-            :icon="ArrowLeft"
-            circle
-            :disabled="detailPos === 0"
-            @click="detailGo(-1)"
-          />
-          <span class="text-sm text-secondary"
-            >{{ detailPos + 1 }} / {{ detailList.length }}</span
-          >
-          <el-button
-            :icon="ArrowRight"
-            circle
-            :disabled="detailPos === detailList.length - 1"
-            @click="detailGo(1)"
-          />
+          <!-- 切换仅在多条时显示（对齐内容页统一架构：链接点击仅1条→隐藏，详细按钮多条→显示） -->
+          <template v-if="detailList.length > 1">
+            <el-button
+              :icon="ArrowLeft"
+              circle
+              :disabled="detailPos === 0"
+              @click="detailGo(-1)"
+            />
+            <span class="text-sm text-secondary"
+              >{{ detailPos + 1 }} / {{ detailList.length }}</span
+            >
+            <el-button
+              :icon="ArrowRight"
+              circle
+              :disabled="detailPos === detailList.length - 1"
+              @click="detailGo(1)"
+            />
+          </template>
           <span style="flex: 1"></span>
           <el-button @click="detailVisible = false">关闭</el-button>
         </div>
@@ -458,12 +461,10 @@ function openDetailFromSelection(): void {
   detailVisible.value = true;
 }
 
-/** 从「内容」列链接直接打开该条记录的详情弹窗（保留左右切换） */
+/** 从「内容」列链接打开详情弹窗 — detailList 仅当前 1 条（统一架构：链接点击仅 1 条，详细按钮多条） */
 function openDetailByRow(row: RecordItemDTO): void {
-  const idx = filteredRecords.value.findIndex((r) => r.id === row.id);
-  if (idx < 0) return;
-  detailList.value = [...filteredRecords.value];
-  detailPos.value = idx;
+  detailList.value = [row];
+  detailPos.value = 0;
   detailVisible.value = true;
 }
 

@@ -92,7 +92,7 @@
               </el-table-column>
               <el-table-column label="状态" width="120" align="center">
                 <template #default="{ row }">
-                  <span class="doc-status">{{ docStatusLabel(row.status) }}</span>
+                  <span class="doc-status" :class="statusClass(row.status)">{{ docStatusLabel(row.status) }}</span>
                   <el-tooltip
                     v-if="row.errorMessage"
                     :content="row.errorMessage"
@@ -148,21 +148,24 @@
     </div>
     <template #footer>
       <div style="display: flex; align-items: center; gap: 8px">
-        <el-button
-          :icon="ArrowLeft"
-          circle
-          :disabled="detailPos === 0"
-          @click="detailGo(-1)"
-        />
-        <span class="text-sm text-secondary"
-          >{{ detailPos + 1 }} / {{ detailList.length }}</span
-        >
-        <el-button
-          :icon="ArrowRight"
-          circle
-          :disabled="detailPos === detailList.length - 1"
-          @click="detailGo(1)"
-        />
+        <!-- 切换仅在多条时显示（对齐内容页统一架构：链接点击仅1条→隐藏，详细按钮多条→显示） -->
+        <template v-if="detailList.length > 1">
+          <el-button
+            :icon="ArrowLeft"
+            circle
+            :disabled="detailPos === 0"
+            @click="detailGo(-1)"
+          />
+          <span class="text-sm text-secondary"
+            >{{ detailPos + 1 }} / {{ detailList.length }}</span
+          >
+          <el-button
+            :icon="ArrowRight"
+            circle
+            :disabled="detailPos === detailList.length - 1"
+            @click="detailGo(1)"
+          />
+        </template>
         <span style="flex: 1"></span>
         <el-button type="warning" @click="handleDocReupload(detailDoc!)"
           >重新上传</el-button
@@ -298,11 +301,13 @@ const docPolling = ref<boolean>(false);
 /** 轮询定时器 */
 let docPollTimer: number | null = null;
 
-/** 分类下拉选项（从常量派生） */
-const categoryOptions = Object.entries(KNOWLEDGE_CATEGORY).map(([, value]) => ({
-  label: categoryLabel(value),
-  value,
-}));
+/** 分类下拉选项（从常量派生；平台帮助为系统内置、禁止上传，仅保留物业资料分类） */
+const categoryOptions = Object.entries(KNOWLEDGE_CATEGORY)
+  .filter(([, value]) => value !== KNOWLEDGE_CATEGORY.HELP)
+  .map(([, value]) => ({
+    label: categoryLabel(value),
+    value,
+  }));
 
 /** 分类中文标签映射 */
 function categoryLabel(value: string): string {
@@ -321,6 +326,13 @@ function docStatusLabel(status: string): string {
   if (status === DOC_STATUS.READY) return "就绪";
   if (status === DOC_STATUS.FAILED) return "失败";
   return status;
+}
+
+/** 文档状态颜色类：解析中深蓝、就绪绿、失败深红（颜色走 token，见 .status-* 样式，不硬编码） */
+function statusClass(status: string): string {
+  if (status === DOC_STATUS.READY) return "status-ready";
+  if (status === DOC_STATUS.FAILED) return "status-failed";
+  return "status-parsing";
 }
 
 /** 按分类/状态/关键词前端过滤后的文档列表（条数显示与此一致） */
@@ -395,12 +407,10 @@ function openDetailFromSelection(): void {
   detailVisible.value = true;
 }
 
-/** 点击文件名快速打开详情（以当前过滤列表为切换范围，定位到该行） */
+/** 点击文件名链接打开详情弹窗 — detailList 仅当前 1 条（统一架构：链接点击仅 1 条，详细按钮多条） */
 function openDetail(row: KnowledgeDocumentDTO): void {
-  const idx = filteredDocs.value.findIndex((d) => d.id === row.id);
-  if (idx < 0) return;
-  detailList.value = [...filteredDocs.value];
-  detailPos.value = idx;
+  detailList.value = [row];
+  detailPos.value = 0;
   detailVisible.value = true;
 }
 
@@ -522,10 +532,11 @@ function removeUploadFile(index: number): void {
 /** 文件选择变化（上传 / 重新上传共用）：过滤不支持类型，仅保留支持文件 */
 function onUploadFileChange(e: Event): void {
   const input = e.target as HTMLInputElement;
-  const files = input.files;
+  // 先复制文件列表为数组快照，再清空 input——FileList 是 input 的实时视图，
+  // 若先清空再读取，length 会变 0 导致文件名丢失（无法显示已选文件）
+  const all = Array.from(input.files || []);
   input.value = ""; // 清空以支持重复选择同一批文件
-  if (!files || files.length === 0) return;
-  const all = Array.from(files);
+  if (all.length === 0) return;
   const supported = all.filter(isSupportedFile);
   const unsupported = all.filter((f) => !isSupportedFile(f));
   if (unsupported.length > 0) {
@@ -654,10 +665,24 @@ onUnmounted(() => {
   vertical-align: middle;
 }
 
-/* 列表状态列文字 — 深绿色 */
+/* 列表状态列文字 — 按状态着色（解析中/失败深红、就绪绿），颜色走设计 token 不硬编码 */
 .doc-status {
-  color: #1e7d4b;
   font-weight: 500;
+}
+
+/* 解析中：深蓝（处理中，走主强调色 token） */
+.status-parsing {
+  color: var(--accent);
+}
+
+/* 就绪：绿 */
+.status-ready {
+  color: var(--green);
+}
+
+/* 失败：深红 */
+.status-failed {
+  color: var(--red);
 }
 
 /* 文档详情弹窗 */
@@ -698,6 +723,8 @@ onUnmounted(() => {
 
 /* 多选文件列表 */
 .upload-file-list {
+  /* 独占一行：已选文件列表换行到按钮下方，不与「选择文件」按钮同行 */
+  width: 100%;
   margin-top: 8px;
   display: flex;
   flex-direction: column;
