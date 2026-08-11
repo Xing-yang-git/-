@@ -24,7 +24,8 @@
     <view class="history-header">
       <text class="history-title">历史对话</text>
       <view class="history-actions">
-        <text wx:if="{{selecting}}" class="history-action danger" bindtap="onBatchDelete">删除所选</text>
+        <!-- 多选模式右上角：垃圾桶图标批量删除（点击弹确认，见 onBatchDelete） -->
+        <image wx:if="{{selecting}}" class="history-action-icon" src="/images/icon-trash.svg" mode="aspectFit" bindtap="onBatchDelete" />
         <text class="history-action" bindtap="onCloseHistory">关闭</text>
       </view>
     </view>
@@ -41,7 +42,8 @@
         bindlongpress="onHistoryLongPress"
       >
         <view class="history-check" wx:if="{{selecting}}">
-          <view class="checkbox {{selectedIds.indexOf(item.id) > -1 ? 'checked' : ''}}"></view>
+          <!-- 选中态用列表项自带的 selected 字段判断（wxml 不支持数组方法 indexOf，见 toggleSelect） -->
+          <view class="checkbox {{item.selected ? 'checked' : ''}}"></view>
         </view>
         <view class="history-info">
           <text class="history-item-title">{{item.title}}</text>
@@ -82,32 +84,46 @@
         </view>
         <!-- AI 回复：无气泡全宽排版，按 Markdown 块渲染（标题/段落/列表/加粗） -->
         <view class="ai-reply" wx:else>
-          <block wx:for="{{item.blocks}}" wx:key="index" wx:for-item="blk">
-            <view wx:if="{{blk.type === 'h2'}}" class="md-h2">
-              <text wx:for="{{blk.parts}}" wx:key="index" wx:for-item="part" class="{{part.bold ? 'md-bold' : ''}}">{{part.text}}</text>
-            </view>
-            <view wx:elif="{{blk.type === 'h3'}}" class="md-h3">
-              <text wx:for="{{blk.parts}}" wx:key="index" wx:for-item="part" class="{{part.bold ? 'md-bold' : ''}}">{{part.text}}</text>
-            </view>
-            <view wx:elif="{{blk.type === 'p'}}" class="md-p">
-              <text wx:for="{{blk.parts}}" wx:key="index" wx:for-item="part" class="{{part.bold ? 'md-bold' : ''}}">{{part.text}}</text>
-            </view>
-            <view wx:elif="{{blk.type === 'li'}}" class="md-li">
-              <text class="md-marker">{{blk.ordered ? blk.num + '.' : '•'}}</text>
-              <!-- 标题+正文分行：识别到「**标题**：正文」时标题独立一行、正文缩进下一行，避免长正文单行换行混乱 -->
-              <view wx:if="{{blk.title}}" class="md-li-body">
-                <text class="md-li-title">{{blk.title}}</text>
-                <view class="md-li-desc">
-                  <text wx:for="{{blk.descParts}}" wx:key="index" wx:for-item="part" class="{{part.bold ? 'md-bold' : ''}}">{{part.text}}</text>
-                </view>
-              </view>
-              <view wx:else class="md-li-body">
+          <!-- 打字机进行中：渲染净化纯文本（避免逐字蹦字时频繁重算 Markdown），流结束切回正式排版 -->
+          <view wx:if="{{item.typewriting}}" class="md-p typewriter-text">
+            <text class="typewriter-content" decode>{{item.displayText}}</text>
+            <text class="typing" wx:if="{{item.streaming}}">▍</text>
+            <text class="abort-marker" wx:if="{{item.aborted}}">（已终止）</text>
+          </view>
+          <block wx:else>
+            <block wx:for="{{item.blocks}}" wx:key="index" wx:for-item="blk">
+              <view wx:if="{{blk.type === 'h2'}}" class="md-h2">
                 <text wx:for="{{blk.parts}}" wx:key="index" wx:for-item="part" class="{{part.bold ? 'md-bold' : ''}}">{{part.text}}</text>
               </view>
-            </view>
+              <view wx:elif="{{blk.type === 'h3'}}" class="md-h3">
+                <text wx:for="{{blk.parts}}" wx:key="index" wx:for-item="part" class="{{part.bold ? 'md-bold' : ''}}">{{part.text}}</text>
+              </view>
+              <view wx:elif="{{blk.type === 'p'}}" class="md-p">
+                <text wx:for="{{blk.parts}}" wx:key="index" wx:for-item="part" class="{{part.bold ? 'md-bold' : ''}}">{{part.text}}</text>
+              </view>
+              <view wx:elif="{{blk.type === 'li'}}" class="md-li">
+                <text class="md-marker">{{blk.ordered ? blk.num + '.' : '•'}}</text>
+                <!-- 标题+正文分行：识别到「**标题**：正文」时标题独立一行、正文缩进下一行，避免长正文单行换行混乱 -->
+                <view wx:if="{{blk.title}}" class="md-li-body">
+                  <text class="md-li-title">{{blk.title}}</text>
+                  <view class="md-li-desc">
+                    <text wx:for="{{blk.descParts}}" wx:key="index" wx:for-item="part" class="{{part.bold ? 'md-bold' : ''}}">{{part.text}}</text>
+                  </view>
+                </view>
+                <!-- 无标题但有补充描述（「1. 标题\n说明」合并结构）：正文多行缩进，说明行按 \n 换行 -->
+                <view wx:elif="{{blk.descParts}}" class="md-li-body">
+                  <view class="md-li-desc">
+                    <text wx:for="{{blk.descParts}}" wx:key="index" wx:for-item="part" class="{{part.bold ? 'md-bold' : ''}}">{{part.text}}</text>
+                  </view>
+                </view>
+                <view wx:else class="md-li-body">
+                  <text wx:for="{{blk.parts}}" wx:key="index" wx:for-item="part" class="{{part.bold ? 'md-bold' : ''}}">{{part.text}}</text>
+                </view>
+              </view>
+            </block>
+            <text class="typing" wx:if="{{item.streaming}}">▍</text>
+            <text class="abort-marker" wx:if="{{item.aborted}}">（已终止）</text>
           </block>
-          <text class="typing" wx:if="{{item.streaming}}">▍</text>
-          <text class="abort-marker" wx:if="{{item.aborted}}">（已终止）</text>
         </view>
       </view>
       <!-- 失败重试入口（超时/网络中断/出错时显示，点击原问题重发） -->

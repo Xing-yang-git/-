@@ -26,38 +26,80 @@ const BOLD_PATTERN = /\*\*(.+?)\*\*/g;
 function parseMarkdown(text) {
   if (!text) return [];
   const blocks = [];
-  const lines = String(text).replace(/\r\n/g, '\n').split('\n');
-  let orderedCounter = 0;
-  for (const raw of lines) {
+  const state = { orderedCounter: 0, hadBlank: false };   // 跨行解析状态：列表编号、空行分隔
+  for (const raw of String(text).replace(/\r\n/g, '\n').split('\n')) {
     const line = raw.trim();
-    if (!line) continue;   // 空行分段
-    // 标题（## / ###）
-    const h = line.match(/^(#{2,3})\s+(.*)$/);
-    if (h) {
-      orderedCounter = 0;
-      blocks.push({ type: h[1].length === 2 ? 'h2' : 'h3', parts: parseInline(h[2]) });
-      continue;
-    }
-    // 无序列表项（- 或 * 或 •）
-    const ul = line.match(/^[-*•]\s+(.*)$/);
-    if (ul) {
-      orderedCounter = 0;
-      blocks.push(buildLi(false, parseInline(ul[1])));
-      continue;
-    }
-    // 有序列表项（1. / 1、 / 1)），连续项自动编号
-    const ol = line.match(/^\d+[.、)]\s+(.*)$/);
-    if (ol) {
-      const prev = blocks[blocks.length - 1];
-      orderedCounter = (prev && prev.type === 'li' && prev.ordered) ? orderedCounter + 1 : 1;
-      blocks.push(buildLi(true, parseInline(ol[1]), orderedCounter));
-      continue;
-    }
-    // 普通段落
-    orderedCounter = 0;
-    blocks.push({ type: 'p', parts: parseInline(line) });
+    if (!line) { state.hadBlank = true; continue; }   // 空行分段
+    parseLineInto(blocks, line, state);
   }
   return blocks;
+}
+
+/**
+ * 解析单行 Markdown 并写入 blocks（主循环薄分派，状态由 state 跨行维护）。
+ * 行分类优先级：标题 → 无序列表 → 有序列表 → 列表项补充描述 → 普通段落。
+ *
+ * @param blocks 已解析的块数组（就地追加）
+ * @param line   当前行（已 trim）
+ * @param state  {orderedCounter, hadBlank} 跨行状态
+ */
+function parseLineInto(blocks, line, state) {
+  // 标题（## / ###）
+  const h = line.match(/^(#{2,3})\s+(.*)$/);
+  if (h) {
+    state.orderedCounter = 0;
+    blocks.push({ type: h[1].length === 2 ? 'h2' : 'h3', parts: parseInline(h[2]) });
+    state.hadBlank = false;
+    return;
+  }
+  // 无序列表项（- 或 * 或 •）
+  const ul = line.match(/^[-*•]\s+(.*)$/);
+  if (ul) {
+    state.orderedCounter = 0;
+    blocks.push(buildLi(false, parseInline(ul[1])));
+    state.hadBlank = false;
+    return;
+  }
+  // 有序列表项（1. / 1、 / 1)），连续项自动编号
+  const ol = line.match(/^\d+[.、)]\s+(.*)$/);
+  if (ol) {
+    const prev = blocks[blocks.length - 1];
+    state.orderedCounter = prev?.type === 'li' && prev?.ordered ? state.orderedCounter + 1 : 1;
+    blocks.push(buildLi(true, parseInline(ol[1]), state.orderedCounter));
+    state.hadBlank = false;
+    return;
+  }
+  // 普通行：无空行紧跟列表项 → 合并为该列表项补充描述（覆盖模型「1. 标题\n说明」非规范 Markdown，
+  // 合并后编号保持连续、说明缩进在列表项下）；空行分隔的普通行 → 独立段落（新语义段）
+  const prev = blocks[blocks.length - 1];
+  if (prev?.type === 'li' && !state.hadBlank) {
+    appendLiDesc(prev, line);
+    state.hadBlank = false;
+    return;
+  }
+  // 普通段落
+  state.orderedCounter = 0;
+  blocks.push({ type: 'p', parts: parseInline(line) });
+  state.hadBlank = false;
+}
+
+/**
+ * 把紧跟列表项（无空行分隔）的普通行合并为该列表项的补充描述，按 \n 换行显示。
+ * 模型输出「1. 标题\n说明」时说明行会被解析为独立段落、打断有序编号——合并后编号连续、排版为标题下缩进说明。
+ *
+ * @param li   上一个列表项块（就地追加）
+ * @param line 待合并的普通行
+ */
+function appendLiDesc(li, line) {
+  if (li.descParts) {
+    // 已有 descParts（**标题**：正文 或已合并过）：追加一段说明
+    li.descParts.push({ text: '\n' + line, bold: false });
+  } else {
+    // 无 descParts：把原 parts 作为首段正文，后续行追加（渲染走 descParts 分行结构）
+    li.descParts = [...(li.parts || [])];
+    delete li.parts;
+    li.descParts.push({ text: '\n' + line, bold: false });
+  }
 }
 
 /**

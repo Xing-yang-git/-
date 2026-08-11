@@ -16,8 +16,10 @@ let _reauthTimer = null;
 /** 本会话内 enableChunked 分块通道是否已确认可用（由 {@link probeChunked} 探测得出）。
  * 默认 false = 非分块直发（消息只发一次，绝无降级重试导致的双发）；探测确认分块可用后才启用分块流式。 */
 let _chunkedUsable = false;
-/** 是否已探测过分块通道（防止重复探测） */
-let _chunkProbed = false;
+/** 分块通道探测 Promise（幂等缓存：探测完成前重复调用等待同一结果） */
+let _chunkProbePromise = null;
+/** 分块探测等待超时（毫秒）：探测请求异常挂起时不阻塞用户对话，超时按当前探测结果降级为默认模式 */
+const PROBE_WAIT_TIMEOUT_MS = 3000;
 
 /**
  * 将 string / ArrayBuffer 统一解码为字符串（SSE 文本）。模块级复用（requestStream 与探测共用）。
@@ -51,36 +53,41 @@ function toText(d) {
  * 探测本身零业务副作用（后端 /api/agent/probe 不读会话、不调 LLM）。</p>
  */
 function probeChunked() {
-  if (_chunkProbed) return;
-  _chunkProbed = true;
-  const app = getApp();
-  const baseUrl = app.globalData ? app.globalData.baseUrl : '';
-  const token = wx.getStorageSync('token') || '';
-  let receivedChunk = false;
-  wx.request({
-    method: 'GET',
-    url: baseUrl + '/api/agent/probe',
-    header: {
-      'Accept': 'text/event-stream',
-      'Authorization': token ? 'Bearer ' + token : ''
-    },
-    enableChunked: true,
-    responseType: 'text',
-    success: (res) => {
-      // onChunkReceived 已送达数据则无需再看 success body
-      if (receivedChunk) return;
-      const body = toText(res.data);
-      if (body && body.indexOf('data:') !== -1) _chunkedUsable = true;
-    },
-    fail: () => { /* 探测失败保持默认非分块（_chunkedUsable 仍为 false） */ },
-    onChunkReceived: (res) => {
-      const chunk = toText(res.data);
-      if (chunk) {
-        receivedChunk = true;
-        _chunkedUsable = true;
+  if (_chunkProbePromise) return _chunkProbePromise;
+  _chunkProbePromise = new Promise((resolve) => {
+    const app = getApp();
+    const baseUrl = app.globalData ? app.globalData.baseUrl : '';
+    const token = wx.getStorageSync('token') || '';
+    let receivedChunk = false;
+    wx.request({
+      method: 'GET',
+      url: baseUrl + '/api/agent/probe',
+      header: {
+        'Accept': 'text/event-stream',
+        'Authorization': token ? 'Bearer ' + token : ''
+      },
+      enableChunked: true,
+      responseType: 'text',
+      success: (res) => {
+        // onChunkReceived 已送达数据则无需再看 success body
+        if (!receivedChunk) {
+          const body = toText(res.data);
+          if (body && body.indexOf('data:') !== -1) _chunkedUsable = true;
+        }
+        resolve();
+      },
+      fail: () => { /* 探测失败保持默认非分块（_chunkedUsable 仍为 false） */ resolve(); },
+      onChunkReceived: (res) => {
+        const chunk = toText(res.data);
+        if (chunk) {
+          receivedChunk = true;
+          _chunkedUsable = true;
+        }
+        resolve();
       }
-    }
+    });
   });
+  return _chunkProbePromise;
 }
 
 /** 重置 _reauthPending 状态（安全兜底：最多 3 秒后自动恢复） */
@@ -345,12 +352,20 @@ const requestStream = (url, data, onChunk, onError) => {
     });
   };
 
-  // 探测确认分块可用才用分块真流式；否则（默认）非分块直发——消息只发一次，绝不双发
-  if (_chunkedUsable) {
-    doRequest(true);
-  } else {
-    doRequest(false);
-  }
+  // 等待分块通道探测完成（幂等、秒回）再决定模式：探测未完成时若按非分块直发 SSE，
+  // 真机基础库对非分块 SSE 长连接易网络层失败（首次会话出现"网络中断"）；等待后首次请求即用正确模式。
+  // 加超时保护：探测请求异常挂起（极端网络场景）不阻塞用户对话，超时按当前探测结果降级为默认模式
+  Promise.race([
+    probeChunked(),
+    new Promise((resolve) => setTimeout(resolve, PROBE_WAIT_TIMEOUT_MS)),
+  ]).then(() => {
+    if (cancelled) return;   // 等待期间用户已中止：不再发起请求
+    if (_chunkedUsable) {
+      doRequest(true);
+    } else {
+      doRequest(false);
+    }
+  });
 
   return () => {
     cancelled = true;

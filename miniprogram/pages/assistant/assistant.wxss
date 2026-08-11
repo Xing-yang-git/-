@@ -119,6 +119,13 @@
   color: var(--red);
 }
 
+/* 批量删除图标（多选模式右上角）：红色垃圾桶，尺寸对齐历史项右侧操作区图标 */
+.history-action-icon {
+  width: 36rpx;
+  height: 36rpx;
+  vertical-align: middle;
+}
+
 .history-list {
   /* 高度由 JS 动态计算（calibrateHistoryHeight）设为明确 px，保证 scroll-view 可滚动；
      不依赖 flex 高度约束——部分真机对 fixed + flex + max-height 的 scroll-view 高度计算不可靠 */
@@ -333,6 +340,7 @@
 .md-li-desc {
   display: block;
   word-break: break-word;   /* 与 .md-li 一致，词边界换行 */
+  white-space: pre-wrap;    /* 保留 \n 换行：合并进列表项的补充描述按原行分段显示 */
 }
 
 .md-bold {
@@ -343,6 +351,12 @@
 .typing {
   display: inline-block;
   animation: blink 1s step-end infinite; /* blink 定义在 app.wxss 全局 keyframes（铁律：@keyframes 不入页面 WXSS） */
+}
+
+/* 打字机纯文本：保留换行让逐字蹦字时的段落结构与最终排版一致（text 组件默认折叠换行） */
+.typewriter-content {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* 终止标记：灰色小字（用户点击终止后追加在正文下方，不污染正文） */

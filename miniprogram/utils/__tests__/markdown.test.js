@@ -68,6 +68,29 @@ describe('markdown 轻量解析器', () => {
     expect(blocks[3]).toMatchObject({ type: 'li', ordered: true, num: 1 });
   });
 
+  test('列表项后无空行的普通行合并为补充描述，编号保持连续', () => {
+    // 模型常见「1. 标题\n说明」非规范 Markdown：说明行并入列表项，避免打断有序编号
+    const blocks = parseMarkdown('1. 第一步\n第一步说明\n2. 第二步\n第二步说明');
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]).toMatchObject({ type: 'li', ordered: true, num: 1 });
+    expect(blocks[0].descParts).toEqual([
+      { text: '第一步', bold: false },
+      { text: '\n第一步说明', bold: false },
+    ]);
+    expect(blocks[1]).toMatchObject({ type: 'li', ordered: true, num: 2 });
+    expect(blocks[1].descParts).toEqual([
+      { text: '第二步', bold: false },
+      { text: '\n第二步说明', bold: false },
+    ]);
+  });
+
+  test('空行分隔的普通行不并入列表项（独立段落）', () => {
+    const blocks = parseMarkdown('1. 第一步\n\n独立说明');
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0].type).toBe('li');
+    expect(blocks[1].type).toBe('p');
+  });
+
   test('普通段落与空行分段', () => {
     const blocks = parseMarkdown('第一段\n\n第二段');
     expect(blocks).toHaveLength(2);

@@ -9,12 +9,16 @@ let speechManager = null;
 
 /** SSE 静默看门狗时长（毫秒）：收到任何分块即重置，仅当流真正静默超时才判超时 */
 const WATCHDOG_SILENCE_MS = 45000;
-/** 打字机逐段显示的间隔（毫秒） */
-const SPREAD_INTERVAL_MS = 80;
-/** 打字机每个 tick 批量应用的事件数（2 事件/tick，降低 setData 频次，规避小程序渲染压力） */
-const SPREAD_BATCH = 2;
-/** 打字机模拟总时长上限（毫秒）：预计模拟时长超过则放弃打字机、一次性全量渲染，避免超长回复慢慢蹦字像卡住 */
-const MAX_SPREAD_MS = 2500;
+/** 打字机每 tick 蹦出的字符数（2 字符/tick，视觉近似逐字，同时压降 setData 频次） */
+const TYPEWRITER_STEP = 2;
+/** 打字机相邻两次 setData 的间隔（毫秒） */
+const TYPEWRITER_INTERVAL_MS = 24;
+/** 打字机启用的最小正文长度（字符）：短回复（问候/拦截）直接渲染，避免快速蹦字观感突兀 */
+const TYPEWRITER_MIN_LEN = 40;
+/** 打字机模拟总时长上限（毫秒）：预计蹦完超过则放弃打字机、一次性全量渲染，避免超长回复慢慢蹦字像卡住 */
+const TYPEWRITER_MAX_MS = 8000;
+/** 打字机滚动节流：每 N 次 setData 滚一次到底（逐字高频 setData 下避免滚动抖动） */
+const TYPEWRITER_SCROLL_EVERY = 4;
 
 /** 解析后端返回的 sources/actions JSON 字符串为数组（null/非法返回空数组） */
 function parseJsonArray(str) {
@@ -60,10 +64,8 @@ Page({
     historyListHeight: 0,
     /** 历史会话列表（后端返回字段 id 即会话级 conversationId；含 updatedAtText 显示字段） */
     historyList: [],
-    /** 批量选择模式 */
+    /** 批量选择模式（长按进入；选中态由列表项 selected 字段驱动，见 toggleSelect） */
     selecting: false,
-    /** 已选会话 conversationId 集合（去重；同一会话多段只选一次） */
-    selectedIds: [],
     /** 历史分页页码 */
     historyPage: 0,
     /** 历史总数（分页判断） */
@@ -383,8 +385,11 @@ Page({
     this._sseBuffer = '';
     const msgId = this._currentMsgId;
     const messages = this.data.messages.map((m) => {
-      // aborted 标记由 WXML 渲染成灰色"（已终止）"行，不污染正文
-      if (m.id === msgId) return { ...m, streaming: false, aborted: true };
+      // 打字机中止：把已蹦的净化文本落为正文并重算，避免正文丢失；aborted 标记由 WXML 渲染成灰色"（已终止）"行
+      if (m.id === msgId) {
+        const partial = m.typewriting ? (m.displayText || '') : m.content;
+        return { ...this._withContent(m, partial), typewriting: false, streaming: false, aborted: true };
+      }
       return m;
     });
     this.setData({ messages, sending: false });
@@ -424,7 +429,9 @@ Page({
       const msgId = this._currentMsgId;
       const messages = this.data.messages.map((m) => {
         if (m.id === msgId) {
-          return { ...this._withContent(m, (m.content || '') + '\n（回复超时）'), streaming: false, failed: true };
+          // 打字机态超时：已蹦净化文本落为正文，避免正文丢失
+          const partial = m.typewriting ? (m.displayText || '') : m.content;
+          return { ...this._withContent(m, partial + '\n（回复超时）'), typewriting: false, streaming: false, failed: true };
         }
         return m;
       });
@@ -451,17 +458,40 @@ Page({
     }
     if (events.length === 0) return;
 
-    // 打字机模拟仅用于非分块全量体：事件足够多（>3，问候/拦截只有 3 个事件）
-    // 且预计模拟时长未超上限（超长回复直接全量渲染，避免慢慢蹦字像卡住）
-    const spreadTicks = Math.ceil(events.length / SPREAD_BATCH);
-    const spreadTooLong = spreadTicks * SPREAD_INTERVAL_MS > MAX_SPREAD_MS;
-    if (isFallback && events.length > 3 && !spreadTooLong) {
-      this._spreadSseEvents(events);
+    // 逐字打字机触发条件：批量到达（非分块全量体 或 真机 TCP 粘包多事件合并）且**本批含 end 事件**且正文足够长——
+    // 仅"全量批"（粘包全量 or 非分块全量体，含 start/answer/end）启用打字机；
+    // 若本批不含 end，说明流还有后续分块——走 _applySseEvents 直接渲染（分批到达天然分段，保留流式观感），
+    // 避免打字机动画期间后续 chunk 并发写入导致中间 token 丢失 / 消息卡死在 typewriting 态
+    const answerLen = this._answerEventsLen(events);
+    const bulkArrival = isFallback || events.length > 1;
+    const batchEnded = events.some((ev) => /"type"\s*:\s*"end"/.test(ev));
+    if (bulkArrival && batchEnded && answerLen >= TYPEWRITER_MIN_LEN
+        && Math.ceil(answerLen / TYPEWRITER_STEP) * TYPEWRITER_INTERVAL_MS <= TYPEWRITER_MAX_MS) {
+      this._typewriteEvents(events);
     } else {
       this._applySseEvents(events);
     }
     // 收到任何数据 = 流存活，重置静默看门狗（流结束后不重挂，避免悬空定时器）
     if (this.data.sending) this._armStreamWatchdog();
+  },
+
+  /**
+   * 统计一批 SSE 事件中 answer 事件的正文总长度（用于判定是否启用逐字打字机）。
+   *
+   * @param events SSE 事件文本数组
+   * @return answer 正文拼接后的字符数
+   */
+  _answerEventsLen(events) {
+    let total = 0;
+    for (const ev of events) {
+      const dataLine = ev.split('\n').find((l) => l.startsWith('data:'));
+      if (!dataLine) continue;
+      try {
+        const parsed = JSON.parse(dataLine.slice(5).trim());
+        if (parsed && parsed.type === 'answer') total += (parsed.data || '').length;
+      } catch (e) { /* 忽略解析失败事件（与 _applySseEvent 一致） */ }
+    }
+    return total;
   },
 
   /**
@@ -500,52 +530,115 @@ Page({
   },
 
   /**
-   * 打字机逐段应用一组 SSE 事件（仅非分块全量体场景，由 {@link _onSseChunk} 判定）：
-   * 每 {@link SPREAD_BATCH} 个事件经定时器间隔合并一次 setData——间隔分散在各事件循环 turn，
-   * 不构成渲染风暴，回复文本逐段出现，模拟真流式观感。end 事件仍负责收尾（sending=false、清看门狗）。
+   * 净化 Markdown 标记为纯文本（打字机显示用）：剥掉加粗/标题/列表/代码围栏等标记符号，
+   * 避免打字机期间把原始 `##`、`**` 等符号蹦给用户看；流结束仍用原始 Markdown 重算正式排版。
    *
-   * @param events SSE 事件文本数组（同一批到达，含大量 answer）
+   * @param text 原始 Markdown 文本
+   * @return 净化后的纯文本
    */
-  _spreadSseEvents(events) {
-    // 防御：若存在上一轮残留打字机定时器先清掉（sending 门禁已防并发，双保险防竞态）
+  _cleanTypewriterText(text) {
+    // 净化时保留 `1. ` / `- ` 列表标记：打字机期间就显示编号/列表结构，
+    // 与流结束后的正式排版一致，避免"纯文字 → 突然加编号"的跳变
+    return (text || '')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')      // **加粗** → 加粗（标记去掉、文字保留）
+      .replace(/^\s*#{1,4}\s*/gm, '')          // 行首标题标记 ## → 去掉
+      .replace(/^```[\s\S]*?```$/gm, '')       // 代码块整块去掉（含围栏）
+      .replace(/\n{3,}/g, '\n\n')              // 压缩多余空行
+      .trim();
+  },
+
+  /**
+   * 逐字打字机：把一批 SSE 事件的 answer 正文按字符逐段蹦出（真机 TCP 粘包/非分块全量体的流式模拟）。
+   *
+   * <p>与旧分段打字机的区别：按字符粒度显示净化纯文本，而非按事件批次——视觉更接近真流式。
+   * 打字机期间消息处于 typewriting 态（WXML 渲染 displayText 纯文本，避免逐字重算 Markdown），
+   * 蹦完后由 {@link _finishTypewrite} 应用收尾事件（sources/action/replace/end）并重算 Markdown 排版。</p>
+   *
+   * @param events SSE 事件文本数组（同一批到达，含多个 answer）
+   */
+  _typewriteEvents(events) {
+    const msgId = this._currentMsgId;
+    // 分离 answer 正文与收尾事件（sources/action/replace/end/error/clear 等非正文事件）
+    const answerParts = [];
+    const tailEvents = [];
+    for (const ev of events) {
+      const dataLine = ev.split('\n').find((l) => l.startsWith('data:'));
+      if (!dataLine) continue;
+      let parsed;
+      try { parsed = JSON.parse(dataLine.slice(5).trim()); } catch (e) { continue; }
+      if (parsed && parsed.type === 'answer') answerParts.push(parsed.data || '');
+      else tailEvents.push(ev);
+    }
+    const fullText = answerParts.join('');
+    const cleanText = this._cleanTypewriterText(fullText);
+    if (!cleanText) { this._applySseEvents(events); return; }
+
+    // 防御：清残留定时器（sending 门禁已防并发，双保险防竞态）
     if (this._spreadTimer) { clearTimeout(this._spreadTimer); this._spreadTimer = null; }
-    let i = 0;
-    let batchCount = 0;
-    const applyNext = () => {
-      // 中止/离开后（sending=false）不再继续显示，避免残留定时器继续 setData
-      if (!this.data.sending && i > 0) return;
-      let pending = this.data.messages;
-      let mutated = false;
-      let needScroll = false;
-      let finished = false;
-      for (let k = 0; k < SPREAD_BATCH && i < events.length; k++, i++) {
-        const result = this._applySseEvent(events[i], pending);
-        if (result) {
-          pending = result.messages;
-          mutated = true;
-          if (result.scroll) needScroll = true;
-          if (result.finish) finished = true;
-        }
-      }
-      if (mutated || finished) {
-        const payload = {};
-        if (mutated) payload.messages = pending;
-        if (finished) {
-          if (this._streamWatchdog) { clearTimeout(this._streamWatchdog); this._streamWatchdog = null; }
-          payload.sending = false;
-        }
-        this.setData(payload);
-        // 节流：打字机每 2 批滚一次（减少动画打断），流结束那次必滚保证最终位置到底
-        if (needScroll && (finished || batchCount % 2 === 0)) this.scrollToBottom();
-      }
-      batchCount++;
-      if (i < events.length && !finished) {
-        this._spreadTimer = setTimeout(applyNext, SPREAD_INTERVAL_MS);
+    // 先切到打字机态（WXML 渲染 displayText 纯文本 + 光标），避免 blocks 空态闪烁
+    this.setData({ messages: this.data.messages.map((m) => (
+      m.id === msgId ? { ...m, typewriting: true, displayText: '' } : m
+    )) });
+    this.scrollToBottom();
+
+    let idx = 0;
+    let tickCount = 0;
+    const applyTick = () => {
+      // 中止/离开后（sending=false）不再继续蹦，避免残留定时器继续 setData
+      if (!this.data.sending) return;
+      idx += TYPEWRITER_STEP;
+      const displayText = cleanText.slice(0, idx);
+      this.setData({ messages: this.data.messages.map((m) => (
+        m.id === msgId ? { ...m, typewriting: true, displayText } : m
+      )) });
+      tickCount++;
+      // 滚动节流：每 TYPEWRITER_SCROLL_EVERY 次滚一次，避免高频 setData 下滚动抖动
+      if (tickCount % TYPEWRITER_SCROLL_EVERY === 0 || idx >= cleanText.length) this.scrollToBottom();
+      if (idx < cleanText.length) {
+        this._spreadTimer = setTimeout(applyTick, TYPEWRITER_INTERVAL_MS);
       } else {
         this._spreadTimer = null;
+        this._finishTypewrite(msgId, tailEvents, fullText);
       }
     };
-    applyNext();
+    applyTick();
+  },
+
+  /**
+   * 逐字打字机收尾：蹦完后应用收尾事件（sources/action/replace/end/error），
+   * 并兜底退出 typewriting 态、用原始 Markdown 重算正式排版。
+   *
+   * @param msgId      当前 AI 消息 id
+   * @param tailEvents 非 answer 的收尾事件列表
+   * @param fullText   原始 Markdown 全文（无 replace 时兜底用它重算排版）
+   */
+  _finishTypewrite(msgId, tailEvents, fullText) {
+    const hasReplace = tailEvents.some((ev) => /"type"\s*:\s*"replace"/.test(ev));
+    let pending = this.data.messages;
+    let mutated = false;
+    // 逐条应用收尾事件（复用 _applySseEvent：replace 刷新正文与 Markdown、end 置 streaming=false）
+    for (const ev of tailEvents) {
+      const result = this._applySseEvent(ev, pending);
+      if (result) { pending = result.messages; mutated = true; }
+    }
+    // 兜底退出打字机态：replace 已刷新内容用其正文，否则用原始全文重算排版
+    let typewritingLeft = false;
+    const next = pending.map((m) => {
+      if (m.id === msgId && m.typewriting) {
+        typewritingLeft = true;
+        return { ...this._withContent(m, hasReplace ? (m.content || '') : fullText), typewriting: false };
+      }
+      return m;
+    });
+    if (typewritingLeft) { pending = next; mutated = true; }
+    const payload = {};
+    if (mutated) payload.messages = pending;
+    // 打字机收尾 = 流结束：统一清理看门狗并结束 sending——
+    // end 事件仅把消息 streaming 置 false，不负责页面级 sending；漏置会让看门狗 45s 后误报"（回复超时）"
+    if (this._streamWatchdog) { clearTimeout(this._streamWatchdog); this._streamWatchdog = null; }
+    if (this.data.sending) payload.sending = false;
+    if (Object.keys(payload).length > 0) this.setData(payload);
+    this.scrollToBottom();
   },
 
   /**
@@ -755,7 +848,8 @@ Page({
   onHistoryTap() {
     if (this.data.sending) return;
     this.loadHistory();
-    this.setData({ historyVisible: true, selecting: false, selectedIds: [] });
+    this.setData({ historyVisible: true, selecting: false });
+    this.clearHistorySelection();
   },
 
   /** 阻止遮罩层触摸事件穿透（历史弹层打开时配合 msg-area scroll-y=false，避免手势竞争） */
@@ -763,7 +857,8 @@ Page({
 
   /** 关闭历史弹层 */
   onCloseHistory() {
-    this.setData({ historyVisible: false, selecting: false, selectedIds: [] });
+    this.setData({ historyVisible: false, selecting: false });
+    this.clearHistorySelection();
   },
 
   /**
@@ -908,25 +1003,32 @@ Page({
       .catch((err) => wx.showToast({ title: err.message || '切换失败', icon: 'none' }));
   },
 
-  /** 长按进入批量选择模式 */
+  /** 长按进入批量选择模式（清空历史项选中标记，checkbox 由 item.selected 驱动） */
   onHistoryLongPress() {
     if (this.data.historyList.length === 0) return;
-    this.setData({ selecting: true, selectedIds: [] });
+    this.setData({ selecting: true });
+    this.clearHistorySelection();
   },
 
-  /** 批量选择切换：以会话级 conversationId 为单位（indexOf 去重，同一会话多段只选一次） */
+  /** 批量选择切换：以会话级 conversationId 为单位（String 归一化避免 number/string 类型不一致） */
   toggleSelect(conversationId) {
-    const selected = this.data.selectedIds.slice();
-    const idx = selected.indexOf(conversationId);
-    if (idx > -1) selected.splice(idx, 1);
-    else selected.push(conversationId);
-    this.setData({ selectedIds: selected });
+    const key = String(conversationId);
+    const historyList = this.data.historyList.map((item) =>
+      String(item.id) === key ? { ...item, selected: !item.selected } : item
+    );
+    this.setData({ historyList });
+  },
+
+  /** 清除历史列表所有项的选中标记（退出多选 / 开关弹层时调用，与 selecting 状态解耦） */
+  clearHistorySelection() {
+    const historyList = this.data.historyList.map((item) => ({ ...item, selected: false }));
+    this.setData({ historyList });
   },
 
   /** 批量删除所选会话：按会话级 conversationId 删除（后端删除该会话全部段 + 压缩段） */
   onBatchDelete() {
-    // selectedIds 已按会话去重，此处再兜底 Set 去重，保证传给后端的是去重后的会话级 id 集合
-    const ids = [...new Set(this.data.selectedIds)];
+    // 待删 id 从列表项的 selected 标记汇总（会话级去重，同一会话多段只对应一条）
+    const ids = this.data.historyList.filter((item) => item.selected).map((item) => item.id);
     if (ids.length === 0) {
       wx.showToast({ title: '请先选择会话', icon: 'none' });
       return;
@@ -940,7 +1042,8 @@ Page({
         api.del('/api/agent/history', { ids })
           .then(() => {
             wx.showToast({ title: '已删除', icon: 'success' });
-            this.setData({ selecting: false, selectedIds: [] });
+            this.setData({ selecting: false });
+            this.clearHistorySelection();
             this.loadHistory();
           })
           .catch((err) => wx.showToast({ title: err.message || '删除失败', icon: 'none' }));
