@@ -2,8 +2,15 @@ package com.platform.ai.agent;
 
 import com.platform.ai.common.PromptRepository;
 import com.platform.common.AgentMessageRole;
+import com.platform.common.KnowledgeCategory;
+import com.platform.model.entity.KnowledgeItem;
+import com.platform.repository.KnowledgeItemRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -12,18 +19,33 @@ import org.springframework.ai.chat.messages.UserMessage;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.when;
 
 /**
- * AgentPromptBuilder Prompt 组装单元测试 — 覆盖 System Prompt 占位符渲染、知识库工具化描述与历史消息过滤。
+ * AgentPromptBuilder Prompt 组装单元测试 — 覆盖 System Prompt 占位符渲染（含平台功能权威说明注入）、
+ * 知识库工具化描述与历史消息过滤。
  *
  * <p>知识检索工具化（3b）后：System Prompt 从 {@code prompts/agent/system.md} 读取，运行时只替换
- * {@code {小区名}} 与 {@code {历史记忆}} 占位符，不再拼接知识库命中块（检索改由模型按需调工具）。</p>
+ * {@code {小区名}}、{@code {历史记忆}} 与 {@code {平台功能说明}} 占位符，不再拼接知识库命中块。</p>
  */
+@ExtendWith(MockitoExtension.class)
 @DisplayName("AgentPromptBuilder Prompt 组装单元测试")
 class AgentPromptBuilderTest {
 
+    @Mock
+    private KnowledgeItemRepository knowledgeItemRepository;
+
+    private AgentPromptBuilder builder;
+
     // 与 PromptRepositoryTest 同一假设：classpath 下存在 prompts 提示词文件，构造期加载
-    private final AgentPromptBuilder builder = new AgentPromptBuilder(new PromptRepository());
+    @BeforeEach
+    void setUp() {
+        builder = new AgentPromptBuilder(new PromptRepository(), knowledgeItemRepository);
+        // 默认无内置平台帮助条目：{平台功能说明} 渲染为「（暂无内置平台功能说明）」
+        lenient().when(knowledgeItemRepository.findBuiltinByCategory(KnowledgeCategory.HELP))
+                .thenReturn(List.of());
+    }
 
     @Test
     @DisplayName("组装 - System Prompt 渲染小区名并包含知识库能力与安全规则描述")
@@ -115,5 +137,35 @@ class AgentPromptBuilderTest {
         assertThat(withNull.get(0).getText()).contains("（当无为「无」时，忽略本节）");
         assertThat(withNull.get(0).getText()).doesNotContain("{历史记忆}");
         assertThat(withBlank.get(0).getText()).contains("（当无为「无」时，忽略本节）");
+    }
+
+    @Test
+    @DisplayName("组装 - 内置平台帮助注入 {平台功能说明} 占位符（权威说明段渲染内置条目）")
+    void should_injectPlatformHelp_when_builtinExists() {
+        KnowledgeItem item = KnowledgeItem.builder()
+                .title("注册与实名认证流程")
+                .content("注册流程：使用手机号注册并绑定微信。")
+                .build();
+        lenient().when(knowledgeItemRepository.findBuiltinByCategory(KnowledgeCategory.HELP))
+                .thenReturn(List.of(item));
+
+        List<Message> messages = builder.buildMessages("阳光花园", "怎么注册", List.of());
+
+        String system = messages.get(0).getText();
+        // 内置平台帮助标题与内容注入为权威说明
+        assertThat(system).contains("注册与实名认证流程");
+        assertThat(system).contains("使用手机号注册并绑定微信");
+        // 占位符已替换，不再残留；无「暂无内置」兜底文案
+        assertThat(system).doesNotContain("{平台功能说明}");
+        assertThat(system).doesNotContain("（暂无内置平台功能说明）");
+    }
+
+    @Test
+    @DisplayName("组装 - 无内置平台帮助时 {平台功能说明} 渲染兜底文案")
+    void should_renderPlatformHelpFallback_when_noBuiltin() {
+        List<Message> messages = builder.buildMessages("阳光花园", "怎么注册", List.of());
+
+        assertThat(messages.get(0).getText()).contains("（暂无内置平台功能说明）");
+        assertThat(messages.get(0).getText()).doesNotContain("{平台功能说明}");
     }
 }

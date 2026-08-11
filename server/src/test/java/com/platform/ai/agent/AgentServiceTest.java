@@ -25,11 +25,19 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
 
+import reactor.core.publisher.Flux;
+
+import java.net.SocketException;
+import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -682,5 +690,50 @@ class AgentServiceTest {
         verify(memoryRetrievalService).retrieveMemory(USER_ID, "物业几点下班");
         // null 透传给 buildMessages（「无」的渲染在 AgentPromptBuilder，见 AgentPromptBuilderTest）
         verify(promptBuilder).buildMessages(eq("阳光花园"), eq("物业几点下班"), any(), eq(null));
+    }
+
+    // ==================== 流式连接失败重试（Connection reset 根因） ====================
+
+    /** 构造 DeepSeek 连接重置异常：WebClient 抛、cause 为 SocketException "Connection reset" */
+    private WebClientRequestException connectReset() {
+        return new WebClientRequestException(
+                new SocketException("Connection reset"),
+                HttpMethod.POST, URI.create("https://api.deepseek.com/v1/chat/completions"), new HttpHeaders());
+    }
+
+    @Test
+    @DisplayName("流式重试 - 连接建立阶段 Connection reset（未 emit 内容）自动重连成功")
+    void should_retryOnce_when_connectResetBeforeAnyContent() {
+        // 第一次订阅抛 Connection reset，重试（第二次订阅）后成功——模拟复用陈旧 keep-alive 连接失败后重建
+        AtomicInteger attempts = new AtomicInteger();
+        Flux<ChatResponse> source = Flux.defer(() -> {
+            if (attempts.getAndIncrement() == 0) {
+                return Flux.error(connectReset());
+            }
+            return Flux.just(response("重试成功"));
+        });
+
+        Flux<ChatResponse> retriable = ReflectionTestUtils.invokeMethod(
+                agentService, "withStreamConnectRetry", source);
+
+        assertThat(retriable).isNotNull();
+        ChatResponse got = retriable.blockFirst();
+        assertThat(got.getResult().getOutput().getText()).isEqualTo("重试成功");
+        assertThat(attempts.get()).isEqualTo(2);   // 恰好重试 1 次
+    }
+
+    @Test
+    @DisplayName("流式重试 - 已收到内容后 Connection reset 不重试（避免重复输出）")
+    void should_notRetry_when_connectResetAfterContent() {
+        Flux<ChatResponse> source = Flux.concat(
+                Flux.just(response("部分内容")),
+                Flux.error(connectReset()));
+
+        Flux<ChatResponse> retriable = ReflectionTestUtils.invokeMethod(
+                agentService, "withStreamConnectRetry", source);
+
+        assertThat(retriable).isNotNull();
+        assertThatThrownBy(() -> retriable.blockLast())
+                .isInstanceOf(WebClientRequestException.class);
     }
 }

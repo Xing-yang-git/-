@@ -82,10 +82,14 @@ public class KnowledgeDocumentService {
      */
     public KnowledgeDocumentDTO upload(MultipartFile file, String category, String tags, String source,
                                        boolean replace, Long tenantId, Long adminId) {
+        // 平台帮助（help）为系统内置内容（DataInitializer 播种，Agent 平台功能问题以内置为准），
+        // 禁止文档上传覆盖/补充——避免上传文档与内置说明冲突影响回答正确性
+        if (KnowledgeCategory.HELP.equals(category)) {
+            throw new IllegalArgumentException("平台帮助已系统内置，无需上传，请选择物业资料分类（规章制度/服务手册/办事指南）");
+        }
         // 分类白名单校验（与 KnowledgeService.create 的 validateCategoryAndStatus 一致，防任意字符串破坏前端分类过滤与检索语义）
         boolean validCategory = KnowledgeCategory.RULES.equals(category)
                 || KnowledgeCategory.SERVICE.equals(category)
-                || KnowledgeCategory.HELP.equals(category)
                 || KnowledgeCategory.GUIDE.equals(category);
         if (!validCategory) {
             throw new IllegalArgumentException("未知分类: " + category);

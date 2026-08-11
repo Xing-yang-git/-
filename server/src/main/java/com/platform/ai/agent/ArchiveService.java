@@ -60,6 +60,9 @@ public class ArchiveService {
     /** transcript 中助手行前缀 */
     private static final String TRANSCRIPT_ASSISTANT_PREFIX = "小邻：";
 
+    /** 归档初始标题最大长度（字符）：压缩流程回填 LLM 优化标题前，用首条用户消息摘要兜底展示 */
+    private static final int INITIAL_TITLE_MAX_LEN = 20;
+
     /**
      * 构造器注入。
      *
@@ -190,11 +193,20 @@ public class ArchiveService {
             return null;
         }
 
-        // 新建归档行（每窗口一条；标题由压缩流程异步回填）
+        // 初始标题：用本窗口首条用户消息摘要兜底——压缩流程异步回填 LLM 优化标题前，
+        // 历史列表不显示"未命名对话"；会话仅含 AI/工具消息（无用户消息）时保持 null
+        String initialTitle = toArchive.stream()
+                .filter(item -> AgentMessageRole.USER.equals(item.role()))
+                .map(AgentSession.AgentMessageItem::content)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .map(this::abbreviateTitle)
+                .orElse(null);
+        // 新建归档行（每窗口一条；标题由压缩流程异步回填优化，见 MemoryCompressionService#backfillConversationTitle）
         AgentConversation conversation = AgentConversation.builder()
                 .userId(userId)
                 .tenantId(tenantId)
-                .title(null)
+                .title(initialTitle)
                 .messageCount(toArchive.size())
                 .status(AgentConversationStatus.ARCHIVED)
                 .lastMessageAt(LocalDateTime.now())
@@ -234,6 +246,26 @@ public class ArchiveService {
         log.info("Agent 会话归档完成: userId={}, conversationId={}, archiveRowId={}, 归档 {} 条",
                 userId, sessionConversationId, conversation.getId(), toArchive.size());
         return conversation.getId();
+    }
+
+    /**
+     * 归档初始标题摘要：压缩流程回填 LLM 优化标题前的兜底展示——去空白、按 {@link #INITIAL_TITLE_MAX_LEN} 截断。
+     *
+     * @param content 用户消息原文
+     * @return 摘要标题（不超过 INITIAL_TITLE_MAX_LEN 字符）
+     */
+    private String abbreviateTitle(String content) {
+        String compact = content == null ? "" : content.replaceAll("\\s+", " ").trim();
+        if (compact.isEmpty()) {
+            // 无有效标题内容（空/纯空白消息）→ null，历史列表走「未命名对话」兜底，避免空串标题
+            return null;
+        }
+        return compact.length() <= INITIAL_TITLE_MAX_LEN
+                ? compact
+                // 按 Unicode 码点截断，避免 substring 切断 emoji 代理对产生乱码
+                : compact.codePoints().limit(INITIAL_TITLE_MAX_LEN)
+                        .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
+                        .toString();
     }
 
     /**

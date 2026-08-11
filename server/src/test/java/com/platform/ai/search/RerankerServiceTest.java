@@ -145,6 +145,20 @@ class RerankerServiceTest {
     }
 
     @Test
+    @DisplayName("重排4参 - 全部低于 minScore 时返回空列表（不抛异常，由调用方按未命中处理）")
+    void should_returnEmpty_when_allBelowMinScore() {
+        stubInvokeRunsAction();
+        stubRerankResults(List.of(
+                Map.of("index", 0, "relevance_score", 0.2),
+                Map.of("index", 1, "relevance_score", 0.1)));
+
+        List<KnowledgeHit> result = service.rerank("问题", List.of(hit(1, "A"), hit(2, "B")), 10, 0.4);
+
+        // 全部低于阈值 → 空结果，而非抛异常降级原序（避免把不相关候选喂给模型）
+        assertThat(result).isEmpty();
+    }
+
+    @Test
     @DisplayName("重排4参 - 分数过滤后按 topM 截断")
     void should_truncateAfterFilter_when_fourArg() {
         stubInvokeRunsAction();

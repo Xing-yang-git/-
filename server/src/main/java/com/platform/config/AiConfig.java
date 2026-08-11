@@ -167,6 +167,8 @@ public class AiConfig {
         // Connection: close 关闭 keep-alive 连接复用：外部 AI API 的 keep-alive 连接空闲后会被服务端关闭，
         // Java HttpURLConnection 复用陈旧连接会间歇性 Connection reset，触发 Spring AI 重试（默认 10 次指数退避）
         // 放大到 8~24s。每次新建连接（~50ms 握手）换取稳定，对 LLM 调用时延可忽略。
+        // 注意：此头仅适用于 RestClient（JDK HttpURLConnection）；WebClient（Reactor Netty）的流式
+        // 调用禁止设置 Connection 头（restricted header），连接池复用问题另由 AgentService 流式重试兜底。
         return RestClient.builder().requestFactory(requestFactory).defaultHeader(HEADER_CONNECTION, HEADER_VALUE_CLOSE);
     }
 

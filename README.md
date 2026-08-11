@@ -101,7 +101,7 @@ psql -U postgres -c "CREATE DATABASE community_platform;"
 cd server
 mvn spring-boot:run
 # 启动在 http://localhost:8080
-# schema.sql 自动建表；DataInitializer 播种管理员账号、小区/楼栋/单元/房号数据及平台帮助知识条目（5 条）
+# schema.sql 自动建表；DataInitializer 播种管理员账号、小区/楼栋/单元/房号数据及平台帮助知识条目（5 条，系统内置，禁止文档上传覆盖）
 # 需要在 PostgreSQL 中启用 pgvector 扩展：CREATE EXTENSION IF NOT EXISTS vector;
 # 需要 Redis（Agent 热会话/限流）：docker run --name community-redis -p 6379:6379 -d redis
 # 需要重排服务（可选，RAG 语义重排）：cd rerank-service && docker compose up -d（模型首次需从 ModelScope 下载）
@@ -158,8 +158,8 @@ C端用户通过手机号 + 密码注册登录（`register` 页注册，`login` 
 | 认证 | POST /api/auth/* | wx-login / login / phone-login / register / appeal，GET status |
 | 闲置 | /api/idle-items/** | 发布/列表/详情/搜索（支持 keyword/semantic/混合三种模式）/下架 |
 | AI | POST /api/ai/* | 管理员批量生成语义向量 |
-| AI 助手 | /api/agent/** | 小邻对话（POST chat，SSE 流式 + RAG 检索 + 读工具调用 + 写操作动作卡片 + Redis 会话记忆 + 限流 + 消息前置拦截）/ 分块能力探测（GET probe）/ 推荐提问（GET suggestions）/ 历史会话（GET history 分页、POST history/{id}/resume 按会话级 id 恢复并返回回填消息、DELETE history 批量软删、POST exit 退出会话归档剩余并补压记忆段）/ 长期记忆：滑动窗口压缩 + 新窗口注入 {历史记忆}（按会话归属与时间标注，防跨会话记忆污染）+ 信息冲突处理（知识库优先、时间先后排序、矛盾反问用户确认），需登录 |
-| 文档管理 | /api/knowledge-documents/** | 知识库源文档上传/列表/状态/删除/重传（多格式解析 + OCR + 切片 + embedding + 重排） |
+| AI 助手 | /api/agent/** | 小邻对话（POST chat，SSE 流式 + RAG 检索 + 读工具调用 + 写操作动作卡片 + Redis 会话记忆 + 限流 + 消息前置拦截）/ 分块能力探测（GET probe）/ 推荐提问（GET suggestions）/ 历史会话（GET history 分页、POST history/{id}/resume 按会话级 id 恢复并返回回填消息、DELETE history 批量软删、POST exit 退出会话归档剩余并补压记忆段）/ 长期记忆：滑动窗口压缩 + 新窗口注入 {历史记忆}（按会话归属与时间标注，防跨会话记忆污染）+ 信息冲突处理（知识库优先、时间先后排序、矛盾反问用户确认）+ 平台功能以内置 help 条目为权威依据（注册认证/发布/借入/求助/AI 审核规则，不采信上传文档相关切片），需登录 |
+| 文档管理 | /api/knowledge-documents/** | 知识库源文档上传/列表/状态/删除/重传（多格式解析 + OCR + 切片 + embedding + 重排；平台帮助 help 为系统内置，禁止上传） |
 | 敏感词 | /api/sensitive-words/** | 敏感词增删改查/列表（仅 super_admin） |
 | 借入 | /api/borrow-requests/** | 申请/审批/归还确认 |
 | 技能求助 | /api/help-requests/** | 发布/列表/申请/审批 |

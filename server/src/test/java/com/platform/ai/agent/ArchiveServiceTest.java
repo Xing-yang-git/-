@@ -143,13 +143,13 @@ class ArchiveServiceTest {
 
         archiveService.archiveRemaining(1L);
 
-        // 归档行：status=ARCHIVED、messageCount=2、标题留空（压缩流程异步回填）、会话级 id=自身 id（首次归档）
+        // 归档行：status=ARCHIVED、messageCount=2、初始标题=首条用户消息摘要（压缩流程异步回填 LLM 优化标题前）、会话级 id=自身 id（首次归档）
         ArgumentCaptor<AgentConversation> convCaptor = ArgumentCaptor.forClass(AgentConversation.class);
         verify(conversationRepository, times(2)).save(convCaptor.capture());
         AgentConversation created = convCaptor.getAllValues().get(0);
         assertThat(created.getStatus()).isEqualTo(AgentConversationStatus.ARCHIVED);
         assertThat(created.getTenantId()).isEqualTo(10L);
-        assertThat(created.getTitle()).isNull();
+        assertThat(created.getTitle()).isEqualTo("消息1");
         assertThat(created.getMessageCount()).isEqualTo(2);
 
         verify(messageRepository).saveAll(anyList());
@@ -163,8 +163,8 @@ class ArchiveServiceTest {
     }
 
     @Test
-    @DisplayName("剩余归档 - 归档行标题留空（标题截断逻辑已移至压缩服务，归档同步路径零 LLM 调用）")
-    void should_leaveTitleNull_when_archiving() {
+    @DisplayName("剩余归档 - 归档行初始标题取首条用户消息摘要（超长按码点截断到 20）")
+    void should_setInitialTitle_when_archiving() {
         String longTitle = "这是一个非常非常非常非常非常长的用户首条消息超过二十个字";
         AgentSession session = new AgentSession();
         session.setMessages(new ArrayList<>(List.of(
@@ -176,9 +176,11 @@ class ArchiveServiceTest {
 
         archiveService.archiveRemaining(1L);
 
+        // 首条用户消息为 longTitle：初始标题 = 按码点截断到 INITIAL_TITLE_MAX_LEN 的摘要
         ArgumentCaptor<AgentConversation> captor = ArgumentCaptor.forClass(AgentConversation.class);
         verify(conversationRepository, atLeastOnce()).save(captor.capture());
-        assertThat(captor.getAllValues().get(0).getTitle()).isNull();
+        String title = captor.getAllValues().get(0).getTitle();
+        assertThat(title).isNotNull().hasSize(20).startsWith("这是一个");
     }
 
     // ==================== 滑动窗口归档（archiveWindow） ====================
@@ -193,12 +195,12 @@ class ArchiveServiceTest {
 
         Long rowId = archiveService.archiveWindow(1L, 2);
 
-        // 新行：归档最旧 2 条，messageCount=2，标题留空，首次归档 conversation_id=自身 id
+        // 新行：归档最旧 2 条，messageCount=2，初始标题=首条用户消息摘要，首次归档 conversation_id=自身 id
         ArgumentCaptor<AgentConversation> convCaptor = ArgumentCaptor.forClass(AgentConversation.class);
         verify(conversationRepository, atLeastOnce()).save(convCaptor.capture());
         AgentConversation created = convCaptor.getAllValues().get(0);
         assertThat(rowId).isEqualTo(50L);
-        assertThat(created.getTitle()).isNull();
+        assertThat(created.getTitle()).isEqualTo("消息1");
         assertThat(created.getMessageCount()).isEqualTo(2);
         assertThat(created.getConversationId()).isEqualTo(50L);
 

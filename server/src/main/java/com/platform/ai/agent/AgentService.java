@@ -21,13 +21,17 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.function.FunctionToolCallback;
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
 
 import reactor.core.publisher.Flux;
+import reactor.util.retry.Retry;
 
+import java.net.SocketException;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -70,6 +74,9 @@ public class AgentService {
      *  与 max-turns×2 截断封顶一致，防阈值 > 截断上限永不触发） */
     @Value("${ai.agent.archive-turn-count:10}")
     private int archiveTurnCount;
+
+    /** DeepSeek 流式连接失败自动重试次数（外部 AI keep-alive 连接空闲被服务端关闭，复用陈旧连接会 Connection reset） */
+    private static final int STREAM_CONNECT_RETRY = 1;
 
     /** 问候语关键词（纯寒暄走快速通道，不调外部 API，保证秒回；含常用礼貌语，去重后无重复项） */
     private static final List<String> GREETING_KEYWORDS = List.of(
@@ -255,9 +262,38 @@ public class AgentService {
         Prompt prompt = prepare(userId, filter.message(), filter.injectionHint(), requestId);
         // 前置准备耗时（历史检索 + 前置过滤 + 记忆检索 + 提示组装），便于定位首字延迟前的耗时分布
         log.info("Agent 流式前置准备耗时: userId={}, 耗时={}ms", userId, System.currentTimeMillis() - setupStartMs);
-        // Spring AI 真流式：工具调用在流内自动执行（流式工具循环），内容分块直出
-        Flux<ChatResponse> contentFlux = deepseekChatModel.stream(prompt);
+        // Spring AI 真流式：工具调用在流内自动执行（流式工具循环），内容分块直出；
+        // 包一层连接失败重试（复用陈旧 keep-alive 连接抛 Connection reset 时自动重建，见 withStreamConnectRetry）
+        Flux<ChatResponse> contentFlux = withStreamConnectRetry(deepseekChatModel.stream(prompt));
         return new AgentChatStream(null, null, contentFlux, userId, message, requestId, false);
+    }
+
+    /**
+     * DeepSeek 流式连接失败自动重试：外部 AI API 的 keep-alive 连接空闲后会被服务端关闭，
+     * WebClient（Reactor Netty）连接池复用陈旧连接会抛 Connection reset——SSE 首包即失败，
+     * 前端报"网络中断"、用户需手动重试才能恢复（每次进入小程序首次消息必现）。
+     *
+     * <p>仅当「未收到任何内容」时重试一次：连接建立阶段失败（尚未 emit onNext）重建连接安全；
+     * 流中途失败（已收到内容）重试会重复输出，不重试。</p>
+     *
+     * @param stream DeepSeek 原始内容流
+     * @return 带连接失败重试的内容流
+     */
+    private Flux<ChatResponse> withStreamConnectRetry(Flux<ChatResponse> stream) {
+        AtomicBoolean emittedAny = new AtomicBoolean(false);
+        return stream
+                .doOnNext(cr -> emittedAny.set(true))
+                .retryWhen(Retry.max(STREAM_CONNECT_RETRY)
+                        .filter(ex -> !emittedAny.get() && isConnectionReset(ex)));
+    }
+
+    /** 是否为 DeepSeek 连接重置异常（WebClient 抛、cause 为 SocketException "Connection reset"） */
+    private boolean isConnectionReset(Throwable ex) {
+        if (ex instanceof WebClientRequestException) {
+            Throwable cause = ex.getCause();
+            return cause instanceof SocketException && "Connection reset".equals(cause.getMessage());
+        }
+        return false;
     }
 
     /**

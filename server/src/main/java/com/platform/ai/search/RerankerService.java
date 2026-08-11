@@ -61,7 +61,9 @@ public class RerankerService {
             return candidates;
         }
         try {
-            // 本地服务也可能瞬时不可用：重试 2 次，失败降级原序
+            // 本地服务瞬时不可用会走异常重试 2 次，失败降级原序；
+            // 但「重排后无候选达到阈值」返回空（非异常）——直接透传空，由调用方按「未命中」处理，
+            // 不降级原序（避免把不相关候选喂给模型导致错误回答）
             List<KnowledgeHit> ranked = aiApiInvoker.invoke("rerank", 2, () -> doRerank(query, candidates, minScore));
             if (ranked.size() > topM) {
                 return ranked.subList(0, topM);
@@ -116,9 +118,9 @@ public class RerankerService {
                 ranked.add(candidates.get(idx));
             }
         }
-        if (ranked.isEmpty()) {
-            throw new RuntimeException("重排结果无法映射到候选");
-        }
+        // 无候选达到相关性阈值 = 正常空结果（query 与候选都不相关，防幻觉过滤）：
+        // 返回空由调用方按「未命中」处理，不视为服务错误——避免触发 AiApiInvoker 重试与误导性失败日志。
+        // （仅响应格式缺失/为空等真服务错误走异常，由 invoke 重试 + 调用方降级）
         return ranked;
     }
 
