@@ -116,6 +116,8 @@ class SessionServiceTest {
 
         assertThat(result.getMessages()).hasSize(2);
         assertThat(result.getMessages().get(1).content()).isEqualTo("有什么能帮忙的？");
+        // 新消息必须带产生时间戳（记忆冲突处理链路的时间载体，缺失即回归）
+        assertThat(result.getMessages().get(1).createTime()).isNotNull();
         verify(valueOperations).set(eq("agent:session:1"), anyString(), any(Duration.class));
     }
 

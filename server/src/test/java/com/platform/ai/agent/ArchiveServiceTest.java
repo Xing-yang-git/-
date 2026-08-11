@@ -506,10 +506,14 @@ class ArchiveServiceTest {
                 AgentMessage.builder().id(1L).conversationId(5L).role(AgentMessageRole.USER).content("归档消息1").build(),
                 AgentMessage.builder().id(2L).conversationId(5L).role(AgentMessageRole.USER).content("归档消息2").build());
         List<AgentMessage> msgs2 = List.of(
-                AgentMessage.builder().id(3L).conversationId(6L).role(AgentMessageRole.USER).content("归档消息3").build(),
-                AgentMessage.builder().id(4L).conversationId(6L).role(AgentMessageRole.USER).content("归档消息4").build(),
-                AgentMessage.builder().id(5L).conversationId(6L).role(AgentMessageRole.USER).content("归档消息5").build(),
-                AgentMessage.builder().id(6L).conversationId(6L).role(AgentMessageRole.USER).content("归档消息6").build());
+                AgentMessage.builder().id(3L).conversationId(6L).role(AgentMessageRole.USER).content("归档消息3")
+                        .createdAt(LocalDateTime.of(2026, 8, 1, 10, 0)).build(),
+                AgentMessage.builder().id(4L).conversationId(6L).role(AgentMessageRole.USER).content("归档消息4")
+                        .createdAt(LocalDateTime.of(2026, 8, 1, 10, 5)).build(),
+                AgentMessage.builder().id(5L).conversationId(6L).role(AgentMessageRole.USER).content("归档消息5")
+                        .createdAt(LocalDateTime.of(2026, 8, 1, 10, 10)).build(),
+                AgentMessage.builder().id(6L).conversationId(6L).role(AgentMessageRole.USER).content("归档消息6")
+                        .createdAt(LocalDateTime.of(2026, 8, 1, 10, 15)).build());
         when(messageRepository.findByConversationIdOrderByIdAsc(5L)).thenReturn(msgs1);
         when(messageRepository.findByConversationIdOrderByIdAsc(6L)).thenReturn(msgs2);
 
@@ -522,6 +526,9 @@ class ArchiveServiceTest {
         assertThat(saved.getMessages()).hasSize(4);
         assertThat(saved.getMessages().get(0).content()).isEqualTo("归档消息3");
         assertThat(saved.getMessages().get(3).content()).isEqualTo("归档消息6");
+        // 回填消息保留归档原始时间戳（记忆冲突处理链路的相对顺序依据）
+        assertThat(saved.getMessages().get(0).createTime()).isEqualTo(msgs2.get(0).getCreatedAt());
+        assertThat(saved.getMessages().get(3).createTime()).isEqualTo(msgs2.get(3).getCreatedAt());
         // 会话级 id 保留，继续对话沿用同一会话；回填消息全部已在归档表，标记为已归档回填前缀
         assertThat(saved.getConversationId()).isEqualTo(9L);
         assertThat(saved.getArchivedPrefixCount()).isEqualTo(4);

@@ -358,7 +358,8 @@ public class ArchiveService {
         }
         allMessages.sort(Comparator.comparing(AgentMessage::getId));
         List<AgentSession.AgentMessageItem> items = allMessages.stream()
-                .map(m -> new AgentSession.AgentMessageItem(m.getRole(), m.getContent(), m.getSources(), m.getActions()))
+                .map(m -> new AgentSession.AgentMessageItem(m.getRole(), m.getContent(), m.getSources(), m.getActions(),
+                        m.getCreatedAt()))
                 .collect(Collectors.toList());
         int start = Math.max(0, items.size() - resumeTurns * 2);
         List<AgentSession.AgentMessageItem> recent = new ArrayList<>(items.subList(start, items.size()));

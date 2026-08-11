@@ -116,8 +116,9 @@ public class SessionService {
         if (session == null) {
             session = new AgentSession();
         }
-        session.getMessages().add(new AgentSession.AgentMessageItem(role, content, sources, actions));
-        session.setLastActive(LocalDateTime.now());
+        LocalDateTime now = LocalDateTime.now();
+        session.getMessages().add(new AgentSession.AgentMessageItem(role, content, sources, actions, now));
+        session.setLastActive(now);
         AgentSession truncated = truncate(session);
         saveSession(userId, truncated);
         return truncated;

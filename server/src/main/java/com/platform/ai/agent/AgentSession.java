@@ -28,13 +28,21 @@ public class AgentSession {
      */
     private int archivedPrefixCount;
 
-    /** 会话消息（role/content/sources/actions） */
+    /** 会话消息（role/content/sources/actions/createTime） */
     private List<AgentMessageItem> messages = new ArrayList<>();
 
     /** 最近活跃时间（append 时更新，供空闲归档调度判断） */
     private LocalDateTime lastActive;
 
-    /** 会话消息单条 */
-    public record AgentMessageItem(String role, String content, String sources, String actions) {
+    /** 会话消息单条（createTime 为消息产生时间，供记忆时间优先级/冲突处理判断先后）。
+     *  当前为时间链路的数据载体：Redis 热会话留存 + resume 回填保留；LLM 实际消费的时间标注
+     *  来自记忆段 created_at 的相对时间标签（MemoryRetrievalService），本字段是后续渲染/检索的铺垫。 */
+    public record AgentMessageItem(String role, String content, String sources, String actions,
+                                   LocalDateTime createTime) {
+
+        /** 便捷构造器：未提供时间时默认 null（旧 Redis 序列化数据 / 测试构造） */
+        public AgentMessageItem(String role, String content, String sources, String actions) {
+            this(role, content, sources, actions, null);
+        }
     }
 }
