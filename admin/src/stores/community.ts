@@ -18,10 +18,10 @@ interface CommunityState {
   loaded: boolean;
 }
 
-/** el-select 下拉框的楼栋选项结构 */
+/** el-select 下拉框的楼栋选项结构（展示名由模板拼 "x栋"） */
 interface BuildingOption {
   id: number;
-  name: string;
+  buildingNo: number;
 }
 
 export const useCommunityStore = defineStore('community', {
@@ -33,9 +33,9 @@ export const useCommunityStore = defineStore('community', {
   }),
 
   getters: {
-    /** el-select 下拉框的楼栋扁平选项 */
+    /** el-select 下拉框的楼栋扁平选项（label 由模板拼 "x栋"） */
     buildingOptions: (state: CommunityState): BuildingOption[] =>
-      state.buildings.map((b: BuildingData) => ({ id: b.id, name: b.name })),
+      state.buildings.map((b: BuildingData) => ({ id: b.id, buildingNo: b.buildingNo })),
 
     /** 根据楼栋 id 获取单元列表 */
     getUnits: (state: CommunityState) => (buildingId: number) => {
@@ -43,9 +43,9 @@ export const useCommunityStore = defineStore('community', {
       return building ? building.units : [];
     },
 
-    /** 根据楼栋名称查找对应的 id */
-    getBuildingId: (state: CommunityState) => (buildingName: string) => {
-      const building = state.buildings.find((b: BuildingData) => b.name === buildingName);
+    /** 根据楼栋号反查楼栋 id（筛选值用数值楼栋号） */
+    getBuildingId: (state: CommunityState) => (buildingNo: number) => {
+      const building = state.buildings.find((b: BuildingData) => b.buildingNo === buildingNo);
       return building ? building.id : null;
     },
   },

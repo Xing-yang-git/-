@@ -45,8 +45,8 @@
           <el-option
             v-for="b in communityStore.buildingOptions"
             :key="b.id"
-            :label="b.name"
-            :value="b.name"
+            :label="b.buildingNo + '栋'"
+            :value="b.buildingNo"
           />
         </el-select>
         <el-select
@@ -60,8 +60,8 @@
           <el-option
             v-for="u in filterUnitOptions"
             :key="u.id"
-            :label="u.name"
-            :value="u.name"
+            :label="u.unitNo + '单元'"
+            :value="u.unitNo"
           />
         </el-select>
         <el-input
@@ -685,9 +685,9 @@ function switchTab(key: string): void {
 /** 筛选条件：住户类型 */
 const filterType = ref("");
 /** 筛选条件：楼栋 */
-const filterBuilding = ref("");
+const filterBuilding = ref<number | "">("");
 /** 筛选条件：单元 */
-const filterUnit = ref("");
+const filterUnit = ref<number | "">("");
 /** 搜索关键词 */
 const search = ref("");
 /** 勾选的行 */
@@ -700,15 +700,15 @@ const filterUnitOptions = computed(() => {
   return buildingId ? communityStore.getUnits(buildingId) : [];
 });
 
-function matchUnit(room: string, unit: string): boolean {
+function matchUnit(room: string, unit: number): boolean {
   if (!room || !unit) return false;
-  return room.includes(unit);
+  return room.includes(unit + "单元");
 }
 
 function matchFilter(item: AuditRow): boolean {
   if (filterType.value && typeLabel(item.type) !== filterType.value)
     return false;
-  if (filterBuilding.value && !item.room.startsWith(filterBuilding.value))
+  if (filterBuilding.value && !item.room.startsWith(filterBuilding.value + "栋"))
     return false;
   if (filterUnit.value && !matchUnit(item.room, filterUnit.value)) return false;
   if (search.value) {

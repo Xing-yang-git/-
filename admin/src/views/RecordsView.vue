@@ -40,8 +40,8 @@
           <el-option
             v-for="b in communityStore.buildingOptions"
             :key="b.id"
-            :label="b.name"
-            :value="b.name"
+            :label="b.buildingNo + '栋'"
+            :value="b.buildingNo"
           />
         </el-select>
         <el-select
@@ -55,8 +55,8 @@
           <el-option
             v-for="u in filterUnitOptions"
             :key="u.id"
-            :label="u.name"
-            :value="u.name"
+            :label="u.unitNo + '单元'"
+            :value="u.unitNo"
           />
         </el-select>
         <el-input
@@ -343,7 +343,7 @@ import { ArrowLeft, ArrowRight } from "@element-plus/icons-vue";
 import { useCommunityStore } from "@/stores/community";
 import AppLayout from "@/layouts/AppLayout.vue";
 import { LIST_PAGE_MAIN_CLASS } from "@/layouts/main-classes";
-import { getRecords, type RecordItemDTO } from "../api/admin";
+import { getRecords, type RecordItemDTO, type UnitData } from "../api/admin";
 
 const communityStore = useCommunityStore();
 
@@ -358,10 +358,10 @@ const search = ref("");
 const filterDateRange = ref<string[] | null>(null);
 /** 类型筛选：'borrow' | 'help' */
 const filterType = ref("");
-/** 楼栋筛选 */
-const filterBuilding = ref("");
-/** 单元筛选 */
-const filterUnit = ref("");
+/** 楼栋筛选（数值楼栋号；空串=全部） */
+const filterBuilding = ref<number | "">("");
+/** 单元筛选（数值单元号；空串=全部） */
+const filterUnit = ref<number | "">("");
 
 /** 从后端加载的真实互助记录数据 */
 const tableData = ref<RecordItemDTO[]>([]);
@@ -391,7 +391,7 @@ const filteredRecords = computed(() => {
     if (filterType.value && item.type !== filterType.value) return false;
     if (
       filterBuilding.value &&
-      !(item.room || "").startsWith(filterBuilding.value)
+      !(item.room || "").startsWith(filterBuilding.value + "栋")
     )
       return false;
     if (filterUnit.value && !matchUnit(item.room || "", filterUnit.value))
@@ -419,8 +419,8 @@ const filteredRecords = computed(() => {
 // --- 选择 & 筛选 ---
 /** 勾选的行 */
 const selectedRows = ref<Record<string, unknown>[]>([]);
-/** 根据所选楼栋计算单元筛选选项 */
-const filterUnitOptions = computed<{ id: number; name: string }[]>(() => {
+/** 根据所选楼栋计算单元筛选选项（UnitData 含 unitNo） */
+const filterUnitOptions = computed<UnitData[]>(() => {
   if (!filterBuilding.value) return [];
   const buildingId = communityStore.getBuildingId(filterBuilding.value);
   return buildingId ? communityStore.getUnits(buildingId) : [];
@@ -432,12 +432,11 @@ function applyFilters(): void {
 }
 
 /**
- * 单元筛选匹配：直接字符串包含判断。
- * 单元使用阿拉伯数字，如 "1单元"/"2单元"。
+ * 单元筛选匹配：按数值单元号拼 "x单元" 后字符串包含判断。
  */
-function matchUnit(room: string, unit: string): boolean {
+function matchUnit(room: string, unit: number): boolean {
   if (!room || !unit) return false;
-  return room.includes(unit);
+  return room.includes(unit + "单元");
 }
 
 function handleSelectionChange(rows: any[]): void {

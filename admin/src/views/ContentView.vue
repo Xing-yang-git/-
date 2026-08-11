@@ -79,8 +79,8 @@
             <el-option
               v-for="b in communityStore.buildingOptions"
               :key="b.id"
-              :label="b.name"
-              :value="b.name"
+              :label="b.buildingNo + '栋'"
+              :value="b.buildingNo"
             />
           </el-select>
           <el-select
@@ -95,8 +95,8 @@
             <el-option
               v-for="u in moderationUnitOptions"
               :key="u.id"
-              :label="u.name"
-              :value="u.name"
+              :label="u.unitNo + '单元'"
+              :value="u.unitNo"
             />
           </el-select>
           <el-input
@@ -158,8 +158,8 @@
             <el-option
               v-for="b in communityStore.buildingOptions"
               :key="b.id"
-              :label="b.name"
-              :value="b.name"
+              :label="b.buildingNo + '栋'"
+              :value="b.buildingNo"
             />
           </el-select>
           <el-select
@@ -174,8 +174,8 @@
             <el-option
               v-for="u in filterUnitOptions"
               :key="u.id"
-              :label="u.name"
-              :value="u.name"
+              :label="u.unitNo + '单元'"
+              :value="u.unitNo"
             />
           </el-select>
           <el-select
@@ -1511,8 +1511,8 @@
           <el-option
             v-for="b in communityStore.buildingOptions"
             :key="b.id"
-            :label="b.name"
-            :value="b.name"
+            :label="b.buildingNo + '栋'"
+            :value="b.buildingNo"
           />
         </el-select>
         <el-select
@@ -1527,8 +1527,8 @@
           <el-option
             v-for="u in residentUnitOptions"
             :key="u.id"
-            :label="u.name"
-            :value="u.name"
+            :label="u.unitNo + '单元'"
+            :value="u.unitNo"
           />
         </el-select>
         <el-input
@@ -1683,10 +1683,10 @@ const STATUS_PARAM_MAP: Record<string, string> = {
 const activeTab = ref<string>("moderation");
 /** 筛选条件：物品/技能类型 */
 const filterType = ref("");
-/** 筛选条件：楼栋 */
-const filterBuilding = ref("");
-/** 筛选条件：单元 */
-const filterUnit = ref("");
+/** 筛选条件：楼栋（数值楼栋号；空串=全部） */
+const filterBuilding = ref<number | "">("");
+/** 筛选条件：单元（数值单元号；空串=全部） */
+const filterUnit = ref<number | "">("");
 /** 搜索关键词 */
 const search = ref("");
 /** 违规下架tab — 审核员筛选 */
@@ -1706,7 +1706,14 @@ const contentTableRef = ref<any>(null);
 
 // --- 审核 tab 变量 ---
 /** 审核 tab 筛选条件 */
-const moderationFilter = reactive({
+const moderationFilter = reactive<{
+  status: string;
+  moderatedBy: string;
+  type: string;
+  building: number | "";
+  unit: number | "";
+  search: string;
+}>({
   status: "yellow",
   moderatedBy: "",
   type: "",
@@ -1781,8 +1788,8 @@ async function fetchContent(): Promise<void> {
     const params: ContentListParams = {
       status: STATUS_PARAM_MAP[activeTab.value],
       type: (filterType.value || undefined) as "idle" | "help" | undefined,
-      building: filterBuilding.value || undefined,
-      unit: filterUnit.value || undefined,
+      building_no: filterBuilding.value || undefined,
+      unit_no: filterUnit.value || undefined,
       search: search.value || undefined,
       page: 0,
       size: FETCH_ALL_SIZE,
@@ -1906,8 +1913,8 @@ async function loadModerationList(): Promise<void> {
     if (moderationFilter.moderatedBy)
       params.moderatedBy = moderationFilter.moderatedBy;
     if (moderationFilter.type) params.type = moderationFilter.type;
-    if (moderationFilter.building) params.building = moderationFilter.building;
-    if (moderationFilter.unit) params.unit = moderationFilter.unit;
+    if (moderationFilter.building) params.building_no = moderationFilter.building;
+    if (moderationFilter.unit) params.unit_no = moderationFilter.unit;
     if (moderationFilter.search) params.search = moderationFilter.search;
     const res = await getModerationList(params);
     const pageData = unwrap<{
@@ -2640,8 +2647,8 @@ const tempSelected = ref<number | null>(null);
 const residentList = ref<any[]>([]);
 const loadingResidents = ref(false);
 const residentFilterType = ref("");
-const residentFilterBuilding = ref("");
-const residentFilterUnit = ref("");
+const residentFilterBuilding = ref<number | "">("");
+const residentFilterUnit = ref<number | "">("");
 const residentKeyword = ref("");
 
 /**
@@ -2656,8 +2663,8 @@ async function loadAllResidents(): Promise<void> {
       page: 0,
       size: 200,
       userType: residentFilterType.value || undefined,
-      building: residentFilterBuilding.value || undefined,
-      unit: residentFilterUnit.value || undefined,
+      building_no: residentFilterBuilding.value || undefined,
+      unit_no: residentFilterUnit.value || undefined,
       keyword: residentKeyword.value || undefined,
     };
     const res = await searchResidents(params);

@@ -73,8 +73,10 @@ export function auditUser(userId: number, body: AuditUserBody): Promise<AxiosRes
 export interface ContentListParams {
   status?: string;
   type?: 'idle' | 'help';
-  building?: string;
-  unit?: string;
+  /** 楼栋号（数值筛选） */
+  building_no?: number;
+  /** 单元号（数值筛选） */
+  unit_no?: number;
   search?: string;
   page: number;
   size: number;
@@ -175,8 +177,10 @@ export interface ModerationListParams {
   moderationStatus?: string;
   moderatedBy?: string;
   type?: string;
-  building?: string;
-  unit?: string;
+  /** 楼栋号（数值筛选） */
+  building_no?: number;
+  /** 单元号（数值筛选） */
+  unit_no?: number;
   search?: string;
   page: number;
   size: number;
@@ -336,8 +340,10 @@ export interface ResidentSearchParams {
   page?: number;
   size?: number;
   userType?: string;
-  building?: string;
-  unit?: string;
+  /** 楼栋号（数值筛选） */
+  building_no?: number;
+  /** 单元号（数值筛选） */
+  unit_no?: number;
   keyword?: string;
 }
 
@@ -458,12 +464,14 @@ export function getRecords(params: RecordsListParams = {}): Promise<AxiosRespons
 
 export interface UnitData {
   id: number;
-  name: string;
+  /** 单元号（数值，展示拼 "x单元"） */
+  unitNo: number;
 }
 
 export interface BuildingData {
   id: number;
-  name: string;
+  /** 楼栋号（数值，展示拼 "x栋"） */
+  buildingNo: number;
   units: UnitData[];
 }
 
