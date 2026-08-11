@@ -1,6 +1,63 @@
-# 社区互助闲置平台
+# 一城暖邻 · 社区互助平台
 
-> 邻里互助闲置物品平台 — 微信小程序 C端 + Vue 3 PC 管理后台
+> 邻里互助闲置物品平台 — 微信小程序 C端 + Vue 3 PC 物业管理后台 + Spring Boot 后端（含 AI 助手「小邻」）
+
+## 演示视频
+
+| 视频 | 内容说明 | 链接 |
+|---|---|---|
+| 🤖 智能助手「小邻」 | RAG 知识问答 / 多轮记忆 / 逐字流式打字机 | [Bilibili](https://www.bilibili.com/video/BV1afu66tEtC/) |
+| 📱 微信小程序（C端） | 首页浏览 / 闲置发布 / 借用聊天 / 个人认证 | [Bilibili](https://www.bilibili.com/video/BV13fu66tErA/?) |
+| 🖥️ 物业管理后台（B端） | 内容审核 / 知识库文档管理 / 数据统计看板 | [Bilibili](https://www.bilibili.com/video/BV1Qfu66tEBQ/) |
+
+## 系统架构
+
+```mermaid
+graph TB
+    subgraph 客户端
+        C["微信小程序 C端<br/>原生 WXML / WXSS / JS"]
+        B["Vue 3 物业管理后台<br/>Element Plus + Pinia + ECharts"]
+    end
+
+    subgraph 后端 [Spring Boot 3.2]
+        AUTH["JWT 鉴权<br/>Security Filter"]
+        WS["WebSocket<br/>聊天中继 / 看板推送"]
+        AGENT["AI 助手「小邻」<br/>意图路由 + 工具调度 + 记忆"]
+        RAG["RAG 检索<br/>语义检索 + 重排序"]
+        KB["知识库<br/>文档解析 / OCR / 分片"]
+    end
+
+    subgraph 数据层
+        PG[("PostgreSQL<br/>pgvector 向量库")]
+        REDIS[("Redis<br/>热会话 / 限流")]
+    end
+
+    subgraph 外部AI
+        LLM["DeepSeek<br/>文本生成"]
+        EMB["智谱 embedding-3<br/>语义向量"]
+        RERANK["本地 rerank<br/>bge-reranker-v2-m3"]
+    end
+
+    C -->|REST/SSE| AUTH
+    B -->|REST| AUTH
+    C <-->|WebSocket| WS
+    B <-->|WebSocket| WS
+    AUTH --> AGENT
+    AGENT -->|LLM 调用| LLM
+    AGENT -->|知识检索| RAG
+    RAG --> PG
+    RAG --> RERANK
+    KB -->|向量入库| PG
+    AGENT <--> REDIS
+    EMB -.-> PG
+```
+
+## 界面截图
+
+| | | |
+|---|---|---|
+| **微信小程序 C端**（首页） | **物业管理后台 B端**（运营看板） | **AI 助手「小邻」**（知识问答） |
+| ![C端首页](docs/screenshots/c-end-home.png) | ![B端运营看板](docs/screenshots/b-end-dashboard.png) | ![小邻对话](docs/screenshots/c-end-assistant.png) |
 
 ## 技术栈
 
