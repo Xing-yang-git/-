@@ -50,11 +50,14 @@ class MessagePreFilterTest {
     }
 
     @Test
-    @DisplayName("规则2 - 纯符号消息拦截（中英文标点）")
+    @DisplayName("规则2 - 纯符号消息拦截（中英文标点 + 数学/货币符号类）")
     void should_block_when_punctuationOnly() {
         assertThat(preFilter.process(USER_ID, "。。。").blockReply()).isEqualTo("请输入有效问题");
         assertThat(preFilter.process(USER_ID, "!!!").blockReply()).isEqualTo("请输入有效问题");
         assertThat(preFilter.process(USER_ID, "？？？").blockReply()).isEqualTo("请输入有效问题");
+        // 符号类别（Sm/Sc 等）：@ 数学符号、￥ 货币符号——非标点类别，纯符号也应拦截
+        assertThat(preFilter.process(USER_ID, "@#￥%").blockReply()).isEqualTo("请输入有效问题");
+        assertThat(preFilter.process(USER_ID, "&*@").blockReply()).isEqualTo("请输入有效问题");
     }
 
     @Test
@@ -130,6 +133,64 @@ class MessagePreFilterTest {
 
         MessagePreFilter.PreFilterResult second = preFilter.process(USER_ID, "物业几点下班");
         assertThat(second.blockReply()).isEqualTo("请勿重复发送相同消息");
+    }
+
+    @Test
+    @DisplayName("规则6 - 相同消息超过时间窗口（30s）再发视为重新提问，不拦截")
+    void should_notBlock_when_sameMessageAfterWindow() {
+        // 直接构造一条 60 秒前的时间戳记录，模拟上一会话/切后台回来后残留的上一条消息
+        preFilter.lastMessages.put(USER_ID, new MessagePreFilter.LastMessage("物业几点下班",
+                System.currentTimeMillis() - 60_000));
+
+        MessagePreFilter.PreFilterResult result = preFilter.process(USER_ID, "物业几点下班");
+
+        assertThat(result.blockReply()).isNull();
+        assertThat(result.message()).isEqualTo("物业几点下班");
+    }
+
+    @Test
+    @DisplayName("规则6 - 相同消息在时间窗口内再发仍拦截")
+    void should_blockDuplicate_when_sameMessageWithinWindow() {
+        preFilter.lastMessages.put(USER_ID, new MessagePreFilter.LastMessage("物业几点下班",
+                System.currentTimeMillis()));
+
+        assertThat(preFilter.process(USER_ID, "物业几点下班").blockReply())
+                .isEqualTo("请勿重复发送相同消息");
+    }
+
+    @Test
+    @DisplayName("规则6 - resetUser 后（会话边界）重发相同消息不误判重复")
+    void should_notBlock_when_resetUser_beforeSameMessage() {
+        // 上一会话最后一条放行消息是「物业几点下班」
+        assertThat(preFilter.process(USER_ID, "物业几点下班").blockReply()).isNull();
+
+        // 会话边界：清空/退出/恢复历史时重置上一条记录
+        preFilter.resetUser(USER_ID);
+
+        // 新会话第一条发同一消息：不应误判为跨会话重复
+        MessagePreFilter.PreFilterResult first = preFilter.process(USER_ID, "物业几点下班");
+        assertThat(first.blockReply()).isNull();
+        assertThat(first.message()).isEqualTo("物业几点下班");
+
+        // 同一会话内再发一次：仍按重复拦截（会话内连续重复保护不受影响）
+        assertThat(preFilter.process(USER_ID, "物业几点下班").blockReply())
+                .isEqualTo("请勿重复发送相同消息");
+    }
+
+    @Test
+    @DisplayName("规则6 - 问候记录后重问上一条问题不算连续重复（recordMessage 打破重复链）")
+    void should_notBlock_when_greetingBetweenSameMessages() {
+        // 第一次提问：放行并记录
+        MessagePreFilter.PreFilterResult first = preFilter.process(USER_ID, "今天星期几");
+        assertThat(first.blockReply()).isNull();
+
+        // 模拟问候命中：问候也更新上一条消息记录（AgentService 问候分支调用 recordMessage）
+        preFilter.recordMessage(USER_ID, "你好");
+
+        // 再次提问相同问题：因上一条记录已变为「你好」→ 不是连续重复 → 放行
+        MessagePreFilter.PreFilterResult again = preFilter.process(USER_ID, "今天星期几");
+        assertThat(again.blockReply()).isNull();
+        assertThat(again.message()).isEqualTo("今天星期几");
     }
 
     @Test

@@ -19,14 +19,20 @@
 /* 输入行 — mic + 输入区 + plus + send */
 .chat-input-row {
   display: flex;
-  align-items: center;
+  align-items: center; /* 常规高度（未聚焦）图标垂直居中 */
   width: 100%;
+}
+
+/* 聚焦（键盘顶起）或多行增高（长文本）：左右图标贴底部，不随输入框增高垂直居中 */
+.chat-input-row-focused,
+.chat-input-row-multiline {
+  align-items: flex-end;
 }
 
 /* 输入框外套 — 文字模式下 textarea + send 的容器 */
 .chat-input-wrapper {
   display: flex;
-  align-items: center;
+  align-items: center; /* 常规高度（未聚焦）发送图标垂直居中 */
   flex: 1;
   min-width: 0;
   background: rgba(120, 120, 128, 0.12);
@@ -36,20 +42,29 @@
   margin: 0 8rpx;
 }
 
-/* 聚焦态：输入框高度翻一倍（原 72rpx → 144rpx），扩大打字/按压区域 */
+/* 聚焦态：输入框高度翻一倍（原 72rpx → 144rpx），扩大打字/按压区域；发送图标贴底 */
 .chat-input-wrapper-focused {
   min-height: 144rpx;
+  align-items: flex-end;
+}
+
+/* 多行增高态（失焦保留长文本仍贴底，不随内容增高垂直居中） */
+.chat-input-wrapper-multiline {
+  align-items: flex-end;
 }
 
 .chat-input {
   flex: 1;
-  height: 100%; /* 与 wrapper 等高，填满输入区 */
+  align-self: flex-start; /* 文字/提示词顶部对齐：placeholder 垂直居上，输入文字从输入区顶部增长（发送图标仍贴底） */
+  height: 100%; /* 与 wrapper 等高，填满输入区（auto-height 模式下高度由内容决定） */
+  max-height: 320rpx; /* 最大固定高度（约 3 行）：超过后内部滚动，不再无限增高撑爆聊天区 */
+  overflow-y: auto; /* 内容超过 max-height 时允许输入区内滚动 */
   border: none;
   background: transparent !important;
   font-size: 38rpx; /* 17px → 38rpx */
   color: var(--text, var(--text));
   line-height: 1.2;
-  padding-top: 12rpx; /* 文字垂直居中（auto-height 内容 + wrapper flex 居中兜底） */
+  padding-top: 12rpx; /* 上下留白，文字与输入区边框保持间距 */
   padding-bottom: 12rpx;
   box-sizing: border-box;
 }
@@ -101,7 +116,7 @@
 }
 
 .chat-hold-to-talk-disabled:active {
-  background: rgba(120, 120, 128, 0.12);   /* 与默认一致，取消按压变深反馈 */
+  background: rgba(120, 120, 128, 0.12); /* 与默认一致，取消按压变深反馈 */
 }
 
 /* 输入栏按钮（mic / plus / keyboard） */

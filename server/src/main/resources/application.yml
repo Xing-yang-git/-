@@ -124,8 +124,8 @@ ai:
     model: deepseek-v4-flash
   # Agent 助手配置（小邻）
   agent:
-    max-turns: 10            # 会话历史保留轮数
-    max-history-chars: 6000  # 历史序列化最大字符数（约 2k token）
+    max-turns: 10            # 会话历史保留轮数（1 次用户提问 + agent 回复 = 1 轮）
+    max-history-chars: 6000  # 历史序列化最大字符数（约 2k token；超限从头部裁剪至少保留 6 条）
     max-tool-rounds: 3       # 工具调用最大轮次，超限强制终止防死循环
     rate-limit-per-minute: 10
     rate-limit-per-day: 100
@@ -138,12 +138,15 @@ ai:
     # 单轮对话工具调用次数上限：达到后工具返回「已达到本轮工具调用上限」，防死循环
     max-tool-calls: 5
     archive-idle-minutes: 15 # 空闲归档阈值
-    archive-message-count: 20 # 消息数归档阈值（= max-turns×2，截断封顶一致，防止阈值 > 截断上限导致永不触发）
+    archive-turn-count: 10   # 归档轮次阈值（达到 10 轮问答即归档；内部 ×2 换算为 20 条消息，与 max-turns×2 截断封顶一致）
     # 长期记忆检索：新窗口开始检索用户压缩段 top-N 并注入 {历史记忆}
     memory-recall-top: 3     # 记忆召回条数（检索该用户压缩段 top-N）
-    memory-match-threshold: 0.45 # 记忆匹配距离阈值（余弦距离，≤ 此值才注入；与知识库检索同款阈值）
+    # 记忆匹配距离阈值（余弦距离，≤ 此值才注入）。与知识库不同：记忆摘要是 LLM 压缩产物，
+    # 指代/措辞差异的语义距离更大——实测「我喜欢什么动物」→「用户喜欢翼龙」=0.48、相关 0.26~0.50、
+    # 不相关 0.59+，故取 0.55（知识库保留 0.45）
+    memory-match-threshold: 0.55
     tool-mode: native        # 工具模式：native(原生 tool calling，PoC 已验证) / json(JSON 意图兜底)
-    max-tokens: 1024         # 对话回复最大 token（reasoning 思维链占用大，512 实测 content 为空）
+    max-tokens: 2048         # 对话回复最大 token（reasoning 思维链占用大，512 实测 content 为空；2048 支撑 500 字 Markdown 排版回复）
     temperature-knowledge: 0.2  # RAG 精准检索温度
     temperature-creative: 0.6   # 创意文案温度（PolishingClient 互助感想保持 0.7 不动）
   # 文档导入解析配置（RAG 数据源：B端上传 → 解析 → 切片 → 嵌入）

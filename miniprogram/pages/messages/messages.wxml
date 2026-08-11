@@ -2,7 +2,7 @@
   <!-- 会话列表 -->
   <view class="session-list" wx:if="{{sessions.length > 0}}">
     <view
-      class="session-item {{item._isPinned ? 'pinned' : ''}}"
+      class="session-item {{item._isPinned ? 'pinned' : ''}} list-divider"
       wx:for="{{sessions}}"
       wx:key="id"
       bindtap="onSessionTap"

@@ -83,7 +83,9 @@ const NOTIFICATION_TYPE = {
  * 本地存储键 — 跨页面共享的 storage key 统一管理，改名安全。
  */
 const STORAGE_KEY = {
-  AGENT_DRAFT: 'agent_draft'             // AI 助手动作卡片发布草稿（assistant 写入 → publish-idle 读取）
+  AGENT_DRAFT: 'agent_draft',            // AI 助手动作卡片发布草稿（assistant 写入 → publish-idle 读取）
+  HISTORY_FAB_POS: 'history_fab_pos',    // 小邻历史悬浮按钮位置（拖动记忆，跨会话保留）
+  HOME_FAB_POS: 'home_fab_pos'           // 首页 + 悬浮按钮位置（拖动记忆，跨会话保留）
 };
 
 module.exports = {

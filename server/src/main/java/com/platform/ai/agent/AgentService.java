@@ -1,6 +1,7 @@
 package com.platform.ai.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.platform.ai.common.PromptRepository;
 import com.platform.ai.search.KnowledgeHit;
 import com.platform.common.AgentMessageRole;
 import com.platform.common.AiGenerationException;
@@ -25,6 +26,7 @@ import reactor.core.publisher.Flux;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Properties;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -51,6 +53,7 @@ import java.util.regex.Pattern;
 public class AgentService {
 
     private final AgentPromptBuilder promptBuilder;
+    private final PromptRepository promptRepository;
     private final AgentToolDispatcher toolDispatcher;
     private final IntentRouter intentRouter;
     private final SessionService sessionService;
@@ -63,20 +66,18 @@ public class AgentService {
     private final SensitiveWordService sensitiveWordService;
     private final MemoryRetrievalService memoryRetrievalService;
 
-    /** 消息数归档阈值（达到即触发归档；与 yml 及截断封顶 max-turns×2 一致，防阈值 > 截断上限永不触发） */
-    @Value("${ai.agent.archive-message-count:20}")
-    private int archiveMessageCount;
+    /** 归档轮次阈值（达到该轮数即触发归档；1 次用户提问+agent 回复=1 轮，内部 ×2 换算消息数，
+     *  与 max-turns×2 截断封顶一致，防阈值 > 截断上限永不触发） */
+    @Value("${ai.agent.archive-turn-count:10}")
+    private int archiveTurnCount;
 
-    /** 问候语关键词（纯寒暄走快速通道，不调外部 API，保证秒回；31 词完整清单，去重后无重复项） */
+    /** 问候语关键词（纯寒暄走快速通道，不调外部 API，保证秒回；含常用礼貌语，去重后无重复项） */
     private static final List<String> GREETING_KEYWORDS = List.of(
             "你好", "您好", "嗨", "哈喽", "hello", "hi", "在吗", "在不在",
             "早上好", "中午好", "下午好", "晚上好", "早安", "午安", "晚安",
             "嘿嘿", "哈哈", "哈喽哈", "嗨嗨", "在嘛", "在不在呀", "有人吗", "有人在吗",
-            "打扰一下", "请问在吗", "早", "新年好", "节日快乐", "周末好", "好久不见", "好久没见");
-
-    /** 问候语快速回复文案 */
-    private static final String GREETING_REPLY =
-            "你好呀！我是小邻，小区里的智能助手，可以帮你查物业服务、搜闲置物品、了解平台使用。有什么想问的吗？";
+            "打扰一下", "请问在吗", "早", "新年好", "节日快乐", "周末好", "好久不见", "好久没见",
+            "谢谢", "感谢", "再见", "拜拜");
 
     // ==================== 防幻觉常量 ====================
 
@@ -94,6 +95,7 @@ public class AgentService {
     private static final String RELATIVE_TIME_CHARS = "天小时分秒钟";
 
     public AgentService(AgentPromptBuilder promptBuilder,
+                        PromptRepository promptRepository,
                         AgentToolDispatcher toolDispatcher,
                         IntentRouter intentRouter,
                         SessionService sessionService,
@@ -106,6 +108,7 @@ public class AgentService {
                         SensitiveWordService sensitiveWordService,
                         MemoryRetrievalService memoryRetrievalService) {
         this.promptBuilder = promptBuilder;
+        this.promptRepository = promptRepository;
         this.toolDispatcher = toolDispatcher;
         this.intentRouter = intentRouter;
         this.sessionService = sessionService;
@@ -130,8 +133,16 @@ public class AgentService {
      * @return 回复文本 + 引用来源 + 动作卡片
      */
     public AgentChatResult chat(Long userId, String message) {
+        // 新会话入口检测：热会话为空即新对话（首次/清空/退出/空闲归档后），重置上一条消息记录，
+        // 避免新会话第一条与历史会话最后一条被规则 6 误判为重复（覆盖所有会话结束路径，含空闲归档）
+        List<AgentSession.AgentMessageItem> history = sessionService.getHistory(userId);
+        if (history == null || history.isEmpty()) {
+            preFilter.resetUser(userId);
+        }
         String greetingReply = greetingReply(message);
         if (greetingReply != null) {
+            // 问候命中也更新「上一条消息」：否则「今天星期几 → 你好 → 今天星期几」会被误判为连续重复
+            preFilter.recordMessage(userId, message);
             sessionService.append(userId, AgentMessageRole.USER, message, null, null);
             sessionService.append(userId, AgentMessageRole.ASSISTANT, greetingReply, null, null);
             return new AgentChatResult(greetingReply, List.of(), List.of());
@@ -144,6 +155,8 @@ public class AgentService {
                 // 清空即归档：先归档剩余全部消息（纯 DB 搬运，会话结束语义），再清空热会话
                 archiveService.archiveRemaining(userId);
                 sessionService.clearSession(userId);
+                // 清空会话是会话边界：重置上一条消息记录，避免新会话第一条与历史会话最后一条重复误判
+                preFilter.resetUser(userId);
             }
             log.info("Agent 消息被前置过滤器拦截: userId={}, clearSession={}, reply={}",
                     userId, filter.clearSession(), filter.blockReply());
@@ -202,9 +215,18 @@ public class AgentService {
      * @return 对话流（问候为 {@code isGreeting()}、拦截为 {@code isBlocked()} 快捷回复，普通为模型内容流）
      */
     public AgentChatStream chatStream(Long userId, String message) {
+        long setupStartMs = System.currentTimeMillis();
+        // 新会话入口检测：热会话为空即新对话（首次/清空/退出/空闲归档后），重置上一条消息记录，
+        // 避免新会话第一条与历史会话最后一条被规则 6 误判为重复（覆盖所有会话结束路径，含空闲归档）
+        List<AgentSession.AgentMessageItem> history = sessionService.getHistory(userId);
+        if (history == null || history.isEmpty()) {
+            preFilter.resetUser(userId);
+        }
         // 问候语快速通道：纯寒暄不调任何外部 API（LLM），秒回保证 3~5s 目标
         String greetingReply = greetingReply(message);
         if (greetingReply != null) {
+            // 问候命中也更新「上一条消息」：否则「今天星期几 → 你好 → 今天星期几」会被误判为连续重复
+            preFilter.recordMessage(userId, message);
             sessionService.append(userId, AgentMessageRole.USER, message, null, null);
             sessionService.append(userId, AgentMessageRole.ASSISTANT, greetingReply, null, null);
             return AgentChatStream.greeting(greetingReply);
@@ -217,10 +239,12 @@ public class AgentService {
                 // 清空即归档：先归档剩余全部消息（纯 DB 搬运，会话结束语义），再清空热会话
                 archiveService.archiveRemaining(userId);
                 sessionService.clearSession(userId);
+                // 清空会话是会话边界：重置上一条消息记录，避免新会话第一条与历史会话最后一条重复误判
+                preFilter.resetUser(userId);
             }
             log.info("Agent 消息被前置过滤器拦截: userId={}, clearSession={}, reply={}",
                     userId, filter.clearSession(), filter.blockReply());
-            return AgentChatStream.blocked(filter.blockReply());
+            return AgentChatStream.blocked(filter.blockReply(), filter.clearSession());
         }
 
         // 请求级上下文：requestId 贯穿工具计数与命中缓存生命周期（流结束时取回并清理）
@@ -229,9 +253,11 @@ public class AgentService {
 
         // 放行：用清洗后的消息继续原有链路（注入特征提示仅附加进模型输入）
         Prompt prompt = prepare(userId, filter.message(), filter.injectionHint(), requestId);
+        // 前置准备耗时（历史检索 + 前置过滤 + 记忆检索 + 提示组装），便于定位首字延迟前的耗时分布
+        log.info("Agent 流式前置准备耗时: userId={}, 耗时={}ms", userId, System.currentTimeMillis() - setupStartMs);
         // Spring AI 真流式：工具调用在流内自动执行（流式工具循环），内容分块直出
         Flux<ChatResponse> contentFlux = deepseekChatModel.stream(prompt);
-        return new AgentChatStream(null, null, contentFlux, userId, message, requestId);
+        return new AgentChatStream(null, null, contentFlux, userId, message, requestId, false);
     }
 
     /**
@@ -302,6 +328,18 @@ public class AgentService {
      */
     public String cleanReply(String reply, AgentAction action) {
         String displayReply = reply == null ? "" : reply.trim();
+        // 坑3：模型偶发用 ```markdown ... ``` 包裹整段正文，剥掉首尾代码块标记，避免展示露出 ``` 字符
+        if (displayReply.startsWith("```")) {
+            int firstNewline = displayReply.indexOf('\n');
+            if (firstNewline > 0) {
+                displayReply = displayReply.substring(firstNewline + 1);
+            }
+            int lastFence = displayReply.lastIndexOf("```");
+            if (lastFence > 0) {
+                displayReply = displayReply.substring(0, lastFence);
+            }
+            displayReply = displayReply.trim();
+        }
         if (action != null) {
             displayReply = intentRouter.stripJson(displayReply);
             if (displayReply.isBlank()) {
@@ -423,15 +461,21 @@ public class AgentService {
     /** 流式对话的结果载体：问候/拦截快捷回复 或 模型内容流 + 元数据 */
     public record AgentChatStream(String greetingReply, String blockReply,
                                   Flux<ChatResponse> contentFlux, Long userId, String userMessage,
-                                  String requestId) {
-        /** 构造问候快速通道结果（空内容流，不订阅） */
+                                  String requestId, boolean clearSession) {
+        /** 构造问候快速通道结果（空内容流，不订阅；不涉及清空会话） */
         public static AgentChatStream greeting(String reply) {
-            return new AgentChatStream(reply, null, Flux.empty(), null, null, null);
+            return new AgentChatStream(reply, null, Flux.empty(), null, null, null, false);
         }
 
-        /** 构造前置过滤器拦截结果（空内容流，不订阅，不写会话历史） */
-        public static AgentChatStream blocked(String reply) {
-            return new AgentChatStream(null, reply, Flux.empty(), null, null, null);
+        /**
+         * 构造前置过滤器拦截结果（空内容流，不订阅，不写会话历史）。
+         *
+         * @param reply        拦截应答文案
+         * @param clearSession 是否同时清空会话（/clear、/reset、「清除对话」等控制指令为 true，
+         *                     前端收到后同步清空消息列表）
+         */
+        public static AgentChatStream blocked(String reply, boolean clearSession) {
+            return new AgentChatStream(null, reply, Flux.empty(), null, null, null, clearSession);
         }
 
         /** 是否为问候快速通道（是则直接播 greetingReply） */
@@ -454,64 +498,67 @@ public class AgentService {
      */
     private ToolCallback[] buildToolCallbacks(Long userId, String requestId) {
         log.info("Agent 读工具注册: userId={}, 模型={}", userId, deepseekChatModel.getClass().getSimpleName());
+        // 工具描述统一从提示词仓库读取（prompts/agent/tools.md），改文案不动代码
+        Properties toolProps = promptRepository.getProps("agent.tools");
         return new ToolCallback[]{
                 FunctionToolCallback.builder("search_knowledge",
                                 (KnowledgeSearchParams p) -> toolDispatcher.searchKnowledge(userId, requestId, p))
-                        .description("检索小区知识库（物业服务、规章制度、办事指南、应急联系、平台使用帮助等）。当用户询问小区相关事项、物业规则、办事流程、应急信息时调用。参数为检索关键词，请提取用户问题中的核心词，可做精简改写，不要传整句。")
+                        .description(toolProps.getProperty("search_knowledge"))
                         .inputType(KnowledgeSearchParams.class)
                         .build(),
                 FunctionToolCallback.builder("query_date",
                                 (DateQueryParams p) -> toolDispatcher.queryDate(userId, requestId, p))
-                        .description("查询日期和星期，支持今天/明天/昨天/前天/后天/大后天、N天前/N天后、星期几等相对表达。当用户问今天几号、明天星期几、前天是几号时调用")
+                        .description(toolProps.getProperty("query_date"))
                         .inputType(DateQueryParams.class)
                         .build(),
                 FunctionToolCallback.builder("query_notifications",
                                 (VoidParams v) -> toolDispatcher.queryNotifications(userId, requestId, v))
-                        .description("查询小区最近的通知/公告。当用户问小区有没有通知、物业发了什么公告时调用")
+                        .description(toolProps.getProperty("query_notifications"))
                         .inputType(VoidParams.class)
                         .build(),
                 FunctionToolCallback.builder("query_help_requests",
                                 (HelpSearchParams p) -> toolDispatcher.queryHelpRequests(userId, requestId, p))
-                        .description("查询小区里的互助求助（找人帮忙、技能求助等）。当用户问小区有没有人需要帮忙、怎么找人帮忙时调用")
+                        .description(toolProps.getProperty("query_help_requests"))
                         .inputType(HelpSearchParams.class)
                         .build(),
                 FunctionToolCallback.builder("my_todos",
                                 (VoidParams v) -> toolDispatcher.myTodos(userId, requestId, v))
-                        .description("查询我的待办进度（进行中的借用/互助、待审批的申请）。当用户问我的申请批了没、还有哪些没处理时调用")
+                        .description(toolProps.getProperty("my_todos"))
                         .inputType(VoidParams.class)
                         .build(),
                 FunctionToolCallback.builder("search_items",
                                 (SearchParams p) -> toolDispatcher.searchItems(userId, requestId, p))
-                        .description("搜索闲置物品，按关键词查小区内的出借/求借物品")
+                        .description(toolProps.getProperty("search_items"))
                         .inputType(SearchParams.class)
                         .build(),
                 FunctionToolCallback.builder("my_posts",
                                 (MyPostsParams p) -> toolDispatcher.myPosts(userId, requestId, p))
-                        .description("查询我发布的物品列表")
+                        .description(toolProps.getProperty("my_posts"))
                         .inputType(MyPostsParams.class)
                         .build(),
                 FunctionToolCallback.builder("my_borrows_due",
                                 (VoidParams v) -> toolDispatcher.myBorrowsDue(userId, requestId, v))
-                        .description("查询我进行中的借用")
+                        .description(toolProps.getProperty("my_borrows_due"))
                         .inputType(VoidParams.class)
                         .build(),
                 FunctionToolCallback.builder("generate_feedback",
                                 (FeedbackParams p) -> toolDispatcher.generateFeedback(userId, requestId, p))
-                        .description("生成互助感想评价文本")
+                        .description(toolProps.getProperty("generate_feedback"))
                         .inputType(FeedbackParams.class)
                         .build()
         };
     }
 
     /**
-     * 触发消息数阈值归档（达到 archive-message-count 即滑动窗口归档最旧 N 条到 PG，保留剩余窗口）。
+     * 触发归档（热会话消息数达到归档轮次 ×2，即滑动窗口归档最旧 N 条到 PG，保留剩余窗口）。
      *
      * @param userId 住户用户 ID
      */
     private void archiveIfNeeded(Long userId) {
         AgentSession session = sessionService.getSession(userId);
-        if (session != null && session.getMessages().size() >= archiveMessageCount) {
-            archiveService.archiveWindow(userId, archiveMessageCount);
+        int messageThreshold = archiveTurnCount * 2;
+        if (session != null && session.getMessages().size() >= messageThreshold) {
+            archiveService.archiveWindow(userId, messageThreshold);
         }
     }
 
@@ -567,11 +614,14 @@ public class AgentService {
         if (norm.isEmpty()) {
             return null;
         }
+        Properties greetingProps = promptRepository.getProps("agent.replies");
         for (String keyword : GREETING_KEYWORDS) {
             if (norm.startsWith(keyword)) {
                 String rest = norm.substring(keyword.length());
                 if (rest.isEmpty() || rest.matches("[呀啊哦啦哈嘛吧喔嗯吗呵]*")) {
-                    return GREETING_REPLY;
+                    // 场景化文案优先（greeting.<关键词>），未命中用 greeting.default；纯本地返回零 LLM 成本
+                    return greetingProps.getProperty("greeting." + keyword,
+                            greetingProps.getProperty("greeting.default"));
                 }
             }
         }

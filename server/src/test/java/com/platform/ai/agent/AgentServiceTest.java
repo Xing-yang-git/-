@@ -1,6 +1,7 @@
 package com.platform.ai.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.platform.ai.common.PromptRepository;
 import com.platform.ai.search.KnowledgeHit;
 import com.platform.common.AgentMessageRole;
 import com.platform.common.AiGenerationException;
@@ -79,13 +80,15 @@ class AgentServiceTest {
     private MemoryRetrievalService memoryRetrievalService;
 
     private AgentService agentService;
+    private PromptRepository promptRepository;
 
     private static final Long USER_ID = 1L;
     private static final Long TENANT_ID = 10L;
 
     @BeforeEach
     void setUp() {
-        agentService = new AgentService(promptBuilder, toolDispatcher, intentRouter,
+        promptRepository = new PromptRepository();
+        agentService = new AgentService(promptBuilder, promptRepository, toolDispatcher, intentRouter,
                 sessionService, archiveService, deepseekChatModel, userRepository, tenantRepository,
                 new ObjectMapper(), preFilter, sensitiveWordService, memoryRetrievalService);
         // 前置过滤器默认放行（清洗后消息 = 原消息），问候类测试不触达过滤器，故用 lenient 避免误报
@@ -95,7 +98,7 @@ class AgentServiceTest {
         // 问候/拦截/防幻觉类测试不触达替换方法，故用 lenient 避免严格桩误报；
         // 掩码专项用例在各自测试内用更具体的 stub 覆盖 replace 返回值
         lenient().when(sensitiveWordService.replace(anyString())).thenAnswer(inv -> inv.getArgument(0));
-        ReflectionTestUtils.setField(agentService, "archiveMessageCount", 20);
+        ReflectionTestUtils.setField(agentService, "archiveTurnCount", 10);
     }
 
     private User userWithTenant() {
@@ -194,7 +197,7 @@ class AgentServiceTest {
     @Test
     @DisplayName("对话 - 达到归档阈值时触发归档")
     void should_archive_when_thresholdReached() {
-        ReflectionTestUtils.setField(agentService, "archiveMessageCount", 2);
+        ReflectionTestUtils.setField(agentService, "archiveTurnCount", 1);
         stubCommon("物业几点下班");
         when(deepseekChatModel.call(any(Prompt.class))).thenReturn(response("回复内容"));
         when(intentRouter.parse(any())).thenReturn(null);
@@ -266,6 +269,8 @@ class AgentServiceTest {
         verify(userRepository, never()).findById(any());
         verify(toolDispatcher, never()).reset(anyString());
         verify(deepseekChatModel, never()).call(any(Prompt.class));
+        // 问候也更新「上一条消息」记录（打破重复链，见 recordMessage）
+        verify(preFilter).recordMessage(eq(USER_ID), eq("你好"));
         // 用户消息 + AI 回复各写入一次热会话，保证历史连贯
         verify(sessionService).append(eq(USER_ID), eq(AgentMessageRole.USER), eq("你好"), eq(null), eq(null));
         verify(sessionService).append(eq(USER_ID), eq(AgentMessageRole.ASSISTANT), eq(result.reply()), any(), any());
@@ -363,6 +368,9 @@ class AgentServiceTest {
     @Test
     @DisplayName("拦截 - 清空会话指令命中时先归档剩余消息再清空热会话（清空即归档）")
     void should_clearSession_when_filterClearCommand() {
+        // 模拟对话中发清空指令（热会话非空 → 入口新会话检测不触发，仅清空分支重置上一条消息记录）
+        when(sessionService.getHistory(USER_ID))
+                .thenReturn(List.of(new AgentSession.AgentMessageItem("user", "在吗", null, null)));
         when(preFilter.process(USER_ID, "/clear"))
                 .thenReturn(new MessagePreFilter.PreFilterResult(null, "已清空对话上下文，我们可以重新开始啦", true, null));
 
@@ -373,8 +381,63 @@ class AgentServiceTest {
         InOrder inOrder = inOrder(archiveService, sessionService);
         inOrder.verify(archiveService).archiveRemaining(USER_ID);
         inOrder.verify(sessionService).clearSession(USER_ID);
+        // 清空是会话边界：重置上一条消息记录，避免新会话第一条误判为跨会话重复
+        verify(preFilter).resetUser(USER_ID);
         // 拦截命中不写入会话历史
         verify(sessionService, never()).append(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("对话流 - 清空会话指令拦截：返回的流携带 clearSession=true，供 Controller 发 clear 事件")
+    void chatStream_shouldCarryClearSession_when_filterClearCommand() {
+        // 模拟对话中发清空指令（热会话非空 → 入口新会话检测不触发，仅清空分支重置上一条消息记录）
+        when(sessionService.getHistory(USER_ID))
+                .thenReturn(List.of(new AgentSession.AgentMessageItem("user", "在吗", null, null)));
+        when(preFilter.process(USER_ID, "/clear"))
+                .thenReturn(new MessagePreFilter.PreFilterResult(null, "已清空对话上下文，我们可以重新开始啦", true, null));
+
+        AgentService.AgentChatStream stream = agentService.chatStream(USER_ID, "/clear");
+
+        assertThat(stream.isBlocked()).isTrue();
+        assertThat(stream.clearSession()).isTrue();
+        // 清空即归档：先 archiveRemaining（会话结束语义，纯 DB 搬运）再 clearSession
+        InOrder inOrder = inOrder(archiveService, sessionService);
+        inOrder.verify(archiveService).archiveRemaining(USER_ID);
+        inOrder.verify(sessionService).clearSession(USER_ID);
+        // 清空是会话边界：重置上一条消息记录，避免新会话第一条误判为跨会话重复
+        verify(preFilter).resetUser(USER_ID);
+        verify(deepseekChatModel, never()).stream(any(Prompt.class));
+    }
+
+    @Test
+    @DisplayName("对话流 - 普通拦截（帮助指令）不携带清空标记：clearSession=false 且不清空会话")
+    void chatStream_shouldNotClearSession_when_normalBlocked() {
+        when(preFilter.process(USER_ID, "/help"))
+                .thenReturn(new MessagePreFilter.PreFilterResult(null, "我是小邻，小区的智能助手…", false, null));
+
+        AgentService.AgentChatStream stream = agentService.chatStream(USER_ID, "/help");
+
+        assertThat(stream.isBlocked()).isTrue();
+        assertThat(stream.clearSession()).isFalse();
+        verify(archiveService, never()).archiveRemaining(USER_ID);
+        verify(sessionService, never()).clearSession(USER_ID);
+        verify(deepseekChatModel, never()).stream(any(Prompt.class));
+    }
+
+    @Test
+    @DisplayName("对话流 - 新会话入口（热会话为空）普通消息也重置上一条消息记录，防跨会话重复误判")
+    void chatStream_shouldResetLastMessage_when_sessionEmpty() {
+        // stubCommon 里 getHistory 返回空列表 → 模拟新会话（首次/退出/空闲归档后）
+        stubCommon("物业几点下班");
+        when(preFilter.process(USER_ID, "物业几点下班"))
+                .thenReturn(new MessagePreFilter.PreFilterResult("物业几点下班", null, false, null));
+        when(deepseekChatModel.stream(any(Prompt.class)))
+                .thenReturn(reactor.core.publisher.Flux.just(response("回复")));
+
+        agentService.chatStream(USER_ID, "物业几点下班");
+
+        // 新会话入口即重置上一条消息记录（不依赖清空/退出等显式边界）
+        verify(preFilter).resetUser(USER_ID);
     }
 
     @Test
@@ -386,6 +449,19 @@ class AgentServiceTest {
             assertThat(result.actions()).isEmpty();
         }
         verify(preFilter, never()).process(any(), anyString());
+        verify(deepseekChatModel, never()).call(any(Prompt.class));
+    }
+
+    @Test
+    @DisplayName("问候 - 场景化问候（晚安/谢谢）返回贴切文案而非通用问候，且零 LLM 成本")
+    void should_sceneReply_when_goodnightAndThanks() {
+        AgentChatResult goodnight = agentService.chat(USER_ID, "晚安");
+        assertThat(goodnight.reply()).contains("晚安");
+        assertThat(goodnight.reply()).doesNotContain("我是小邻，小区里的智能助手");
+
+        AgentChatResult thanks = agentService.chat(USER_ID, "谢谢");
+        assertThat(thanks.reply()).contains("不客气");
+
         verify(deepseekChatModel, never()).call(any(Prompt.class));
     }
 

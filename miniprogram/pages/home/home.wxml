@@ -25,7 +25,7 @@
 
     <!-- Tab 0: 闲置借出 LEND -->
     <block wx:if="{{currentTab === 0}}">
-      <view class="list-card" wx:for="{{idleList}}" wx:key="id" bindtap="onCardTap" data-item="{{item}}" data-type="idle">
+      <view class="list-card list-divider" wx:for="{{idleList}}" wx:key="id" bindtap="onCardTap" data-item="{{item}}" data-type="idle">
         <view class="thumb" style="background:{{item.bgColor || '#F2F2F7'}};">
           <image class="thumb-icon" src="../../images/{{item.icon}}" mode="aspectFit" />
         </view>
@@ -43,7 +43,7 @@
 
     <!-- Tab 1: 需求借入 WANTED -->
     <block wx:if="{{currentTab === 1}}">
-      <view class="list-card" wx:for="{{idleList}}" wx:key="id" bindtap="onCardTap" data-item="{{item}}" data-type="idle">
+      <view class="list-card list-divider" wx:for="{{idleList}}" wx:key="id" bindtap="onCardTap" data-item="{{item}}" data-type="idle">
         <view class="thumb" style="background:{{item.bgColor || '#FFF3E0'}};">
           <image class="thumb-icon" src="../../images/{{item.icon}}" mode="aspectFit" />
         </view>
@@ -86,12 +86,13 @@
   </view>
 
   <!-- FAB -->
-  <view class="fab" bindtap="onFabTap">
+  <view class="fab" style="left: {{fabX}}px; top: {{fabY}}px;"
+        catchtouchstart="onFabTouchStart" catchtouchmove="onFabTouchMove" catchtouchend="onFabTouchEnd">
     <image class="fab-icon-img {{fabOpen ? 'rotate' : ''}}" src="../../images/plus-icon.svg" mode="aspectFit" />
   </view>
 
-  <!-- FAB Menu -->
-  <view class="fab-menu" wx:if="{{fabOpen}}">
+  <!-- FAB Menu（跟随 fab 位置，上方展开） -->
+  <view class="fab-menu" wx:if="{{fabOpen}}" style="left: {{fabMenuLeft}}px; top: {{fabMenuTop}}px;">
     <view class="fab-menu-item" bindtap="onPublishIdle">
       <image class="fab-menu-icon" src="../../images/icon-upload.svg" mode="aspectFit" />
       <text>发布闲置物品</text>

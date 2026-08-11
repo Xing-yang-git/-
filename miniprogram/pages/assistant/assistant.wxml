@@ -9,13 +9,17 @@
       </view>
       <text class="assistant-nav-title">小邻</text>
       <text class="assistant-nav-sub">智能助手</text>
-      <view class="nav-spacer"></view>
-      <view class="nav-history-btn" bindtap="onHistoryTap">历史</view>
     </view>
   </view>
 
+  <!-- 历史对话悬浮按钮（避开右上角胶囊；长按拖动位置并记忆，拖动有边界回弹；轻点打开历史） -->
+  <view class="history-fab" style="left: {{fabX}}px; top: {{fabY}}px;"
+        catchtouchstart="onFabTouchStart" catchtouchmove="onFabTouchMove" catchtouchend="onFabTouchEnd">
+    <image class="history-fab-icon" src="../../images/clock-icon-white.svg" mode="aspectFit" />
+  </view>
+
   <!-- 历史会话弹层 -->
-  <view class="history-mask" wx:if="{{historyVisible}}" bindtap="onCloseHistory"></view>
+  <view class="history-mask" wx:if="{{historyVisible}}" catchtouchmove="preventTouchMove" bindtap="onCloseHistory"></view>
   <view class="history-sheet" wx:if="{{historyVisible}}">
     <view class="history-header">
       <text class="history-title">历史对话</text>
@@ -24,11 +28,13 @@
         <text class="history-action" bindtap="onCloseHistory">关闭</text>
       </view>
     </view>
-    <scroll-view class="history-list" scroll-y bindscrolltolower="onHistoryScrollLower" lower-threshold="50">
+    <scroll-view id="historyScroll" class="history-list" scroll-y enhanced show-scrollbar="{{false}}"
+                 style="height: {{historyListHeight ? historyListHeight + 'px' : ''}}"
+                 bindscrolltolower="onHistoryScrollLower" lower-threshold="50">
       <view
         wx:for="{{historyList}}"
         wx:key="id"
-        class="history-item"
+        class="history-item list-divider"
         data-id="{{item.id}}"
         data-item="{{item}}"
         bindtap="onHistoryItemTap"
@@ -41,14 +47,17 @@
           <text class="history-item-title">{{item.title}}</text>
           <text class="history-item-meta">{{item.messageCount}} 条 · {{item.updatedAtText}}</text>
         </view>
-        <text wx:if="{{!selecting}}" class="history-item-status">归档</text>
+        <view wx:if="{{!selecting}}" class="history-item-actions">
+          <image class="history-item-icon" src="/images/icon-switch.svg" mode="aspectFit" catchtap="onSwitchTap" data-id="{{item.id}}" />
+          <image class="history-item-icon" src="/images/icon-trash.svg" mode="aspectFit" catchtap="onDeleteTap" data-id="{{item.id}}" />
+        </view>
       </view>
       <view class="history-empty" wx:if="{{historyList.length === 0}}">暂无历史对话</view>
     </scroll-view>
   </view>
 
-  <!-- 消息区 -->
-  <scroll-view class="msg-area" scroll-y scroll-into-view="{{scrollToView}}" scroll-with-animation
+  <!-- 消息区（历史弹层打开时禁用滚动，让历史列表独占手势——对齐 help-detail 弹框滚动方案） -->
+  <scroll-view class="msg-area" scroll-y="{{!historyVisible}}" scroll-top="{{scrollTop}}"
                enhanced show-scrollbar="{{false}}" style="padding-bottom: {{keyboardHeight + 90}}px;"
                bindtap="onMsgAreaTap">
 
@@ -63,11 +72,41 @@
       </view>
     </view>
 
-    <!-- 消息气泡 -->
+    <!-- 消息：用户气泡 / AI 无气泡全宽 Markdown 排版（长按弹出复制） -->
     <block wx:for="{{messages}}" wx:key="id">
-      <view class="msg-row {{item.role === 'user' ? 'msg-row-right' : 'msg-row-left'}}">
-        <view class="bubble {{item.role === 'user' ? 'bubble-user' : 'bubble-ai'}}">
-          <text class="bubble-text">{{item.content}}<text class="typing" wx:if="{{item.streaming}}">▍</text></text>
+      <view class="msg-row {{item.role === 'user' ? 'msg-row-right' : 'msg-row-left'}}"
+            data-content="{{item.content}}" data-role="{{item.role}}" bindlongpress="onMsgLongPress">
+        <!-- 用户消息：保持右对齐蓝色气泡 -->
+        <view class="bubble bubble-user" wx:if="{{item.role === 'user'}}">
+          <text class="bubble-text">{{item.content}}</text>
+        </view>
+        <!-- AI 回复：无气泡全宽排版，按 Markdown 块渲染（标题/段落/列表/加粗） -->
+        <view class="ai-reply" wx:else>
+          <block wx:for="{{item.blocks}}" wx:key="index" wx:for-item="blk">
+            <view wx:if="{{blk.type === 'h2'}}" class="md-h2">
+              <text wx:for="{{blk.parts}}" wx:key="index" wx:for-item="part" class="{{part.bold ? 'md-bold' : ''}}">{{part.text}}</text>
+            </view>
+            <view wx:elif="{{blk.type === 'h3'}}" class="md-h3">
+              <text wx:for="{{blk.parts}}" wx:key="index" wx:for-item="part" class="{{part.bold ? 'md-bold' : ''}}">{{part.text}}</text>
+            </view>
+            <view wx:elif="{{blk.type === 'p'}}" class="md-p">
+              <text wx:for="{{blk.parts}}" wx:key="index" wx:for-item="part" class="{{part.bold ? 'md-bold' : ''}}">{{part.text}}</text>
+            </view>
+            <view wx:elif="{{blk.type === 'li'}}" class="md-li">
+              <text class="md-marker">{{blk.ordered ? blk.num + '.' : '•'}}</text>
+              <!-- 标题+正文分行：识别到「**标题**：正文」时标题独立一行、正文缩进下一行，避免长正文单行换行混乱 -->
+              <view wx:if="{{blk.title}}" class="md-li-body">
+                <text class="md-li-title">{{blk.title}}</text>
+                <view class="md-li-desc">
+                  <text wx:for="{{blk.descParts}}" wx:key="index" wx:for-item="part" class="{{part.bold ? 'md-bold' : ''}}">{{part.text}}</text>
+                </view>
+              </view>
+              <view wx:else class="md-li-body">
+                <text wx:for="{{blk.parts}}" wx:key="index" wx:for-item="part" class="{{part.bold ? 'md-bold' : ''}}">{{part.text}}</text>
+              </view>
+            </view>
+          </block>
+          <text class="typing" wx:if="{{item.streaming}}">▍</text>
           <text class="abort-marker" wx:if="{{item.aborted}}">（已终止）</text>
         </view>
       </view>
@@ -77,9 +116,9 @@
       <view class="sources" wx:if="{{item.sources.length > 0}}">
         <text class="source-item" wx:for="{{item.sources}}" wx:key="id" wx:for-item="src">参考：{{src.source}}</text>
       </view>
-      <!-- 动作卡片（写操作，用户点击跳发布页预填） -->
+      <!-- 动作卡片：写操作确认卡片 / 发布指引快捷跳转（goto_publish 渲染成蓝色"去发布 ›"链接） -->
       <view
-        class="action-card"
+        class="action-card {{act.type === 'goto_publish' ? 'action-jump' : ''}}"
         wx:if="{{item.actions.length > 0}}"
         wx:for="{{item.actions}}"
         wx:for-item="act"
@@ -87,8 +126,8 @@
         data-action="{{act}}"
         bindtap="onActionTap"
       >
-        <text class="action-label">{{act.label}}</text>
-        <text class="action-arrow">去填写 ›</text>
+        <text class="action-label" wx:if="{{act.type !== 'goto_publish'}}">{{act.label}}</text>
+        <text class="action-arrow">{{act.type === 'goto_publish' ? '去发布 ›' : '去填写 ›'}}</text>
       </view>
     </block>
 

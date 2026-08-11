@@ -11,6 +11,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.openai.OpenAiEmbeddingModel;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,7 +46,7 @@ class MemoryRetrievalServiceTest {
     void setUp() {
         service = new MemoryRetrievalService(zhipuEmbedding, memorySegmentRepository);
         ReflectionTestUtils.setField(service, "memoryRecallTop", 3);
-        ReflectionTestUtils.setField(service, "memoryMatchThreshold", 0.45);
+        ReflectionTestUtils.setField(service, "memoryMatchThreshold", 0.55);
         // 默认存在压缩段（走完整检索链路）；「无段跳过」用例单独覆盖 0
         lenient().when(memorySegmentRepository.countByUserId(any())).thenReturn(1L);
     }
@@ -119,10 +120,10 @@ class MemoryRetrievalServiceTest {
     }
 
     @Test
-    @DisplayName("检索 - 命中按距离阈值过滤（>0.45 不注入），仅距离 ≤ 阈值的摘要格式化注入")
+    @DisplayName("检索 - 命中按距离阈值过滤（>0.55 不注入），仅距离 ≤ 阈值的摘要格式化注入")
     void should_filterByThreshold_when_hitsReturned() {
         when(zhipuEmbedding.embed("你好")).thenReturn(vector());
-        // 距离 0.9 超过阈值 0.45 → 过滤；距离 0.3 命中（保持距离升序）
+        // 距离 0.9 超过阈值 0.55 → 过滤；距离 0.3 命中（保持距离升序）
         when(memorySegmentRepository.findIdsBySimilarity(eq(1L), anyString(), eq(3)))
                 .thenReturn(List.<Object[]>of(new Object[]{2L, 0.9}, new Object[]{1L, 0.3}));
         AgentMemorySegment hit = AgentMemorySegment.builder().id(1L).summary("用户喜欢园艺").build();
@@ -130,8 +131,8 @@ class MemoryRetrievalServiceTest {
 
         String result = service.retrieveMemory(1L, "你好");
 
-        // 只注入距离 ≤ 阈值的那条摘要（findAllById 只拉取过滤后的 id），返回带序号文本
-        assertThat(result).isEqualTo("1. 用户喜欢园艺");
+        // 只注入距离 ≤ 阈值的那条摘要（findAllById 只拉取过滤后的 id），带序号 + 时间 + 会话归属标签
+        assertThat(result).isEqualTo("1. （时间未知 · 会话「未命名」）用户喜欢园艺");
         verify(memorySegmentRepository).findAllById(List.of(1L));
     }
 
@@ -139,7 +140,7 @@ class MemoryRetrievalServiceTest {
     @DisplayName("检索 - 命中多条时返回带序号的摘要列表文本「1. 摘要\\n2. 摘要」（无 LLM 整合）")
     void should_returnNumberedSegmentsText_when_hits() {
         when(zhipuEmbedding.embed("你好")).thenReturn(vector());
-        // 两条均 ≤ 阈值 0.45（按距离升序），hitIds=[2L,1L]，摘要按此顺序带序号格式化
+        // 两条均 ≤ 阈值 0.55（按距离升序），hitIds=[2L,1L]，摘要按此顺序带序号格式化
         when(memorySegmentRepository.findIdsBySimilarity(eq(1L), anyString(), eq(3)))
                 .thenReturn(List.<Object[]>of(new Object[]{2L, 0.2}, new Object[]{1L, 0.3}));
         when(memorySegmentRepository.findAllById(List.of(2L, 1L))).thenReturn(List.of(
@@ -148,7 +149,26 @@ class MemoryRetrievalServiceTest {
 
         String result = service.retrieveMemory(1L, "你好");
 
-        assertThat(result).isEqualTo("1. 常发起搬家求助\n2. 用户喜欢园艺");
+        assertThat(result).isEqualTo("1. （时间未知 · 会话「未命名」）常发起搬家求助\n2. （时间未知 · 会话「未命名」）用户喜欢园艺");
+    }
+
+    @Test
+    @DisplayName("检索 - 命中段按时间从旧到新排序，带相对时间与所属会话标签（供模型判断先后/归属）")
+    void should_sortByCreatedAt_withTimeLabels() {
+        when(zhipuEmbedding.embed("你好")).thenReturn(vector());
+        // 检索距离升序返回 [1,2]，但 created_at 上旧的（3天前）应先注入
+        when(memorySegmentRepository.findIdsBySimilarity(eq(1L), anyString(), eq(3)))
+                .thenReturn(List.<Object[]>of(new Object[]{1L, 0.2}, new Object[]{2L, 0.3}));
+        when(memorySegmentRepository.findAllById(List.of(1L, 2L))).thenReturn(List.of(
+                AgentMemorySegment.builder().id(1L).summary("新记忆").title("周末手工")
+                        .createdAt(LocalDateTime.now()).build(),
+                AgentMemorySegment.builder().id(2L).summary("旧记忆").title("旧物处理")
+                        .createdAt(LocalDateTime.now().minusDays(3)).build()));
+
+        String result = service.retrieveMemory(1L, "你好");
+
+        // 按时间从旧到新 + 相对时间 + 所属会话标题标签（旧记忆在前）
+        assertThat(result).isEqualTo("1. （3天前 · 会话「旧物处理」）旧记忆\n2. （今天 · 会话「周末手工」）新记忆");
     }
 
     @Test
@@ -163,7 +183,7 @@ class MemoryRetrievalServiceTest {
 
         String result = service.retrieveMemory(1L, "你好");
 
-        assertThat(result).isEqualTo("1. 用户喜欢园艺");
+        assertThat(result).isEqualTo("1. （时间未知 · 会话「未命名」）用户喜欢园艺");
     }
 
     @Test

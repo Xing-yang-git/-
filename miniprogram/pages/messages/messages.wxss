@@ -30,13 +30,7 @@
   background: var(--fill-tertiary);
 }
 
-/* 渐变极细分割线（两端淡出），对齐原型 .msg-item + .msg-item */
-.session-item + .session-item {
-  background-image: linear-gradient(to right, transparent 8%, var(--separator) 25%, var(--separator) 75%, transparent 92%);
-  background-repeat: no-repeat;
-  background-size: 100% 0.5px;
-  background-position: top;
-}
+/* 列表项之间渐变分割线已统一由 app.wxss 全局 .list-divider 管理 */
 
 /* Avatar — 40px circle from app.wxss；统一用 👤 emoji（与求助详情页一致） */
 .avatar {

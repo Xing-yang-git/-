@@ -20,9 +20,13 @@ page {
 
   --separator: #D2D2D7;
   --separator-opaque: #E8E8ED;
+  /* 列表分割线渐变（两端淡出）：所有列表项之间统一分隔，对齐首页/messages 列表样式 */
+  --list-divider: linear-gradient(to right, transparent 8%, var(--separator) 25%, var(--separator) 75%, transparent 92%);
 
   --red: #FF3B30;
   --orange: #FF9500;
+  --yellow: #f7b500;   /* 黄色（历史对话悬浮按钮主色） */
+  --yellow-shadow: rgba(247, 181, 0, 0.35);   /* 黄色阴影（同主色 35% 透明度） */
   --green: #34C759;
   --teal: #5AC8FA;
   --indigo: #5856D6;
@@ -91,6 +95,14 @@ page {
   color: var(--text);
   background: var(--bg);
   line-height: 1.45;
+}
+
+/* --- 全局列表分割线：列表项之间统一渐变极细线（两端淡出），颜色取 --list-divider 变量 --- */
+.list-divider + .list-divider {
+  background-image: var(--list-divider);
+  background-repeat: no-repeat;
+  background-size: 100% 0.5px;
+  background-position: top;
 }
 
 /* --- 全局关键帧动画 --- */

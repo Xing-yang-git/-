@@ -34,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
@@ -153,11 +154,11 @@ class ArchiveServiceTest {
 
         verify(messageRepository).saveAll(anyList());
 
-        // 归档后热会话清空并回填会话级 conversationId（记忆按次实时检索，无窗口缓存字段）
+        // 归档后热会话清空；最后一次保存清空会话级 conversationId（会话结束语义，新会话不合并历史）
         ArgumentCaptor<AgentSession> sessionCaptor = ArgumentCaptor.forClass(AgentSession.class);
-        verify(sessionService).saveSession(eq(1L), sessionCaptor.capture());
+        verify(sessionService, times(2)).saveSession(eq(1L), sessionCaptor.capture());
         AgentSession saved = sessionCaptor.getValue();
-        assertThat(saved.getConversationId()).isEqualTo(1L);
+        assertThat(saved.getConversationId()).isNull();
         assertThat(saved.getMessages()).isEmpty();
     }
 
@@ -256,6 +257,40 @@ class ArchiveServiceTest {
     }
 
     @Test
+    @DisplayName("滑动窗口 - 只归档已归档回填前缀之外的新增消息（resume 后续对话不重复落库）")
+    void should_archiveWindow_onlyUnarchived_when_hasBackfilledPrefix() {
+        AgentSession session = new AgentSession();
+        session.setConversationId(9L);
+        session.setArchivedPrefixCount(2);
+        session.setMessages(new ArrayList<>(List.of(
+                new AgentSession.AgentMessageItem(AgentMessageRole.USER, "回填1", null, null),
+                new AgentSession.AgentMessageItem(AgentMessageRole.ASSISTANT, "回填2", null, null),
+                new AgentSession.AgentMessageItem(AgentMessageRole.USER, "新增1", null, null),
+                new AgentSession.AgentMessageItem(AgentMessageRole.ASSISTANT, "新增2", null, null),
+                new AgentSession.AgentMessageItem(AgentMessageRole.USER, "新增3", null, null))));
+        when(sessionService.getSession(1L)).thenReturn(session);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(User.builder().id(1L).tenantId(10L).build()));
+        stubSaveAssigningIds(50L);
+
+        Long rowId = archiveService.archiveWindow(1L, 10);
+
+        // 只归档 3 条新增消息（回填前缀 2 条不重复落库），沿用会话级 id=9
+        assertThat(rowId).isEqualTo(50L);
+        ArgumentCaptor<AgentConversation> convCaptor = ArgumentCaptor.forClass(AgentConversation.class);
+        verify(conversationRepository, atLeastOnce()).save(convCaptor.capture());
+        AgentConversation created = convCaptor.getAllValues().get(0);
+        assertThat(created.getMessageCount()).isEqualTo(3);
+        assertThat(created.getConversationId()).isEqualTo(9L);
+        // 归档后热会话保留已归档回填前缀，新增已移除，前缀计数不变
+        ArgumentCaptor<AgentSession> sessionCaptor = ArgumentCaptor.forClass(AgentSession.class);
+        verify(sessionService).saveSession(eq(1L), sessionCaptor.capture());
+        AgentSession saved = sessionCaptor.getValue();
+        assertThat(saved.getMessages()).hasSize(2);
+        assertThat(saved.getMessages().get(0).content()).isEqualTo("回填1");
+        assertThat(saved.getArchivedPrefixCount()).isEqualTo(2);
+    }
+
+    @Test
     @DisplayName("剩余归档 - 全部消息归档为一行并触发压缩、Redis 清空")
     void should_archiveRemaining_allMessages() {
         AgentSession session = sessionWithMessages(3);
@@ -270,9 +305,68 @@ class ArchiveServiceTest {
         verify(conversationRepository, atLeastOnce()).save(captor.capture());
         assertThat(captor.getAllValues().get(0).getMessageCount()).isEqualTo(3);
         verify(messageRepository).saveAll(anyList());
+        // 归档后热会话保存两次：doArchive 一次 + 清空 conversationId 一次（会话结束语义）
         ArgumentCaptor<AgentSession> sc = ArgumentCaptor.forClass(AgentSession.class);
-        verify(sessionService).saveSession(eq(1L), sc.capture());
+        verify(sessionService, times(2)).saveSession(eq(1L), sc.capture());
         assertThat(sc.getValue().getMessages()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("剩余归档 - 热会话仅剩已归档回填消息时不再重复建行（A→B→A 切换不虚高历史条数）")
+    void should_archiveRemaining_skip_when_onlyBackfilled() {
+        AgentSession session = new AgentSession();
+        session.setConversationId(9L);
+        session.setArchivedPrefixCount(2);
+        session.setMessages(new ArrayList<>(List.of(
+                new AgentSession.AgentMessageItem(AgentMessageRole.USER, "回填问题", null, null),
+                new AgentSession.AgentMessageItem(AgentMessageRole.ASSISTANT, "回填回答", null, null))));
+        when(sessionService.getSession(1L)).thenReturn(session);
+
+        Long rowId = archiveService.archiveRemaining(1L);
+
+        // 无新增：不建行（回填消息已在 PG），热会话按会话结束语义清理
+        assertThat(rowId).isNull();
+        verify(conversationRepository, never()).save(any(AgentConversation.class));
+        verify(messageRepository, never()).saveAll(anyList());
+        ArgumentCaptor<AgentSession> captor = ArgumentCaptor.forClass(AgentSession.class);
+        verify(sessionService).saveSession(eq(1L), captor.capture());
+        AgentSession saved = captor.getValue();
+        assertThat(saved.getMessages()).isEmpty();
+        assertThat(saved.getConversationId()).isNull();
+        assertThat(saved.getArchivedPrefixCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("剩余归档 - 只归档新增部分并沿用会话级 id（resume 后续对话切走不重复落库）")
+    void should_archiveRemaining_onlyUnarchived_when_hasBackfilledPrefix() {
+        AgentSession session = new AgentSession();
+        session.setConversationId(9L);
+        session.setArchivedPrefixCount(2);
+        session.setMessages(new ArrayList<>(List.of(
+                new AgentSession.AgentMessageItem(AgentMessageRole.USER, "回填1", null, null),
+                new AgentSession.AgentMessageItem(AgentMessageRole.ASSISTANT, "回填2", null, null),
+                new AgentSession.AgentMessageItem(AgentMessageRole.USER, "新增1", null, null),
+                new AgentSession.AgentMessageItem(AgentMessageRole.ASSISTANT, "新增2", null, null))));
+        when(sessionService.getSession(1L)).thenReturn(session);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(User.builder().id(1L).tenantId(10L).build()));
+        stubSaveAssigningIds(60L);
+
+        Long rowId = archiveService.archiveRemaining(1L);
+
+        // 只归档 2 条新增（回填前缀不重复落库），沿用会话级 id=9
+        assertThat(rowId).isEqualTo(60L);
+        ArgumentCaptor<AgentConversation> convCaptor = ArgumentCaptor.forClass(AgentConversation.class);
+        verify(conversationRepository, atLeastOnce()).save(convCaptor.capture());
+        AgentConversation created = convCaptor.getAllValues().get(0);
+        assertThat(created.getMessageCount()).isEqualTo(2);
+        assertThat(created.getConversationId()).isEqualTo(9L);
+        // 热会话按会话结束语义清理（doArchive 一次 + 清空 conversationId 一次）
+        ArgumentCaptor<AgentSession> sc = ArgumentCaptor.forClass(AgentSession.class);
+        verify(sessionService, times(2)).saveSession(eq(1L), sc.capture());
+        AgentSession saved = sc.getValue();
+        assertThat(saved.getMessages()).isEmpty();
+        assertThat(saved.getConversationId()).isNull();
+        assertThat(saved.getArchivedPrefixCount()).isZero();
     }
 
     // ==================== 列表（按会话级 conversation_id 分组） ====================
@@ -321,23 +415,70 @@ class ArchiveServiceTest {
         assertThat(row.get("updatedAt")).isEqualTo(LocalDateTime.of(2026, 8, 1, 11, 0));
     }
 
+    @Test
+    @DisplayName("列表 - 排除当前正在进行的对话（热会话会话级 id 与归档会话一致时不展示，防切换到自己）")
+    void should_list_excludeCurrentConversation() {
+        // 会话 1：当前正在进行（已滑动窗口归档过，同会话同时存在于热会话与归档表）
+        AgentConversation current = AgentConversation.builder()
+                .id(1L).conversationId(1L).userId(1L).messageCount(5).title("当前对话")
+                .status(AgentConversationStatus.ARCHIVED)
+                .createdAt(LocalDateTime.of(2026, 8, 1, 10, 0)).updatedAt(LocalDateTime.of(2026, 8, 1, 12, 0)).build();
+        AgentConversation other = AgentConversation.builder()
+                .id(2L).conversationId(2L).userId(1L).messageCount(3).title("其他对话")
+                .status(AgentConversationStatus.ARCHIVED)
+                .createdAt(LocalDateTime.of(2026, 8, 2, 10, 0)).updatedAt(LocalDateTime.of(2026, 8, 2, 11, 0)).build();
+        when(conversationRepository.findAllByUserIdAndStatusNot(1L, AgentConversationStatus.DELETED))
+                .thenReturn(List.of(current, other));
+        // 当前热会话正在进行会话 id=1
+        AgentSession session = new AgentSession();
+        session.setConversationId(1L);
+        when(sessionService.getSession(1L)).thenReturn(session);
+
+        Page<Map<String, Object>> result = archiveService.list(1L, PageRequest.of(0, 10));
+
+        assertThat(result.getContent()).hasSize(1);
+        Map<String, Object> row = result.getContent().get(0);
+        assertThat(row.get("id")).isEqualTo(2L);
+        assertThat(row.get("title")).isEqualTo("其他对话");
+        assertThat(result.getTotalElements()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("列表 - 历史中仅当前对话时返回空（totalElements 反映排除后的数量）")
+    void should_list_empty_when_onlyCurrentConversation() {
+        AgentConversation current = AgentConversation.builder()
+                .id(1L).conversationId(1L).userId(1L).messageCount(5).title("当前对话")
+                .status(AgentConversationStatus.ARCHIVED)
+                .createdAt(LocalDateTime.of(2026, 8, 1, 10, 0)).updatedAt(LocalDateTime.of(2026, 8, 1, 12, 0)).build();
+        when(conversationRepository.findAllByUserIdAndStatusNot(1L, AgentConversationStatus.DELETED))
+                .thenReturn(List.of(current));
+        AgentSession session = new AgentSession();
+        session.setConversationId(1L);
+        when(sessionService.getSession(1L)).thenReturn(session);
+
+        Page<Map<String, Object>> result = archiveService.list(1L, PageRequest.of(0, 10));
+
+        assertThat(result.getContent()).isEmpty();
+        assertThat(result.getTotalElements()).isZero();
+    }
+
     // ==================== 恢复（按会话级 id） ====================
 
     @Test
-    @DisplayName("恢复 - 归档会话不存在时抛业务异常")
+    @DisplayName("恢复 - 归档会话不存在时抛业务异常，且不归档当前热会话（避免孤儿段/消息丢失）")
     void should_throw_when_conversationNotFound_onResume() {
-        when(sessionService.getSession(1L)).thenReturn(null);
         when(conversationRepository.findOwnedByConversationIdOrId(1L, 9L, 9L)).thenReturn(List.of());
 
         assertThatThrownBy(() -> archiveService.resume(1L, 9L))
                 .isInstanceOf(BizException.class)
                 .hasMessageContaining("会话不存在或无权访问");
+        // 校验失败发生在归档之前：不触发当前热会话归档（不 saveSession），避免事务回滚后孤儿段残留
+        verify(sessionService, never()).saveSession(anyLong(), any());
     }
 
     @Test
-    @DisplayName("恢复 - 已软删会话抛业务异常")
+    @DisplayName("恢复 - 已软删会话抛业务异常，且不归档当前热会话（避免孤儿段/消息丢失）")
     void should_throw_when_conversationDeleted_onResume() {
-        when(sessionService.getSession(1L)).thenReturn(null);
         AgentConversation deleted = AgentConversation.builder()
                 .id(9L).userId(1L).status(AgentConversationStatus.DELETED).build();
         when(conversationRepository.findOwnedByConversationIdOrId(1L, 9L, 9L)).thenReturn(List.of(deleted));
@@ -345,6 +486,8 @@ class ArchiveServiceTest {
         assertThatThrownBy(() -> archiveService.resume(1L, 9L))
                 .isInstanceOf(BizException.class)
                 .hasMessageContaining("会话已删除");
+        // 校验失败发生在归档之前：不触发当前热会话归档（不 saveSession），避免事务回滚后孤儿段残留
+        verify(sessionService, never()).saveSession(anyLong(), any());
     }
 
     @Test
@@ -379,8 +522,9 @@ class ArchiveServiceTest {
         assertThat(saved.getMessages()).hasSize(4);
         assertThat(saved.getMessages().get(0).content()).isEqualTo("归档消息3");
         assertThat(saved.getMessages().get(3).content()).isEqualTo("归档消息6");
-        // 会话级 id 保留，继续对话沿用同一会话
+        // 会话级 id 保留，继续对话沿用同一会话；回填消息全部已在归档表，标记为已归档回填前缀
         assertThat(saved.getConversationId()).isEqualTo(9L);
+        assertThat(saved.getArchivedPrefixCount()).isEqualTo(4);
     }
 
     // ==================== 软删（按会话级 id + 越权防护） ====================

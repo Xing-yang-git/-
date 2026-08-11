@@ -62,6 +62,7 @@ public class AgentController {
     private final IntentRouter intentRouter;
     private final AgentToolDispatcher toolDispatcher;
     private final MemoryCompressionService memoryCompressionService;
+    private final MessagePreFilter preFilter;
 
     /** 敏感词跨 chunk 边界匹配：carry-over 保留的上一分块尾部字符数（须大于最长沙感词 + 干扰字符的跨度） */
     private static final int SENSITIVE_CARRY_LENGTH = 20;
@@ -73,7 +74,8 @@ public class AgentController {
                            ThreadPoolTaskExecutor agentExecutor,
                            IntentRouter intentRouter,
                            AgentToolDispatcher toolDispatcher,
-                           MemoryCompressionService memoryCompressionService) {
+                           MemoryCompressionService memoryCompressionService,
+                           MessagePreFilter preFilter) {
         this.agentService = agentService;
         this.archiveService = archiveService;
         this.objectMapper = objectMapper;
@@ -82,10 +84,11 @@ public class AgentController {
         this.intentRouter = intentRouter;
         this.toolDispatcher = toolDispatcher;
         this.memoryCompressionService = memoryCompressionService;
+        this.preFilter = preFilter;
     }
 
     /**
-     * 流式对话 — SSE 事件流（限流 429 时返回普通 JSON 错误）。
+     * 流式对话 — SSE 事件流（限流超限时返回 SSE error 事件，HTTP 状态仍为 200）。
      *
      * @param req  用户消息
      * @param auth 当前认证用户
@@ -94,8 +97,9 @@ public class AgentController {
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chat(@Valid @RequestBody AgentChatRequest req, Authentication auth) {
         Long userId = Long.valueOf(auth.getName());
+        long requestStartMs = System.currentTimeMillis();
 
-        // 限流：每分钟每用户配额，超限直接 429（普通 JSON，不开启 SSE）
+        // 限流：每分钟每用户配额，超限返回 SSE error 事件（友好文案提示，不开启对话流）
         if (!rateLimitService.tryAcquire(String.valueOf(userId))) {
             SseEmitter reject = new SseEmitter();
             try {
@@ -129,8 +133,12 @@ public class AgentController {
                 }
 
                 if (stream.isBlocked()) {
-                    // 前置过滤器拦截：直接播本地文案（不订阅内容流，不写会话历史）
+                    // 前置过滤器拦截：直接播本地文案（不订阅内容流，不写会话历史）；
+                    // 清空会话指令（/clear、/reset、「清除对话」）额外发 clear 事件，让前端同步清空消息列表
                     safeSend(emitter, "answer", stream.blockReply());
+                    if (stream.clearSession()) {
+                        safeSend(emitter, "clear", Map.of("done", true));
+                    }
                     safeSend(emitter, "end", Map.of("done", true));
                     emitter.complete();
                     return;
@@ -182,13 +190,19 @@ public class AgentController {
                             String fullText = full.toString();
                             AgentAction action = intentRouter.parse(fullText);
                             String cleanReply = agentService.cleanReply(fullText, action);
+                            // 兜底：无论意图解析是否成功，展示文本都不允许残留 JSON 意图段——
+                            // 模型格式偏差/非法 intent 导致 parse 失败时，也要剥掉 JSON 不泄漏给用户
+                            String displayBase = intentRouter.stripIntentJson(cleanReply);
+                            if (displayBase.isBlank()) {
+                                displayBase = "已为您整理，请在发布页完善信息后发布。";
+                            }
                             if (jsonHeldBack.get()) {
-                                // 纯 JSON：是意图则替换为友好文案 + 动作卡片；否则原样补发（均做敏感词掩码）
+                                // 纯 JSON：是意图则替换为友好文案 + 动作卡片；否则按兜底文案展示（均做敏感词掩码）
                                 if (action != null) {
                                     safeSend(emitter, "answer", agentService.maskForDisplay(cleanReply));
                                     safeSend(emitter, "action", List.of(action));
                                 } else {
-                                    safeSend(emitter, "answer", agentService.maskForDisplay(held.toString()));
+                                    safeSend(emitter, "answer", agentService.maskForDisplay(displayBase));
                                 }
                             } else if (action != null) {
                                 // 文本 + JSON：replace 事件用剔除 JSON 后的文案刷新气泡（掩码后）
@@ -198,7 +212,7 @@ public class AgentController {
                             // 运行时取回引用来源（requestId 缓存的工具命中；工具调用在流内完成，流结束才可知）
                             List<KnowledgeHit> sources = toolDispatcher.takeHits(stream.requestId());
                             // 防幻觉：移除非法 [N] 引用、检测资料外数字（仅记日志）→ 敏感词掩码（只影响展示文本）
-                            String guarded = agentService.applyHallucinationGuard(userId, cleanReply, sources);
+                            String guarded = agentService.applyHallucinationGuard(userId, displayBase, sources);
                             String display = agentService.maskForDisplay(guarded);
                             // 始终 replace 为最终展示文本：覆盖流式分块未发送的尾部（敏感词 carry-over 保留段）
                             // 与防幻觉修正，保证气泡展示的必然是掩码后的完整文本（前端 replace 整体刷新，幂等）
@@ -210,6 +224,8 @@ public class AgentController {
                             safeSend(emitter, "sources", sources);
                             // 回填会话：历史保留展示前的原文 guarded（敏感词未替换，避免掩码污染后续上下文判断）
                             agentService.completeStream(userId, req.getMessage(), guarded, sources, action, stream.requestId());
+                            // 端到端总耗时：含前置准备（拦截/意图/记忆检索）+ 流式生成 + 后处理 + 历史回填
+                            log.info("Agent 对话端到端耗时: userId={}, 总耗时={}ms", userId, System.currentTimeMillis() - requestStartMs);
                             safeSend(emitter, "end", Map.of("done", true));
                             emitter.complete();
                         })
@@ -277,6 +293,26 @@ public class AgentController {
     }
 
     /**
+     * 分块能力探测（C端页面加载时调用一次）：返回单个 SSE 事件，供客户端判断 enableChunked 是否可用。
+     *
+     * <p>无任何业务副作用（不读会话、不调 LLM、不改状态）。客户端默认按非分块发消息（单次送达，
+     * 绝不因降级重试而双发触发重复误判），仅当探测确认分块通道可用后才启用分块流式。</p>
+     *
+     * @return 单个 SSE start 事件后立即结束
+     */
+    @GetMapping("/probe")
+    public SseEmitter probe() {
+        SseEmitter emitter = new SseEmitter(10_000L);
+        try {
+            emitter.send(SseEmitter.event().name("start").data(toJson("start", Map.of("ok", true))));
+        } catch (IOException e) {
+            log.debug("探测事件发送失败（连接可能已断开）: {}", e.getMessage());
+        }
+        emitter.complete();
+        return emitter;
+    }
+
+    /**
      * 历史会话列表（排除软删，分页）。
      *
      * @param page 页码（从 0 开始）
@@ -312,8 +348,11 @@ public class AgentController {
     @PostMapping("/history/{id}/resume")
     public Result<?> resume(@PathVariable Long id, Authentication auth) {
         Long userId = Long.valueOf(auth.getName());
-        archiveService.resume(userId, id);
-        return Result.ok(Map.of("conversationId", id, "resumed", true));
+        // 返回回填的最近消息，前端据此渲染切换后的对话内容
+        List<AgentSession.AgentMessageItem> messages = archiveService.resume(userId, id);
+        // 恢复历史是新会话上下文：重置上一条消息记录，避免继续对话第一条被误判为重复
+        preFilter.resetUser(userId);
+        return Result.ok(Map.of("conversationId", id, "resumed", true, "messages", messages));
     }
 
     /**
@@ -366,6 +405,8 @@ public class AgentController {
         Long userId = Long.valueOf(auth.getName());
         archiveService.archiveRemaining(userId);
         memoryCompressionService.compressRetry(userId);
+        // 退出会话即会话边界：重置上一条消息记录，避免下次新会话第一条被误判为重复
+        preFilter.resetUser(userId);
         return Result.ok();
     }
 

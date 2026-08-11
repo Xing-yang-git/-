@@ -46,7 +46,7 @@ community-platform/
 │       │   └── common/        # Result + Exception + 18 常量类（BizStatus, PostType, DamageType, KnowledgeCategory 等）
 │       ├── main/resources/
 │       │   ├── application.yml
-│       │   ├── prompts/       # 提示词目录（agent/system.md、block/replies.md、memory/*.md，由 PromptRepository 读取）
+│       │   ├── prompts/       # 提示词目录（agent/system.md + agent/tools.md + agent/replies.md + agent/injection.md、block/replies.md、memory/*.md，由 PromptRepository 读取）
 │       │   └── db/            # schema.sql（14 张表）+ seed-*.sql + alter-*.sql（知识库/Agent 归档/敏感词/记忆压缩段 增量表）
 │       └── test/java/com/platform/   # 47 个单元测试类（ai/agent、ai/document、ai/common、ai/search、service、security 等）
 │
@@ -156,7 +156,7 @@ C端用户通过手机号 + 密码注册登录（`register` 页注册，`login` 
 | 认证 | POST /api/auth/* | wx-login / login / phone-login / register / appeal，GET status |
 | 闲置 | /api/idle-items/** | 发布/列表/详情/搜索（支持 keyword/semantic/混合三种模式）/下架 |
 | AI | POST /api/ai/* | 管理员批量生成语义向量 |
-| AI 助手 | /api/agent/** | 小邻对话（POST chat，SSE 流式 + RAG 检索 + 读工具调用 + 写操作动作卡片 + Redis 会话记忆 + 限流 + 消息前置拦截）/ 推荐提问（GET suggestions）/ 历史会话（GET history 分页、POST history/{id}/resume 按会话级 id 恢复、DELETE history 批量软删、POST exit 退出会话归档剩余并补压记忆段）/ 长期记忆：滑动窗口压缩 + 新窗口注入 {历史记忆}，需登录 |
+| AI 助手 | /api/agent/** | 小邻对话（POST chat，SSE 流式 + RAG 检索 + 读工具调用 + 写操作动作卡片 + Redis 会话记忆 + 限流 + 消息前置拦截）/ 分块能力探测（GET probe）/ 推荐提问（GET suggestions）/ 历史会话（GET history 分页、POST history/{id}/resume 按会话级 id 恢复并返回回填消息、DELETE history 批量软删、POST exit 退出会话归档剩余并补压记忆段）/ 长期记忆：滑动窗口压缩 + 新窗口注入 {历史记忆}（按会话归属与时间标注，防跨会话记忆污染），需登录 |
 | 文档管理 | /api/knowledge-documents/** | 知识库源文档上传/列表/状态/删除/重传（多格式解析 + OCR + 切片 + embedding + 重排） |
 | 敏感词 | /api/sensitive-words/** | 敏感词增删改查/列表（仅 super_admin） |
 | 借入 | /api/borrow-requests/** | 申请/审批/归还确认 |

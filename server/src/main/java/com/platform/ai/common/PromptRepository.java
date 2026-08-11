@@ -38,6 +38,9 @@ public class PromptRepository {
      */
     private static final Map<String, String> PROMPT_FILE_PATHS = Map.of(
             "agent.system", "agent/system.md",
+            "agent.tools", "agent/tools.md",
+            "agent.replies", "agent/replies.md",
+            "agent.injection", "agent/injection.md",
             "memory.compress", "memory/compress.md",
             "memory.archive-title", "memory/archive-title.md",
             "block.replies", "block/replies.md"

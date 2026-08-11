@@ -110,13 +110,7 @@
   background: var(--fill-quaternary);
 }
 
-/* 渐变极细分割线（两端淡出），对齐消息页分隔线样式 */
-.list-card + .list-card {
-  background-image: linear-gradient(to right, transparent 8%, var(--separator) 25%, var(--separator) 75%, transparent 92%);
-  background-repeat: no-repeat;
-  background-size: 100% 0.5px;
-  background-position: top;
-}
+/* 列表项之间渐变分割线已统一由 app.wxss 全局 .list-divider 管理 */
 
 .thumb {
   width: 128rpx;
@@ -176,9 +170,7 @@
 
 /* FAB */
 .fab {
-  position: fixed;
-  bottom: 240rpx;
-  right: 32rpx;
+  position: fixed;   /* left/top 由内联样式按 fabX/fabY 驱动（可拖动） */
   width: 100rpx;
   height: 100rpx;
   border-radius: 50rpx;
@@ -244,9 +236,7 @@
 }
 
 .fab-menu {
-  position: fixed;
-  bottom: 360rpx;
-  right: 32rpx;
+  position: fixed;   /* left/top 由内联样式按 fabMenuLeft/Top 驱动（跟随 fab） */
   z-index: 101;
   display: flex;
   flex-direction: column;

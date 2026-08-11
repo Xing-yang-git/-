@@ -1,6 +1,6 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
-const { POST_TYPE } = require('../../utils/constants');
+const { POST_TYPE, STORAGE_KEY } = require('../../utils/constants');
 const app = getApp();
 
 // 将分类关键词映射到原型风格的 feather 图标
@@ -56,12 +56,37 @@ Page({
     loading: false,
     refreshing: false,
     fabOpen: false,
-    listPaddingTop: 100
+    listPaddingTop: 100,
+    /** + 悬浮按钮位置（px，可长按拖动并记忆） */
+    fabX: 0,
+    fabY: 0,
+    /** fab 菜单位置（跟随 fab，上方左对齐并钳制屏内） */
+    fabMenuLeft: 0,
+    fabMenuTop: 0,
+    windowWidth: 375
   },
 
   onLoad() {
     if (!auth.ensureAccess()) return;   // 登录/审核门禁：未通过则已跳转
     app.ensureWebSocket(); // 确保全局 WS 已连接（登录后第一时间建立）
+    // + 悬浮按钮初始位置：优先记忆值（钳制边界内），否则默认右下角（50=fab 100rpx，16=right 32rpx，120=bottom 240rpx）
+    // 拖动边界：X 限制屏内回弹；Y 上不超固定头部（约 100px）、下不超 tabBar（安全区外 50px）
+    const sysInfo = wx.getSystemInfoSync();
+    const winH = sysInfo.windowHeight;
+    const winW = sysInfo.windowWidth;
+    const tabBarHeight = (sysInfo.screenHeight - sysInfo.safeArea.bottom) + 50;
+    this._fabMinX = 8;
+    this._fabMaxX = winW - 58;
+    this._fabMinY = 108;
+    this._fabMaxY = winH - tabBarHeight - 58;
+    const saved = wx.getStorageSync(STORAGE_KEY.HOME_FAB_POS);
+    const defX = winW - 66;
+    const defY = winH - 170;
+    this.setData({
+      windowWidth: winW,
+      fabX: Math.min(this._fabMaxX, Math.max(this._fabMinX, (saved && typeof saved.x === 'number') ? saved.x : defX)),
+      fabY: Math.min(this._fabMaxY, Math.max(this._fabMinY, (saved && typeof saved.y === 'number') ? saved.y : defY))
+    });
     // 计算导航栏偏移 + scroll-view 高度
     this.calcLayoutHeights();
     // 获取用户小区名称，优先级：后端 tenantName > 注册时存储 > 兜底值
@@ -267,12 +292,63 @@ Page({
     wx.navigateTo({ url: '/pages/search/search' });
   },
 
+  /** + 悬浮按钮拖动开始 */
+  onFabTouchStart(e) {
+    const t = e.touches[0];
+    this._fabDrag = { startX: t.clientX, startY: t.clientY, baseX: this.data.fabX, baseY: this.data.fabY, moved: false };
+  },
+
+  /** 拖动中：实时更新位置并钳制边界（左右屏内回弹、上不超列表区、下不超 tabBar） */
+  onFabTouchMove(e) {
+    if (!this._fabDrag) return;
+    const t = e.touches[0];
+    const dx = t.clientX - this._fabDrag.startX;
+    const dy = t.clientY - this._fabDrag.startY;
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) this._fabDrag.moved = true;
+    const nextX = Math.min(this._fabMaxX, Math.max(this._fabMinX, this._fabDrag.baseX + dx));
+    const nextY = Math.min(this._fabMaxY, Math.max(this._fabMinY, this._fabDrag.baseY + dy));
+    this.setData({ fabX: nextX, fabY: nextY });
+  },
+
+  /** 拖动结束：移动则记忆位置；未移动视为轻点 → 展开/收起发布菜单 */
+  onFabTouchEnd() {
+    if (!this._fabDrag) return;
+    const dragged = this._fabDrag.moved;
+    if (dragged) {
+      try {
+        wx.setStorageSync(STORAGE_KEY.HOME_FAB_POS, { x: this.data.fabX, y: this.data.fabY });
+      } catch (e) { /* 存储失败不阻断 */ }
+    }
+    this._fabDrag = null;
+    if (!dragged) this.onFabTap();
+  },
+
+  /** 点击 + 按钮：展开/收起发布菜单 */
   onFabTap() {
+    if (!this.data.fabOpen) {
+      // 计算菜单位置：fab 上方左对齐，钳制在屏内（估算菜单宽 140px / 高 150px + 12px 间隙）
+      const left = Math.max(8, Math.min(this.data.fabX, this.data.windowWidth - 140 - 8));
+      const top = Math.max(8, this.data.fabY - 162);
+      this.setData({ fabMenuLeft: left, fabMenuTop: top });
+    }
     this.setData({ fabOpen: !this.data.fabOpen });
   },
 
   onCloseFab() {
     this.setData({ fabOpen: false });
+  },
+
+  /**
+   * 返回手势/返回键处理（Android 返回键 + iOS 侧滑返回）：
+   * 发布菜单打开时先关闭菜单并拦截路由回退——本页为 tabBar 根页面，
+   * 菜单开着时返回手势会被当成根页面返回直接退出小程序。
+   */
+  onBackPress() {
+    if (this.data.fabOpen) {
+      this.onCloseFab();
+      return true;
+    }
+    return false;
   },
 
   onPublishIdle() {

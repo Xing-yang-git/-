@@ -146,9 +146,7 @@
   background: var(--fill-quaternary);
 }
 
-.list-card + .list-card {
-  border-top: 0.5px solid var(--separator);
-}
+/* 列表项之间渐变分割线已统一由 app.wxss 全局 .list-divider 管理 */
 
 /* 缩略图 — 对齐原型 .card-h-img：72x72，圆角 8px */
 .thumb {

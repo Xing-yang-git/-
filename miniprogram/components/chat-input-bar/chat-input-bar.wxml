@@ -2,11 +2,11 @@
 <view class="chat-input-bar" style="bottom: {{keyboardHeight}}px;">
 
   <!-- 文字模式：mic + 输入框(含发送/终止图标) + 可选附件按钮 -->
-  <view class="chat-input-row" wx:if="{{inputMode === 'text'}}">
+  <view class="chat-input-row {{focused ? 'chat-input-row-focused' : ''}} {{multiline ? 'chat-input-row-multiline' : ''}}" wx:if="{{inputMode === 'text'}}">
     <view class="chat-mic-btn {{sending ? 'chat-btn-disabled' : ''}}" bindtap="onSwitchToVoice">
       <image src="../../images/icon-mic.svg" mode="aspectFit"></image>
     </view>
-    <view class="chat-input-wrapper {{focused ? 'chat-input-wrapper-focused' : ''}}">
+    <view class="chat-input-wrapper {{focused ? 'chat-input-wrapper-focused' : ''}} {{multiline ? 'chat-input-wrapper-multiline' : ''}}">
       <textarea
         class="chat-input"
         placeholder="输入消息..."

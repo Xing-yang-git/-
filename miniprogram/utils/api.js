@@ -13,6 +13,76 @@ const { AUTH_STATUS } = require('./constants');
 let _reauthPending = false;
 let _reauthTimer = null;
 
+/** 本会话内 enableChunked 分块通道是否已确认可用（由 {@link probeChunked} 探测得出）。
+ * 默认 false = 非分块直发（消息只发一次，绝无降级重试导致的双发）；探测确认分块可用后才启用分块流式。 */
+let _chunkedUsable = false;
+/** 是否已探测过分块通道（防止重复探测） */
+let _chunkProbed = false;
+
+/**
+ * 将 string / ArrayBuffer 统一解码为字符串（SSE 文本）。模块级复用（requestStream 与探测共用）。
+ *
+ * @param d 原始数据（string 或 ArrayBuffer）
+ * @return 解码后的文本
+ */
+function toText(d) {
+  if (typeof d === 'string') return d;
+  if (d && d.byteLength) {
+    const bytes = new Uint8Array(d);
+    // 优先 TextDecoder 正确处理 UTF-8；缺失时退化为字节直转（中文会乱码但事件结构可解析）
+    if (typeof TextDecoder !== 'undefined') {
+      try { return new TextDecoder('utf-8').decode(bytes); } catch (e) { /* 走退化路径 */ }
+    }
+    const parts = [];
+    const step = 8192;
+    for (let i = 0; i < bytes.length; i += step) {
+      parts.push(String.fromCharCode.apply(null, bytes.subarray(i, i + step)));
+    }
+    return parts.join('');
+  }
+  return '';
+}
+
+/**
+ * 探测 enableChunked 分块通道是否可用（页面加载时调用一次，幂等）。
+ *
+ * <p>用分块方式请求轻量 SSE 探测端点：onChunkReceived 能收到数据或 success 拿到 body
+ * 说明分块通道可用（标记 {@link _chunkedUsable}），否则保持默认非分块模式。
+ * 探测本身零业务副作用（后端 /api/agent/probe 不读会话、不调 LLM）。</p>
+ */
+function probeChunked() {
+  if (_chunkProbed) return;
+  _chunkProbed = true;
+  const app = getApp();
+  const baseUrl = app.globalData ? app.globalData.baseUrl : '';
+  const token = wx.getStorageSync('token') || '';
+  let receivedChunk = false;
+  wx.request({
+    method: 'GET',
+    url: baseUrl + '/api/agent/probe',
+    header: {
+      'Accept': 'text/event-stream',
+      'Authorization': token ? 'Bearer ' + token : ''
+    },
+    enableChunked: true,
+    responseType: 'text',
+    success: (res) => {
+      // onChunkReceived 已送达数据则无需再看 success body
+      if (receivedChunk) return;
+      const body = toText(res.data);
+      if (body && body.indexOf('data:') !== -1) _chunkedUsable = true;
+    },
+    fail: () => { /* 探测失败保持默认非分块（_chunkedUsable 仍为 false） */ },
+    onChunkReceived: (res) => {
+      const chunk = toText(res.data);
+      if (chunk) {
+        receivedChunk = true;
+        _chunkedUsable = true;
+      }
+    }
+  });
+}
+
 /** 重置 _reauthPending 状态（安全兜底：最多 3 秒后自动恢复） */
 function _resetReauth() {
   _reauthPending = false;
@@ -201,31 +271,14 @@ const requestStream = (url, data, onChunk, onError) => {
   const baseUrl = app.globalData ? app.globalData.baseUrl : '';
   const token = wx.getStorageSync('token') || '';
   let cancelled = false;
+  let task = null;
   // 是否已通过 onChunkReceived 收到非空分块（未收到时 success 里兜底喂完整响应体）
   let receivedChunk = false;
-  // 是否已降级为普通请求重试过（enableChunked 不支持场景）
+  // 是否已降级为非分块请求重试过（分块请求网络层失败场景）
   let retried = false;
-  let task = null;
 
-  /** 将 string / ArrayBuffer 统一解码为字符串（SSE 文本）。 */
-  const toText = (d) => {
-    if (typeof d === 'string') return d;
-    if (d && d.byteLength) {
-      const bytes = new Uint8Array(d);
-      // 优先 TextDecoder 正确处理 UTF-8；缺失时退化为字节直转（中文会乱码但事件结构可解析）
-      if (typeof TextDecoder !== 'undefined') {
-        try { return new TextDecoder('utf-8').decode(bytes); } catch (e) { /* 走退化路径 */ }
-      }
-      const parts = [];
-      const step = 8192;
-      for (let i = 0; i < bytes.length; i += step) {
-        parts.push(String.fromCharCode.apply(null, bytes.subarray(i, i + step)));
-      }
-      return parts.join('');
-    }
-    return '';
-  };
-
+  // 模式：由探测结果决定——分块可用才用分块真流式；否则非分块直发（消息只发一次，绝无降级重试双发）。
+  // 分块模式下每个分块 1 次 setData，非分块模式整段响应体一次到达、由解析器批量处理。
   const doRequest = (useChunked) => {
     task = wx.request({
       method: 'POST',
@@ -236,8 +289,6 @@ const requestStream = (url, data, onChunk, onError) => {
         'Authorization': token ? 'Bearer ' + token : ''
       },
       data: JSON.stringify(data),
-      // 流式接收：基础库 2.20.1+，responseType text 时 onChunkReceived 的 data 为 string；
-      // 部分真机基础库不支持 enableChunked 会直接 fail，此时降级为普通请求重试（见 fail 分支）
       enableChunked: useChunked,
       responseType: 'text',
       success: (res) => {
@@ -245,28 +296,41 @@ const requestStream = (url, data, onChunk, onError) => {
         if (res.statusCode === 401) {
           forceRelogin();
         } else if (res.statusCode !== 200) {
-          // SSE 场景若返回非 SSE 错误响应（@Valid 校验 400 / 意外 500），
-          // 分块事件不会触发，必须在此回调 onError，否则前端永久卡在发送中
+          // 非 200 错误响应（@Valid 校验 400 / 意外 500）→ 直接报错，避免前端永久卡在发送中
           const msg = (res.data && res.data.message) || '请求失败';
           onError(new Error(msg));
         } else if (!receivedChunk) {
-          // 兜底：分块流未生效 / 已降级普通请求时，整个 SSE 响应体在 success 里一次性到达，
-          // 直接喂给解析器，避免前端永远解析不到事件而卡到超时
+          // 非分块兜底：整个 SSE 响应体一次性到达，喂给解析器批量处理
           const body = toText(res.data);
+          console.log('[requestStream] 兜底全量 bodyLen=', body ? body.length : 0, 'hasData=', body ? body.indexOf('data:') : -1);
           if (body && body.indexOf('data:') !== -1) {
-            onChunk(body);
+            // 第二个参数 isFallback=true 告知解析器：这是非分块全量体（而非真机原生分块），
+            // 解析器据此判断是否用打字机模拟流式，避免真机 TCP 粘包（原生分块多事件一次到达）被误判
+            onChunk(body, true);
+          } else {
+            // 200 但无 SSE 事件 → 视为异常，避免卡到看门狗超时。
+            // 注意：这里不做降级重试——分块请求已送达后端并处理过，重试会触发服务端重复处理
+            // （同一消息二次处理会命中重复规则），由探测结果决定模式，默认非分块即可规避
+            onError(new Error('响应格式异常'));
           }
         }
+        // receivedChunk=true：事件已通过 onChunkReceived 分块送达，无需再喂
       },
       fail: (err) => {
         if (cancelled) return;
+        // 已通过 onChunkReceived 收到过数据：连接关闭/拆流导致的 fail 不算错误——
+        // 部分基础库流式响应结束后仍触发 fail，数据其实已完整送达（由 end 事件收尾）。
+        // 若流中途真的断了（end 未到），静默看门狗会在 WATCHDOG_SILENCE_MS 后兜底判超时。
+        if (receivedChunk) return;
         // enableChunked 在部分真机基础库不支持会立即 fail（且未收到任何分块）→
-        // 降级为普通请求重试一次（一次性拿全量响应体），避免"网络中断"误报
-        if (useChunked && !retried && !receivedChunk) {
+        // 降级为非分块普通请求重试一次（一次性拿全量响应体），避免"网络中断"误报
+        if (useChunked && !retried) {
+          console.log('[requestStream] 分块模式失败，降级为非分块重试:', err && err.errMsg);
           retried = true;
           doRequest(false);
           return;
         }
+        console.error('[requestStream] 请求失败:', err && err.errMsg, err);
         onError(err);
       },
       onChunkReceived: (res) => {
@@ -274,13 +338,19 @@ const requestStream = (url, data, onChunk, onError) => {
         const chunk = toText(res.data);
         if (chunk) {
           receivedChunk = true;
-          onChunk(chunk);
+          // isFallback=false：原生分块流式，解析器直接消费、不做打字机模拟
+          onChunk(chunk, false);
         }
       }
     });
   };
 
-  doRequest(true);
+  // 探测确认分块可用才用分块真流式；否则（默认）非分块直发——消息只发一次，绝不双发
+  if (_chunkedUsable) {
+    doRequest(true);
+  } else {
+    doRequest(false);
+  }
 
   return () => {
     cancelled = true;
@@ -295,6 +365,7 @@ const api = {
   del: (url, data) => request('DELETE', url, data),
   upload: upload,
   requestStream: requestStream,
+  probeChunked: probeChunked,
   forceRelogin: forceRelogin,
   forceReviewStatus: forceReviewStatus
 };

@@ -7,10 +7,16 @@ import org.springframework.ai.openai.OpenAiEmbeddingModel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 记忆检索服务 — 按次实时检索用户长期记忆（压缩段）摘要，直接注入 {@code {历史记忆}} 变量。
@@ -31,7 +37,7 @@ public class MemoryRetrievalService {
     private int memoryRecallTop;
 
     /** 记忆匹配距离阈值（余弦距离，≤ 此值的摘要才注入；低于阈值的摘要不注入） */
-    @Value("${ai.agent.memory-match-threshold:0.45}")
+    @Value("${ai.agent.memory-match-threshold:0.55}")
     private double memoryMatchThreshold;
 
     /** 无命中时的记忆变量文本 */
@@ -180,18 +186,63 @@ public class MemoryRetrievalService {
      * @return 形如「1. 摘要1\n2. 摘要2」的文本；摘要全为空（空白）时返回「无」
      */
     private String buildSegmentsText(List<AgentMemorySegment> segments) {
+        // 按时间从旧到新排序（created_at 为空的历史数据排最后），格式化带相对时间标签——
+        // 帮助模型判断记忆先后与归属（当轮上下文 vs 历史记忆），回答时间性/顺序性问题时能定位正确层级
+        List<AgentMemorySegment> ordered = segments.stream()
+                .sorted(Comparator.comparing(AgentMemorySegment::getCreatedAt,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .collect(Collectors.toList());
         StringBuilder sb = new StringBuilder();
         int seq = 1;
-        for (AgentMemorySegment segment : segments) {
+        for (AgentMemorySegment segment : ordered) {
             String summary = segment.getSummary();
             if (summary != null && !summary.isBlank()) {
                 if (sb.length() > 0) {
                     sb.append('\n');
                 }
-                sb.append(seq).append(". ").append(summary.trim());
+                // 时间 + 会话归属标签：帮助模型判断该记忆的先后与所属会话，
+                // 避免把其他会话的记忆误当作当前会话的事实（跨会话记忆污染）
+                sb.append(seq).append(". （").append(relativeTime(segment.getCreatedAt()))
+                        .append(" · 会话「").append(sessionLabel(segment)).append("」）")
+                        .append(summary.trim());
                 seq++;
             }
         }
         return sb.length() == 0 ? MEMORY_NONE : sb.toString();
+    }
+
+    /**
+     * 记忆段所属会话标签（压缩时生成的会话标题，缺失时用「未命名」）。
+     *
+     * @param segment 记忆段
+     * @return 会话标题标签
+     */
+    private String sessionLabel(AgentMemorySegment segment) {
+        String title = segment.getTitle();
+        return title == null || title.isBlank() ? "未命名" : title.trim();
+    }
+
+    /**
+     * 将记忆段创建时间格式化为相对时间标签（今天/昨天/N天前/跨月日期）。
+     *
+     * @param created 记忆段创建时间
+     * @return 相对时间标签；created 为空返回「时间未知」
+     */
+    private String relativeTime(LocalDateTime created) {
+        if (created == null) {
+            return "时间未知";
+        }
+        LocalDate createdDate = created.toLocalDate();
+        long days = ChronoUnit.DAYS.between(createdDate, LocalDate.now());
+        if (days <= 0) {
+            return "今天";
+        }
+        if (days == 1) {
+            return "昨天";
+        }
+        if (days < 30) {
+            return days + "天前";
+        }
+        return createdDate.format(DateTimeFormatter.ofPattern("M月d日"));
     }
 }

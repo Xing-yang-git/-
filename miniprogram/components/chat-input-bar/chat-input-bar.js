@@ -33,7 +33,9 @@ Component({
     /** textarea 聚焦 key（数字变化触发重新聚焦，对齐 chat 页 inputFocus 机制） */
     focusKey: 0,
     /** textarea 聚焦态（聚焦时输入框高度翻倍，扩大打字/按压区域） */
-    focused: false
+    focused: false,
+    /** 多行增高态（内容超过 1 行）：图标贴底；与 focused 独立，失焦保留长文本时仍贴底 */
+    multiline: false
   },
 
   methods: {
@@ -73,8 +75,13 @@ Component({
       this.triggerEvent('switchtext');
     },
 
-    /** 键盘高度变化 → 透传宿主（宿主驱动输入栏抬升与消息区留白） */
+    /** 键盘高度变化 → 透传宿主（宿主驱动输入栏抬升与消息区留白）；键盘收起时同步退出聚焦态 */
     onKeyboardHeightChange(e) {
+      // 键盘收起（height=0）时若仍处于聚焦态（发送后 _justSent 重聚焦可能使键盘收起但 focused 残留），
+      // 同步复位聚焦态，输入栏高度回到未聚焦的较小状态
+      if (e.detail.height === 0 && this.data.focused) {
+        this.setData({ focused: false });
+      }
       this.triggerEvent('keyboardheightchange', { height: e.detail.height });
     },
 
@@ -94,8 +101,11 @@ Component({
       this.triggerEvent('blur');
     },
 
-    /** textarea 行高变化（对齐 chat 页，无需处理） */
-    onLineChange() {},
+    /** textarea 行高变化：超过 1 行视为多行增高（图标贴底），回到 1 行恢复居中 */
+    onLineChange(e) {
+      const lineCount = e?.detail?.lineCount ? e.detail.lineCount : 1;
+      this.setData({ multiline: lineCount > 1 });
+    },
 
     /** 点击 + 按钮 → 通知宿主打开附件菜单 */
     onPlus() {

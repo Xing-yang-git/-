@@ -10,6 +10,9 @@
 .assistant-nav {
   background: var(--surface);
   border-bottom: 1rpx solid var(--separator);
+  /* 固定不随页面收缩/滚动：flex 列中 nav 始终占据顶部（对齐聊天页 .chat-nav） */
+  flex-shrink: 0;
+  z-index: 100;
 }
 
 .assistant-nav-inner {
@@ -31,14 +34,23 @@
   color: var(--text-tertiary);   /* 「智能助手」副标题弱化 */
 }
 
-.nav-spacer {
-  flex: 1;
+/* 历史对话悬浮按钮（圆形黄底 + 白色时钟图标，尺寸对齐首页 + 按钮；悬浮在导航下方右上角，避开胶囊遮挡） */
+.history-fab {
+  position: fixed;
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: 50%;
+  background: var(--yellow);   /* 黄色底（token 统一管理） */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12rpx 36rpx var(--yellow-shadow);
+  z-index: 50;
 }
 
-.nav-history-btn {
-  font-size: var(--text-sm);
-  color: var(--blue);
-  padding: 8rpx 16rpx;
+.history-fab-icon {
+  width: 40rpx;
+  height: 40rpx;
 }
 
 /* 返回按钮（对齐聊天页 nav-back 样式） */
@@ -68,16 +80,18 @@
   left: 0;
   right: 0;
   bottom: 0;
-  max-height: 70vh;
+  max-height: 50vh; /* 历史对话框最大高度：屏幕 50% */
   background: var(--surface);
   border-top-left-radius: var(--radius-xl);
   border-top-right-radius: var(--radius-xl);
   z-index: 91;
   display: flex;
   flex-direction: column;
+  overflow: hidden; /* 对齐 help-detail 弹框：裁掉超出圆角区域的内容，scroll-view 内部滚动 */
 }
 
 .history-header {
+  flex-shrink: 0; /* 弹层达上限时 header 不被压缩，滚动区保持在 header 下方 */
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -106,9 +120,9 @@
 }
 
 .history-list {
-  flex: 1;
+  /* 高度由 JS 动态计算（calibrateHistoryHeight）设为明确 px，保证 scroll-view 可滚动；
+     不依赖 flex 高度约束——部分真机对 fixed + flex + max-height 的 scroll-view 高度计算不可靠 */
   padding: 8rpx 0;
-  max-height: 55vh;
 }
 
 .history-item {
@@ -116,7 +130,7 @@
   align-items: center;
   gap: 16rpx;
   padding: 24rpx 32rpx;
-  border-bottom: 1rpx solid var(--separator);   /* 列表分隔线 */
+  /* 列表项之间渐变分割线由 app.wxss 全局 .list-divider 统一管理 */
 }
 
 .history-check {
@@ -157,10 +171,17 @@
   color: var(--text-tertiary);
 }
 
-.history-item-status {
-  font-size: var(--text-xs);
-  color: var(--text-tertiary);
+/* 历史项右侧操作区：切换 / 删除图标（切换蓝色、删除红色，颜色内嵌于 SVG） */
+.history-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 28rpx;
   flex-shrink: 0;
+}
+
+.history-item-icon {
+  width: 36rpx;
+  height: 36rpx;
 }
 
 .history-empty {
@@ -175,6 +196,10 @@
   flex: 1;
   padding: 24rpx 32rpx;
   box-sizing: border-box;
+  background-color: var(--surface);
+  /* 关键：让 flex 项 min-height 归零，滚动区能收缩到内容以下并内部滚动——
+     否则长对话时 msg-area 撑高导致整页溢出滚动（导航被带跑、最新消息落到输入框后） */
+  overflow-y: auto;
 }
 
 /* 欢迎态 */
@@ -243,11 +268,76 @@
   border-bottom-right-radius: 4rpx;   /* 仅右下小圆角区分方向 */
 }
 
-.bubble-ai {
-  background: var(--surface);   /* AI 气泡白底 + 轻投影 */
+/* AI 回复：无气泡排版（宽度为阅读区 90%，略收窄便于长句阅读），仅字体排版（正式文档感），按 Markdown 块渲染 */
+.ai-reply {
+  width: 90%;
+  padding: 4rpx 0 8rpx;
+}
+
+.md-h2 {
+  font-size: var(--text-lg);   /* 二级标题 20px */
+  font-weight: 600;
   color: var(--text);
-  border-bottom-left-radius: 4rpx;
-  box-shadow: var(--shadow-sm);
+  margin: 16rpx 0 6rpx;   /* 段前留白拉开章节节奏，避免标题贴住上段 */
+  line-height: 1.4;
+}
+
+.md-h3 {
+  font-size: var(--text-base);   /* 三级标题 17px */
+  font-weight: 600;
+  color: var(--text);
+  margin: 14rpx 0 6rpx;   /* 段前留白拉开章节节奏，避免标题贴住上段 */
+  line-height: 1.4;
+}
+
+/* 正文段落：break-word 让中英混排在词边界换行，不再硬切单词产生截断感；
+   justify 两端对齐使行尾整齐；margin 拉开段落间距形成清晰的换行节奏 */
+.md-p {
+  font-size: var(--text-md);
+  color: var(--text);
+  line-height: 1.6;
+  margin: 8rpx 0;
+  text-align: justify;
+  word-break: break-word;
+}
+
+/* 列表项：标记列 + 内容，首行对齐 */
+.md-li {
+  display: flex;
+  align-items: flex-start;
+  font-size: var(--text-md);
+  color: var(--text);
+  line-height: 1.6;
+  margin: 4rpx 0;
+  word-break: break-word;   /* 词边界换行，避免英文单词硬切 */
+}
+
+.md-marker {
+  flex-shrink: 0;
+  width: 36rpx;   /* 统一「•」与「1.」列宽，内容对齐 */
+  color: var(--blue);   /* 分类符用品牌蓝，强化正式分类感 */
+}
+
+/* 列表项「标题+正文」分行体：标题独立一行、正文缩进下一行，避免长正文单行 flex 换行混乱 */
+.md-li-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.md-li-title {
+  display: block;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.md-li-desc {
+  display: block;
+  word-break: break-word;   /* 与 .md-li 一致，词边界换行 */
+}
+
+.md-bold {
+  font-weight: 600;
+  color: var(--text);
 }
 
 .typing {
@@ -263,10 +353,10 @@
   color: var(--text-tertiary);
 }
 
-/* 失败重试入口：超时/网络中断/出错时显示在 AI 气泡下方，点击原问题重发 */
+/* 失败重试入口：超时/网络中断/出错时显示在 AI 回复下方，点击原问题重发（对齐全宽回复左缘） */
 .msg-retry {
   display: inline-block;
-  margin: -8rpx 0 16rpx 16rpx;
+  margin: 4rpx 0 16rpx;
   padding: 10rpx 20rpx;
   font-size: var(--text-xs);
   color: var(--blue);
@@ -280,8 +370,8 @@
   display: flex;
   flex-wrap: wrap;
   gap: 12rpx;
-  margin: -8rpx 0 16rpx 16rpx;
-  max-width: 70%;
+  margin: 4rpx 0 16rpx;
+  max-width: 100%;
 }
 
 .source-item {
@@ -292,13 +382,13 @@
   border-radius: var(--radius-sm);
 }
 
-/* 动作卡片（写操作确认入口） */
+/* 动作卡片（写操作确认入口，对齐全宽 AI 回复左缘） */
 .action-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  max-width: 70%;
-  margin: -8rpx 0 16rpx 16rpx;
+  max-width: 100%;
+  margin: 4rpx 0 16rpx;
   padding: 20rpx 24rpx;
   background: var(--surface);
   border: 1rpx solid var(--blue);
@@ -315,6 +405,23 @@
 .action-arrow {
   font-size: var(--text-sm);
   color: var(--text-tertiary);
+}
+
+/* 发布指引快捷跳转（goto_publish）：蓝色文字链接样式，区别于写操作确认卡片 */
+.action-card.action-jump {
+  display: inline-flex;
+  max-width: 100%;
+  margin: 4rpx 0 16rpx;
+  padding: 8rpx 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.action-card.action-jump .action-arrow {
+  font-size: var(--text-md);
+  font-weight: 500;
+  color: var(--blue);
 }
 
 .msg-bottom {

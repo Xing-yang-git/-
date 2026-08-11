@@ -21,11 +21,12 @@ public class IntentRouter {
 
     private final ObjectMapper objectMapper;
 
-    /** 写操作 intent → 动作卡片按钮文案 */
+    /** 写操作 intent → 动作卡片按钮文案；goto_publish 为「发布指引」快捷跳转（前端渲染成蓝色"去发布 ›"链接） */
     private static final Map<String, String> ACTION_LABEL = Map.of(
             "publish_help", "帮您发起求助",
             "publish_idle", "帮您发布闲置",
-            "publish_wanted", "帮您发布借入需求"
+            "publish_wanted", "帮您发布借入需求",
+            "goto_publish", "去发布"
     );
 
     public IntentRouter(ObjectMapper objectMapper) {
@@ -104,5 +105,50 @@ public class IntentRouter {
             return trimmed.substring(braceStart, braceEnd + 1);
         }
         return null;
+    }
+
+    /**
+     * 兜底剥离回复中的 JSON 写操作意图段（供展示文本使用）。
+     *
+     * <p>与 {@link #stripJson} 不同：只移除包含 {@code "intent"} 字段的 JSON 对象块，
+     * 用逐层括号匹配定位完整对象，不误伤正文中的花括号（如普通文字里的 {xx}）。
+     * 即使意图解析失败（格式偏差/非法 intent），也能保证 JSON 不泄漏给用户。</p>
+     *
+     * @param text 模型原始回复
+     * @return 剥离意图 JSON 后的文本（可能为空；调用方对空做兜底文案）
+     */
+    public String stripIntentJson(String text) {
+        if (text == null) {
+            return "";
+        }
+        int start = text.indexOf('{');
+        while (start >= 0) {
+            int end = matchBrace(text, start);
+            if (end < 0) {
+                break;
+            }
+            if (text.substring(start, end + 1).contains("\"intent\"")) {
+                return (text.substring(0, start) + text.substring(end + 1)).trim();
+            }
+            start = text.indexOf('{', end + 1);
+        }
+        return text.trim();
+    }
+
+    /** 从 start（指向 '{'）逐层括号匹配，返回对应 '}' 的下标；不匹配返回 -1 */
+    private int matchBrace(String text, int start) {
+        int depth = 0;
+        for (int i = start; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '{') {
+                depth++;
+            } else if (c == '}') {
+                depth--;
+                if (depth == 0) {
+                    return i;
+                }
+            }
+        }
+        return -1;
     }
 }

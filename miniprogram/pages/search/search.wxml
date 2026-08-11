@@ -40,7 +40,7 @@
     <view class="result-count" wx:if="{{filteredResults.length > 0}}">共找到 {{filteredResults.length}} 条结果</view>
 
     <view class="result-list" wx:if="{{filteredResults.length > 0}}">
-      <view class="list-card" wx:for="{{filteredResults}}" wx:key="id" bindtap="onResultTap" data-item="{{item}}">
+      <view class="list-card list-divider" wx:for="{{filteredResults}}" wx:key="id" bindtap="onResultTap" data-item="{{item}}">
         <view class="thumb" style="background:{{item.bgColor || '#F2F2F7'}};">
           <text>{{item.type === 'help' ? '🤝' : '📦'}}</text>
         </view>
