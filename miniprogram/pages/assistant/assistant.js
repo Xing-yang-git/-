@@ -9,9 +9,14 @@ let speechManager = null;
 
 /** SSE 静默看门狗时长（毫秒）：收到任何分块即重置，仅当流真正静默超时才判超时 */
 const WATCHDOG_SILENCE_MS = 45000;
-/** 事件队列消费间隔（毫秒）：统一排队消费模型——所有 SSE 事件入全局队列，每 40ms 消费 1 条渲染输出。
- * 不管网络一次来 1 个事件还是装满多个的大包，都入队逐个消费，天然逐段流式；end 事件消费完再收尾排版。 */
+/** 事件队列消费间隔（毫秒）：统一排队消费模型——所有 SSE 事件入全局队列，每 40ms 消费 1 次渲染输出。
+ * 不管网络一次来 1 个事件还是装满多个的大包，都入队逐个消费；answer 事件内部再做字符级拆解（见 CHAR_STEP），
+ * 避免「40ms 吐一整块大文本」的块状顿挫。end 事件消费完再收尾排版。 */
 const EVENT_CONSUME_INTERVAL_MS = 40;
+/** 字符级蹦字步长：消费到 answer 事件后，每 EVENT_CONSUME_INTERVAL_MS 蹦出的字符数。
+ * 后端 answer 事件本身可能带几十~一两百字大段文本，若整块渲染会块状抖动；
+ * 块内拆成字符子队列逐字符输出，模拟顺滑打字机。3 字符/40ms ≈ 每秒 75 字。 */
+const CHAR_STEP = 3;
 
 /** 解析后端返回的 sources/actions JSON 字符串为数组（null/非法返回空数组） */
 function parseJsonArray(str) {
@@ -87,6 +92,12 @@ Page({
   _eventQueue: [],
   /** 事件队列消费定时器（每 EVENT_CONSUME_INTERVAL_MS 消费 1 条；中止/卸载时需清理） */
   _queueTimer: null,
+  /** 当前 answer 事件的待蹦字符缓冲（null=无；非空时字符级蹦字，见 _ensureQueueTimer） */
+  _charBuffer: null,
+  /** 字符缓冲已蹦字符数（每 EVENT_CONSUME_INTERVAL_MS 递增 CHAR_STEP） */
+  _charIdx: 0,
+  /** 已蹦出并累积的完整正文（原始 Markdown；字符蹦完一个 answer 后并入，供 end 重算排版） */
+  _rawContent: '',
   /** scroll-top 自增序列（每次滚动值变化，确保每次都触发滚动到底部） */
   _scrollTick: 0,
   /** 上滑取消/手势中断的丢弃标记（置位后 onStop 丢弃识别结果，不发送） */
@@ -374,6 +385,9 @@ Page({
     if (this._streamWatchdog) { clearTimeout(this._streamWatchdog); this._streamWatchdog = null; }
     if (this._queueTimer) { clearTimeout(this._queueTimer); this._queueTimer = null; }
     this._eventQueue = [];   // 清空事件队列，防止后台继续消费蹦字
+    this._charBuffer = null; // 清空字符缓冲，防止残留字符继续蹦出
+    this._charIdx = 0;
+    this._rawContent = '';
     if (this._abortStream) {
       this._abortStream();
       this._abortStream = null;
@@ -403,6 +417,9 @@ Page({
     this._sseBuffer = '';
     this._eventQueue = [];    // 重置事件队列（统一排队消费）
     this._queueTimer = null;  // 重置消费定时器
+    this._charBuffer = null;  // 重置字符缓冲（answer 字符级蹦字）
+    this._charIdx = 0;
+    this._rawContent = '';
     this.setData({ messages, inputText: '', sending: true });
     // 滚到底部锚点（对齐聊天页 scrollToBottom：等渲染完再滚，长消息不被挤出屏外）
     this.scrollToBottom();
@@ -425,6 +442,9 @@ Page({
       if (!this.data.sending) return;
       if (this._queueTimer) { clearTimeout(this._queueTimer); this._queueTimer = null; }
       this._eventQueue = [];   // 超时中断：清空未消费事件，避免残余正文追加污染
+      this._charBuffer = null; // 清空字符缓冲
+      this._charIdx = 0;
+      this._rawContent = '';
       if (this._abortStream) { this._abortStream(); this._abortStream = null; }
       const msgId = this._currentMsgId;
       const messages = this.data.messages.map((m) => {
@@ -465,21 +485,42 @@ Page({
   },
 
   /**
-   * 确保事件消费定时器运行：队列非空时每 {@link EVENT_CONSUME_INTERVAL_MS} 消费 1 条；
-   * 队列清空或消费到结束事件（end/error/clear）时自愈停止，不叠加定时器。
+   * 确保事件消费定时器运行：每 {@link EVENT_CONSUME_INTERVAL_MS} 处理一次——
+   * 优先字符级蹦字（当前 answer 字符缓冲未蹦完时逐字符输出，避免整块顿挫），
+   * 蹦完才消费下一个事件（answer 入字符缓冲、sources/action 即时、end/error/clear 收尾）；
+   * 队列清空或消费到结束事件时自愈停止，不叠加定时器。
    */
   _ensureQueueTimer() {
     if (this._queueTimer) return;   // 已有定时器在跑（setTimeout 自愈链），无需重复
     const consumeNext = () => {
-      const event = this._eventQueue.shift();
-      if (event === undefined) {
-        this._queueTimer = null;   // 队列已空：停止
-        return;
-      }
-      const finished = this._consumeQueueEvent(event);
-      if (finished) {
-        this._queueTimer = null;   // 已消费到结束事件：停止
-        return;
+      // 阶段一：字符级蹦字（优先）——当前 answer 未蹦完时先蹦 CHAR_STEP 字符
+      if (this._charBuffer !== null) {
+        this._charIdx += CHAR_STEP;
+        const content = this._rawContent + this._charBuffer.slice(0, this._charIdx);
+        const displayText = this._cleanTypewriterText(content);
+        const msgId = this._currentMsgId;
+        this.setData({ messages: this.data.messages.map((m) => (
+          m.id === msgId ? { ...m, content, displayText, typewriting: true } : m
+        )) });
+        this.scrollToBottom();
+        if (this._charIdx >= this._charBuffer.length) {
+          // 当前 answer 蹦完：累积正文并入 rawContent，清字符缓冲，下次 tick 消费事件
+          this._rawContent = content;
+          this._charBuffer = null;
+          this._charIdx = 0;
+        }
+      } else {
+        // 阶段二：消费下一条事件（answer 拆入字符缓冲；sources/action 即时；end/error/clear 收尾）
+        const event = this._eventQueue.shift();
+        if (event === undefined) {
+          this._queueTimer = null;   // 队列已空：停止
+          return;
+        }
+        const finished = this._consumeQueueEvent(event);
+        if (finished) {
+          this._queueTimer = null;   // 已消费到结束事件：停止
+          return;
+        }
       }
       this._queueTimer = setTimeout(consumeNext, EVENT_CONSUME_INTERVAL_MS);
     };
@@ -487,8 +528,8 @@ Page({
   },
 
   /**
-   * 消费 1 条 SSE 事件：answer 逐段累积正文并净化显示（打字机态，end 时统一重算排版）；
-   * sources/action 即时设置；end/error/clear 触发收尾并返回 true 停止队列。
+   * 消费 1 条 SSE 事件：answer 把事件文本塞入字符缓冲（由 {@link _ensureQueueTimer} 的蹦字阶段逐字符输出，
+   * 不整块渲染）；sources/action 即时设置；end/error/clear 触发收尾并返回 true 停止队列。
    *
    * @param event SSE 事件文本
    * @return {boolean} true=已消费到流结束事件，队列应停止
@@ -503,13 +544,10 @@ Page({
     const type = evt.type;
 
     if (type === 'answer') {
-      // 累积正文 + 净化文本（打字机态显示），不重算 Markdown——end 时统一重算排版
-      const current = this.data.messages.find((m) => m.id === msgId);
-      const content = (current ? current.content : '') + (evt.data || '');
-      this.setData({ messages: this.data.messages.map((m) => (
-        m.id === msgId ? { ...m, content, displayText: this._cleanTypewriterText(content), typewriting: true } : m
-      )) });
-      this.scrollToBottom();
+      // 不直接渲染整块（后端 event 常带几十~一两百字大段文本）：把事件文本放入字符缓冲，
+      // 由 _ensureQueueTimer 的蹦字阶段逐字符输出（CHAR_STEP/40ms），避免块状顿挫
+      this._charBuffer = evt.data || '';
+      this._charIdx = 0;
       return false;
     }
     if (type === 'sources') {
@@ -660,6 +698,9 @@ Page({
     if (this._streamWatchdog) { clearTimeout(this._streamWatchdog); this._streamWatchdog = null; }
     if (this._queueTimer) { clearTimeout(this._queueTimer); this._queueTimer = null; }
     this._eventQueue = [];   // 断线中断：清空未消费事件，避免残余正文追加到失败消息
+    this._charBuffer = null; // 清空字符缓冲
+    this._charIdx = 0;
+    this._rawContent = '';
     // wx.request fail 的错误只有 errMsg 无 message：区分 timeout / 域名白名单，避免都兜底成"网络中断"
     const raw = err || {};
     const errMsg = raw.errMsg || '';
@@ -894,9 +935,13 @@ Page({
           streaming: false,
           failed: false
         }));
-        // 恢复后是全新会话上下文：清空流式状态
+        // 恢复后是全新会话上下文：清空流式状态（事件队列、字符缓冲、看门狗由下轮发送或页面卸载兜底）
         this._currentMsgId = null;
         this._sseBuffer = '';
+        this._eventQueue = [];
+        this._charBuffer = null;
+        this._charIdx = 0;
+        this._rawContent = '';
         this.setData({ messages, historyVisible: false });
         if (messages.length > 0) {
           wx.showToast({ title: '已切换到该对话', icon: 'none' });
@@ -961,6 +1006,9 @@ Page({
     if (this._streamWatchdog) { clearTimeout(this._streamWatchdog); this._streamWatchdog = null; }
     if (this._queueTimer) { clearTimeout(this._queueTimer); this._queueTimer = null; }
     this._eventQueue = [];   // 清空事件队列，防止后台继续消费蹦字
+    this._charBuffer = null; // 清空字符缓冲，防止残留字符继续蹦出
+    this._charIdx = 0;
+    this._rawContent = '';
     if (this._abortStream) {
       this._abortStream();
       this._abortStream = null;
