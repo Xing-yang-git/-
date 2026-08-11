@@ -201,11 +201,11 @@ npm run dev
 
 ## 测试账号
 
-| 角色 | 用户名 |
-|---|---|
-| 超级管理员 | admin |
+| 角色 | 用户名 | 密码 |
+|---|---|---|
+| 超级管理员 | admin | admin123 |
 
-> 密码在本地环境由 `DataInitializer` 初始化，不在此公开。C端用户通过手机号 + 密码注册登录（`register` 页注册，`login` 页登录）；后端保留 `/api/auth/wx-login` 微信 code 登录接口。
+C端用户通过手机号 + 密码注册登录（`register` 页注册，`login` 页登录）；后端保留 `/api/auth/wx-login` 微信 code 登录接口。
 
 ## API 接口概览
 
