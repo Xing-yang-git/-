@@ -64,7 +64,7 @@ graph TB
 | 层 | 技术 |
 |---|---|
 | C端 | 微信小程序原生 (WXML + WXSS + JS)（含 WechatSI 语音转文字插件） |
-| B端 | Vue 3 + Vite + Element Plus + ECharts + Pinia (JavaScript) |
+| B端 | Vue 3 + Vite + Element Plus + ECharts + Pinia (TypeScript) |
 | 后端 | Spring Boot 3.2 + JPA + PostgreSQL + pgvector |
 | 实时 | WebSocket 聊天中继（纯转发不落库，握手 JWT 鉴权） |
 | 认证 | JWT（C端 手机号+密码 / B端 账号密码；后端另提供微信 code 登录接口） |
