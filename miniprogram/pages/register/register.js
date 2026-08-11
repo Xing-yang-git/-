@@ -266,8 +266,8 @@ Page({
           wx.showLoading({ title: '提交中...' });
           return api.post('/api/auth/register', {
             tenantId: selectedTenant,
-            building: building,
-            unit: unit,
+            buildingNo: Number(building),
+            unitNo: Number(unit),
             room: room,
             phone: phone.trim(),
             password: password,

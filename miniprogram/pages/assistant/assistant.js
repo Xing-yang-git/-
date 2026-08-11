@@ -15,8 +15,9 @@ const WATCHDOG_SILENCE_MS = 45000;
 const EVENT_CONSUME_INTERVAL_MS = 40;
 /** 字符级蹦字步长：消费到 answer 事件后，每 EVENT_CONSUME_INTERVAL_MS 蹦出的字符数。
  * 后端 answer 事件本身可能带几十~一两百字大段文本，若整块渲染会块状抖动；
- * 块内拆成字符子队列逐字符输出，模拟顺滑打字机。3 字符/40ms ≈ 每秒 75 字。 */
-const CHAR_STEP = 3;
+ * 块内拆成字符子队列逐字符输出，模拟顺滑打字机。5 字符/40ms ≈ 每秒 125 字，
+ * 速度优先档（跳跃感轻微）；如追求更细腻观感可回退到 4（≈100 字/秒）。 */
+const CHAR_STEP = 5;
 
 /** 解析后端返回的 sources/actions JSON 字符串为数组（null/非法返回空数组） */
 function parseJsonArray(str) {
