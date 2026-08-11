@@ -83,14 +83,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("SELECT u FROM User u JOIN u.room r JOIN r.unit un JOIN un.building b " +
            "WHERE u.authStatus = 'approved' " +
            "AND b.tenantId = :tenantId " +
-           "AND (:building IS NULL OR b.name LIKE %:building%) " +
-           "AND (:unit IS NULL OR un.name LIKE %:unit%) " +
+           "AND (:buildingNo IS NULL OR b.buildingNo = :buildingNo) " +
+           "AND (:unitNo IS NULL OR un.unitNo = :unitNo) " +
            "AND (:room IS NULL OR r.roomNumber LIKE %:room%) " +
            "AND (:userType IS NULL OR u.userType = :userType) " +
            "AND (:keyword IS NULL OR u.name LIKE %:keyword% OR u.phone LIKE %:keyword%)")
     Page<User> findResidents(@Param("tenantId") Long tenantId,
-                             @Param("building") String building,
-                             @Param("unit") String unit,
+                             @Param("buildingNo") Integer buildingNo,
+                             @Param("unitNo") Integer unitNo,
                              @Param("room") String room,
                              @Param("userType") String userType,
                              @Param("keyword") String keyword,

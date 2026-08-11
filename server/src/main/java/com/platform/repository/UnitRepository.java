@@ -7,5 +7,5 @@ import java.util.Optional;
 
 public interface UnitRepository extends JpaRepository<Unit, Long> {
     List<Unit> findByBuildingId(Long buildingId);
-    Optional<Unit> findByBuildingIdAndName(Long buildingId, String name);
+    Optional<Unit> findByBuildingIdAndUnitNo(Long buildingId, Integer unitNo);
 }

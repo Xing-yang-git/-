@@ -7,5 +7,5 @@ import java.util.Optional;
 
 public interface BuildingRepository extends JpaRepository<Building, Long> {
     List<Building> findByTenantId(Long tenantId);
-    Optional<Building> findByTenantIdAndName(Long tenantId, String name);
+    Optional<Building> findByTenantIdAndBuildingNo(Long tenantId, Integer buildingNo);
 }

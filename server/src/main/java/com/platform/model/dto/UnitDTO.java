@@ -19,12 +19,12 @@ public class UnitDTO {
     /** 所属楼栋 ID */
     private Long buildingId;
 
-    /** 单元名称（如 "2单元"） */
-    private String name;
+    /** 单元号（数值，如 2；前端展示时拼 "2单元"） */
+    private Integer unitNo;
 
     /** 从 Entity 转换 */
     public static UnitDTO from(Unit entity) {
         if (entity == null) return null;
-        return new UnitDTO(entity.getId(), entity.getBuildingId(), entity.getName());
+        return new UnitDTO(entity.getId(), entity.getBuildingId(), entity.getUnitNo());
     }
 }

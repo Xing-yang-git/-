@@ -309,20 +309,20 @@ class AuthServiceTest {
         Long tenantId = 10L;
         RegisterRequest req = new RegisterRequest();
         req.setTenantId(tenantId);
-        req.setBuilding("3");
-        req.setUnit("2");
+        req.setBuildingNo(3);
+        req.setUnitNo(2);
         req.setRoom("1502");
         req.setName("张三");
         req.setPhone("13800138000");
         req.setUserType("业主");
         req.setDocImages(List.of("http://img1.jpg"));
 
-        Building building = Building.builder().id(100L).tenantId(tenantId).name("3栋").build();
-        Unit unit = Unit.builder().id(200L).buildingId(building.getId()).name("2单元").build();
+        Building building = Building.builder().id(100L).tenantId(tenantId).buildingNo(3).build();
+        Unit unit = Unit.builder().id(200L).buildingId(building.getId()).unitNo(2).build();
         Room room = Room.builder().id(300L).unitId(unit.getId()).roomNumber("1502").build();
 
-        when(buildingRepository.findByTenantIdAndName(tenantId, "3栋")).thenReturn(Optional.of(building));
-        when(unitRepository.findByBuildingIdAndName(building.getId(), "2单元")).thenReturn(Optional.of(unit));
+        when(buildingRepository.findByTenantIdAndBuildingNo(tenantId, 3)).thenReturn(Optional.of(building));
+        when(unitRepository.findByBuildingIdAndUnitNo(building.getId(), 2)).thenReturn(Optional.of(unit));
         when(roomRepository.findByUnitIdAndRoomNumber(unit.getId(), "1502")).thenReturn(Optional.of(room));
         // 唯一性校验：手机号未被占用，该房间无同身份住户
         when(userRepository.findByPhoneAndTenantId("13800138000", tenantId)).thenReturn(Optional.empty());
@@ -353,19 +353,19 @@ class AuthServiceTest {
         Long tenantId = 10L;
         RegisterRequest req = new RegisterRequest();
         req.setTenantId(tenantId);
-        req.setBuilding("3");
-        req.setUnit("2");
+        req.setBuildingNo(3);
+        req.setUnitNo(2);
         req.setRoom("1502");
         req.setName("李四");
         req.setPhone("13900139000");
         req.setUserType("tenant");
 
-        Building building = Building.builder().id(100L).tenantId(tenantId).name("3栋").build();
-        Unit unit = Unit.builder().id(200L).buildingId(building.getId()).name("2单元").build();
+        Building building = Building.builder().id(100L).tenantId(tenantId).buildingNo(3).build();
+        Unit unit = Unit.builder().id(200L).buildingId(building.getId()).unitNo(2).build();
         Room room = Room.builder().id(300L).unitId(unit.getId()).roomNumber("1502").build();
 
-        when(buildingRepository.findByTenantIdAndName(tenantId, "3栋")).thenReturn(Optional.of(building));
-        when(unitRepository.findByBuildingIdAndName(building.getId(), "2单元")).thenReturn(Optional.of(unit));
+        when(buildingRepository.findByTenantIdAndBuildingNo(tenantId, 3)).thenReturn(Optional.of(building));
+        when(unitRepository.findByBuildingIdAndUnitNo(building.getId(), 2)).thenReturn(Optional.of(unit));
         when(roomRepository.findByUnitIdAndRoomNumber(unit.getId(), "1502")).thenReturn(Optional.of(room));
         when(userRepository.findByPhoneAndTenantId("13900139000", tenantId)).thenReturn(Optional.empty());
         // 该房间尚无租客——即便已有业主，同身份查重也不会命中
@@ -391,19 +391,19 @@ class AuthServiceTest {
         Long tenantId = 10L;
         RegisterRequest req = new RegisterRequest();
         req.setTenantId(tenantId);
-        req.setBuilding("3");
-        req.setUnit("2");
+        req.setBuildingNo(3);
+        req.setUnitNo(2);
         req.setRoom("1502");
         req.setPhone("13800138000");
         req.setUserType("owner");
 
-        Building building = Building.builder().id(100L).tenantId(tenantId).name("3栋").build();
-        Unit unit = Unit.builder().id(200L).buildingId(building.getId()).name("2单元").build();
+        Building building = Building.builder().id(100L).tenantId(tenantId).buildingNo(3).build();
+        Unit unit = Unit.builder().id(200L).buildingId(building.getId()).unitNo(2).build();
         Room room = Room.builder().id(300L).unitId(unit.getId()).roomNumber("1502").build();
         User existingOwner = User.builder().id(99L).userType("业主").build();
 
-        when(buildingRepository.findByTenantIdAndName(tenantId, "3栋")).thenReturn(Optional.of(building));
-        when(unitRepository.findByBuildingIdAndName(building.getId(), "2单元")).thenReturn(Optional.of(unit));
+        when(buildingRepository.findByTenantIdAndBuildingNo(tenantId, 3)).thenReturn(Optional.of(building));
+        when(unitRepository.findByBuildingIdAndUnitNo(building.getId(), 2)).thenReturn(Optional.of(unit));
         when(roomRepository.findByUnitIdAndRoomNumber(unit.getId(), "1502")).thenReturn(Optional.of(room));
         when(userRepository.findByPhoneAndTenantId("13800138000", tenantId)).thenReturn(Optional.empty());
         when(userRepository.findByRoomIdAndUserType(room.getId(), "业主")).thenReturn(Optional.of(existingOwner));
@@ -421,19 +421,19 @@ class AuthServiceTest {
         Long tenantId = 10L;
         RegisterRequest req = new RegisterRequest();
         req.setTenantId(tenantId);
-        req.setBuilding("3");
-        req.setUnit("2");
+        req.setBuildingNo(3);
+        req.setUnitNo(2);
         req.setRoom("1502");
         req.setPhone("13800138000");
         req.setUserType("tenant");
 
-        Building building = Building.builder().id(100L).tenantId(tenantId).name("3栋").build();
-        Unit unit = Unit.builder().id(200L).buildingId(building.getId()).name("2单元").build();
+        Building building = Building.builder().id(100L).tenantId(tenantId).buildingNo(3).build();
+        Unit unit = Unit.builder().id(200L).buildingId(building.getId()).unitNo(2).build();
         Room room = Room.builder().id(300L).unitId(unit.getId()).roomNumber("1502").build();
         User existingTenant = User.builder().id(99L).userType("租客").build();
 
-        when(buildingRepository.findByTenantIdAndName(tenantId, "3栋")).thenReturn(Optional.of(building));
-        when(unitRepository.findByBuildingIdAndName(building.getId(), "2单元")).thenReturn(Optional.of(unit));
+        when(buildingRepository.findByTenantIdAndBuildingNo(tenantId, 3)).thenReturn(Optional.of(building));
+        when(unitRepository.findByBuildingIdAndUnitNo(building.getId(), 2)).thenReturn(Optional.of(unit));
         when(roomRepository.findByUnitIdAndRoomNumber(unit.getId(), "1502")).thenReturn(Optional.of(room));
         when(userRepository.findByPhoneAndTenantId("13800138000", tenantId)).thenReturn(Optional.empty());
         when(userRepository.findByRoomIdAndUserType(room.getId(), "租客")).thenReturn(Optional.of(existingTenant));
@@ -451,19 +451,19 @@ class AuthServiceTest {
         Long tenantId = 10L;
         RegisterRequest req = new RegisterRequest();
         req.setTenantId(tenantId);
-        req.setBuilding("3");
-        req.setUnit("2");
+        req.setBuildingNo(3);
+        req.setUnitNo(2);
         req.setRoom("1502");
         req.setName("张三");
         req.setPhone("13800138000");
         req.setUserType("owner");
 
-        Building building = Building.builder().id(100L).tenantId(tenantId).name("3栋").build();
-        Unit unit = Unit.builder().id(200L).buildingId(building.getId()).name("2单元").build();
+        Building building = Building.builder().id(100L).tenantId(tenantId).buildingNo(3).build();
+        Unit unit = Unit.builder().id(200L).buildingId(building.getId()).unitNo(2).build();
         Room room = Room.builder().id(300L).unitId(unit.getId()).roomNumber("1502").build();
 
-        when(buildingRepository.findByTenantIdAndName(tenantId, "3栋")).thenReturn(Optional.of(building));
-        when(unitRepository.findByBuildingIdAndName(building.getId(), "2单元")).thenReturn(Optional.of(unit));
+        when(buildingRepository.findByTenantIdAndBuildingNo(tenantId, 3)).thenReturn(Optional.of(building));
+        when(unitRepository.findByBuildingIdAndUnitNo(building.getId(), 2)).thenReturn(Optional.of(unit));
         when(roomRepository.findByUnitIdAndRoomNumber(unit.getId(), "1502")).thenReturn(Optional.of(room));
         // 两项查重命中的用户 id 均等于当前 userId
         when(userRepository.findByPhoneAndTenantId("13800138000", tenantId)).thenReturn(Optional.of(user));
@@ -487,18 +487,18 @@ class AuthServiceTest {
         Long tenantId = 10L;
         RegisterRequest req = new RegisterRequest();
         req.setTenantId(tenantId);
-        req.setBuilding("3");
-        req.setUnit("2");
+        req.setBuildingNo(3);
+        req.setUnitNo(2);
         req.setRoom("1502");
         req.setPhone("13800138000");
         // 不设置 userType
 
-        Building building = Building.builder().id(100L).tenantId(tenantId).name("3栋").build();
-        Unit unit = Unit.builder().id(200L).buildingId(building.getId()).name("2单元").build();
+        Building building = Building.builder().id(100L).tenantId(tenantId).buildingNo(3).build();
+        Unit unit = Unit.builder().id(200L).buildingId(building.getId()).unitNo(2).build();
         Room room = Room.builder().id(300L).unitId(unit.getId()).roomNumber("1502").build();
 
-        when(buildingRepository.findByTenantIdAndName(tenantId, "3栋")).thenReturn(Optional.of(building));
-        when(unitRepository.findByBuildingIdAndName(building.getId(), "2单元")).thenReturn(Optional.of(unit));
+        when(buildingRepository.findByTenantIdAndBuildingNo(tenantId, 3)).thenReturn(Optional.of(building));
+        when(unitRepository.findByBuildingIdAndUnitNo(building.getId(), 2)).thenReturn(Optional.of(unit));
         when(roomRepository.findByUnitIdAndRoomNumber(unit.getId(), "1502")).thenReturn(Optional.of(room));
         when(userRepository.findByPhoneAndTenantId("13800138000", tenantId)).thenReturn(Optional.empty());
 
@@ -515,16 +515,16 @@ class AuthServiceTest {
         Long tenantId = 10L;
         RegisterRequest req = new RegisterRequest();
         req.setTenantId(tenantId);
-        req.setBuilding("3");
-        req.setUnit("2");
+        req.setBuildingNo(3);
+        req.setUnitNo(2);
         req.setRoom("1502");
 
-        Building building = Building.builder().id(100L).tenantId(tenantId).name("3栋").build();
-        Unit unit = Unit.builder().id(200L).buildingId(building.getId()).name("2单元").build();
+        Building building = Building.builder().id(100L).tenantId(tenantId).buildingNo(3).build();
+        Unit unit = Unit.builder().id(200L).buildingId(building.getId()).unitNo(2).build();
         Room room = Room.builder().id(300L).unitId(unit.getId()).roomNumber("1502").build();
 
-        when(buildingRepository.findByTenantIdAndName(tenantId, "3栋")).thenReturn(Optional.of(building));
-        when(unitRepository.findByBuildingIdAndName(building.getId(), "2单元")).thenReturn(Optional.of(unit));
+        when(buildingRepository.findByTenantIdAndBuildingNo(tenantId, 3)).thenReturn(Optional.of(building));
+        when(unitRepository.findByBuildingIdAndUnitNo(building.getId(), 2)).thenReturn(Optional.of(unit));
         when(roomRepository.findByUnitIdAndRoomNumber(unit.getId(), "1502")).thenReturn(Optional.of(room));
         when(userRepository.findById(userId)).thenReturn(Optional.empty());
 
@@ -539,7 +539,7 @@ class AuthServiceTest {
     void should_throwException_when_roomInfoIncomplete() {
         // 准备（解析房间先于用户查询执行，因此无需 stub 用户查询）
         RegisterRequest req = new RegisterRequest();
-        req.setBuilding("3");
+        req.setBuildingNo(3);
         // tenantId、unit 和 room 为空
 
         // 执行 & 断言
@@ -555,17 +555,17 @@ class AuthServiceTest {
         Long tenantId = 10L;
         RegisterRequest req = new RegisterRequest();
         req.setTenantId(tenantId);
-        req.setBuilding("5");
-        req.setUnit("1");
+        req.setBuildingNo(5);
+        req.setUnitNo(1);
         req.setRoom("101");
 
-        Building newBuilding = Building.builder().id(101L).tenantId(tenantId).name("5栋").build();
-        Unit newUnit = Unit.builder().id(201L).buildingId(newBuilding.getId()).name("1单元").build();
+        Building newBuilding = Building.builder().id(101L).tenantId(tenantId).buildingNo(5).build();
+        Unit newUnit = Unit.builder().id(201L).buildingId(newBuilding.getId()).unitNo(1).build();
         Room newRoom = Room.builder().id(301L).unitId(newUnit.getId()).roomNumber("101").build();
 
-        when(buildingRepository.findByTenantIdAndName(tenantId, "5栋")).thenReturn(Optional.empty());
+        when(buildingRepository.findByTenantIdAndBuildingNo(tenantId, 5)).thenReturn(Optional.empty());
         when(buildingRepository.save(any(Building.class))).thenReturn(newBuilding);
-        when(unitRepository.findByBuildingIdAndName(newBuilding.getId(), "1单元")).thenReturn(Optional.empty());
+        when(unitRepository.findByBuildingIdAndUnitNo(newBuilding.getId(), 1)).thenReturn(Optional.empty());
         when(unitRepository.save(any(Unit.class))).thenReturn(newUnit);
         when(roomRepository.findByUnitIdAndRoomNumber(newUnit.getId(), "101")).thenReturn(Optional.empty());
         when(roomRepository.save(any(Room.class))).thenReturn(newRoom);

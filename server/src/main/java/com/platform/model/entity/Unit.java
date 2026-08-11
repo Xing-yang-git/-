@@ -28,9 +28,9 @@ public class Unit {
     @Column(name = UnitsColumn.COL_BUILDING_ID, nullable = false)
     private Long buildingId;
 
-    /** 单元名称（如 "1单元"、"2单元"） */
-    @Column(name = UnitsColumn.COL_NAME, nullable = false, length = 50)
-    private String name;
+    /** 单元号（数值，如 2；展示时由 UserFormatter 拼 "2单元"） */
+    @Column(name = UnitsColumn.COL_UNIT_NO, nullable = false)
+    private Integer unitNo;
 
     /** 创建时间 */
     @Column(name = UnitsColumn.COL_CREATED_AT, nullable = false, updatable = false)

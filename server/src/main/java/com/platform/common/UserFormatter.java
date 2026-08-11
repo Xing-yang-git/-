@@ -29,12 +29,14 @@ public final class UserFormatter {
             String unitName = "";
             String roomNumber = "";
 
+            // 展示串由数值字段拼"栋/单元"后缀（数据层存数值，避免字符串拼接脏数据）
             if (user.getRoom().getUnit() != null) {
-                unitName = user.getRoom().getUnit().getName() != null
-                        ? user.getRoom().getUnit().getName() : "";
-                if (user.getRoom().getUnit().getBuilding() != null) {
-                    buildingName = user.getRoom().getUnit().getBuilding().getName() != null
-                            ? user.getRoom().getUnit().getBuilding().getName() : "";
+                if (user.getRoom().getUnit().getUnitNo() != null) {
+                    unitName = user.getRoom().getUnit().getUnitNo() + "单元";
+                }
+                if (user.getRoom().getUnit().getBuilding() != null
+                        && user.getRoom().getUnit().getBuilding().getBuildingNo() != null) {
+                    buildingName = user.getRoom().getUnit().getBuilding().getBuildingNo() + "栋";
                 }
             }
             roomNumber = user.getRoom().getRoomNumber() != null

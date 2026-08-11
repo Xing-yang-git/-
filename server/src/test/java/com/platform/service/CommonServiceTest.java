@@ -79,7 +79,7 @@ class CommonServiceTest {
     @DisplayName("获取楼栋 - 正常委托查询")
     void should_returnBuildings_when_tenantHasBuildings() {
         // 准备
-        Building b = Building.builder().id(1L).tenantId(10L).name("1栋").build();
+        Building b = Building.builder().id(1L).tenantId(10L).buildingNo(1).build();
         when(buildingRepository.findByTenantId(10L)).thenReturn(List.of(b));
 
         // 执行
@@ -95,7 +95,7 @@ class CommonServiceTest {
     @DisplayName("获取单元 - 正常委托查询")
     void should_returnUnits_when_buildingHasUnits() {
         // 准备
-        Unit u = Unit.builder().id(1L).buildingId(1L).name("1单元").build();
+        Unit u = Unit.builder().id(1L).buildingId(1L).unitNo(1).build();
         when(unitRepository.findByBuildingId(1L)).thenReturn(List.of(u));
 
         // 执行

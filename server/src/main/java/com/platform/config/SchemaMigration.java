@@ -184,6 +184,24 @@ public class SchemaMigration implements CommandLineRunner {
             }
         },
 
+        /** buildings/units 楼栋/单元号数值化：name("1栋")→building_no 数值，存量回填后删 name 列 */
+        new Migration("buildings.name → building_no, units.name → unit_no 数值化") {
+            public boolean exists(JdbcTemplate j) {
+                return columnExists(j, "buildings", "building_no");
+            }
+            public void apply(JdbcTemplate j) {
+                // 楼栋：加数值列 → 从 name 提取数字回填 → 删 name
+                j.execute("ALTER TABLE buildings ADD COLUMN IF NOT EXISTS building_no INTEGER");
+                j.update("UPDATE buildings SET building_no = CAST(SUBSTRING(name FROM '[0-9]+') AS INTEGER) WHERE building_no IS NULL");
+                j.execute("ALTER TABLE buildings DROP COLUMN IF EXISTS name");
+                // 单元：同理
+                j.execute("ALTER TABLE units ADD COLUMN IF NOT EXISTS unit_no INTEGER");
+                j.update("UPDATE units SET unit_no = CAST(SUBSTRING(name FROM '[0-9]+') AS INTEGER) WHERE unit_no IS NULL");
+                j.execute("ALTER TABLE units DROP COLUMN IF EXISTS name");
+                log.info("  → buildings/units 楼栋/单元号已数值化");
+            }
+        },
+
         /** 新建导出日志表 */
         new Migration("table: export_logs") {
             public boolean exists(JdbcTemplate j) {

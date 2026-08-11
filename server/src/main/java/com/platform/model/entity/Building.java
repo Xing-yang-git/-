@@ -28,9 +28,9 @@ public class Building {
     @Column(name = BuildingsColumn.COL_TENANT_ID, nullable = false)
     private Long tenantId;
 
-    /** 楼栋名称（如 "1栋"、"A栋"） */
-    @Column(name = BuildingsColumn.COL_NAME, nullable = false, length = 50)
-    private String name;
+    /** 楼栋号（数值，如 3；展示时由 UserFormatter 拼 "3栋"） */
+    @Column(name = BuildingsColumn.COL_BUILDING_NO, nullable = false)
+    private Integer buildingNo;
 
     /** 创建时间 */
     @Column(name = BuildingsColumn.COL_CREATED_AT, nullable = false, updatable = false)

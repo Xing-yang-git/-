@@ -31,6 +31,8 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
+import org.springframework.test.util.ReflectionTestUtils;
+
 /**
  * AdminService 单元测试。
  *
@@ -273,8 +275,8 @@ class AdminServiceTest {
     @DisplayName("排行 - 按住户合并闲置借入与技能接单次数")
     void should_computeRanking_groupedByUserAndType() {
         LocalDateTime now = LocalDateTime.now();
-        Building building = Building.builder().id(1L).name("3栋").tenantId(tenantId).build();
-        Unit unit = Unit.builder().id(1L).name("2单元").building(building).build();
+        Building building = Building.builder().id(1L).buildingNo(3).tenantId(tenantId).build();
+        Unit unit = Unit.builder().id(1L).unitNo(2).building(building).build();
         Room room = Room.builder().id(1L).roomNumber("1502").unit(unit).build();
         User borrower = User.builder().id(3L).name("借入住户").userType(UserType.OWNER)
                 .tenantId(tenantId).room(room).authStatus("approved").createdAt(now).build();
@@ -1042,7 +1044,7 @@ class AdminServiceTest {
         Building building = Building.builder()
                 .id(500L)
                 .tenantId(tenantId)
-                .name("3栋")
+                .buildingNo(3)
                 .build();
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
         when(buildingRepository.findByTenantId(tenantId)).thenReturn(List.of(building));
@@ -1052,7 +1054,7 @@ class AdminServiceTest {
 
         // 断言
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).get("name")).isEqualTo("3栋");
+        assertThat(result.get(0).get("buildingNo")).isEqualTo(3);
     }
 
     // ==================== exportData ====================
@@ -1174,5 +1176,23 @@ class AdminServiceTest {
         assertThatThrownBy(() -> adminService.requireSuperAdmin(adminId))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("管理员不存在");
+    }
+
+    @Test
+    @DisplayName("楼栋筛选 - 按数值楼栋号/单元号精确匹配住户 ID")
+    void should_resolveBuildingUserIds_byNumericMatch() {
+        Building building = Building.builder().id(1L).tenantId(tenantId).buildingNo(3).build();
+        Unit unit = Unit.builder().id(2L).buildingId(1L).unitNo(1).build();
+        Room room = Room.builder().id(3L).unitId(2L).roomNumber("1502").build();
+        User user = User.builder().id(5L).roomId(3L).build();
+        when(buildingRepository.findAll()).thenReturn(List.of(building));
+        when(unitRepository.findByBuildingId(1L)).thenReturn(List.of(unit));
+        when(roomRepository.findByUnitId(2L)).thenReturn(List.of(room));
+        when(userRepository.findByRoomIdIn(List.of(3L))).thenReturn(List.of(user));
+
+        List<Long> ids = ReflectionTestUtils.invokeMethod(
+                adminService, "resolveBuildingUserIds", 3, 1);
+
+        assertThat(ids).containsExactly(5L);
     }
 }

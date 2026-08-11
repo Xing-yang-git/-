@@ -169,7 +169,7 @@ public class AuthService {
      * @param userId 已有用户 ID（wxLogin 预创建），为 null 时新建用户
      */
     public Map<String, Object> register(RegisterRequest req, Long userId) {
-        Room room = resolveRoom(req.getTenantId(), req.getBuilding(), req.getUnit(), req.getRoom());
+        Room room = resolveRoom(req.getTenantId(), req.getBuildingNo(), req.getUnitNo(), req.getRoom());
         validateUniqueness(req, userId, room);
 
         User user = getOrCreateUser(userId, req);
@@ -294,28 +294,25 @@ public class AuthService {
         };
     }
 
-    private Room resolveRoom(Long tenantId, String buildingText, String unitText, String roomText) {
-        if (tenantId == null || buildingText == null || unitText == null || roomText == null) {
+    private Room resolveRoom(Long tenantId, Integer buildingNo, Integer unitNo, String roomText) {
+        if (tenantId == null || buildingNo == null || unitNo == null || roomText == null) {
             throw new RuntimeException("请完整填写小区、栋号、单元号和房号");
         }
 
-        String buildingName = buildingText + "栋";
-        String unitName = unitText + "单元";
-
-        // 查找或创建楼栋
-        Building building = buildingRepository.findByTenantIdAndName(tenantId, buildingName)
+        // 查找或创建楼栋（按数值楼栋号，避免字符串拼接产生"1栋栋"类脏数据）
+        Building building = buildingRepository.findByTenantIdAndBuildingNo(tenantId, buildingNo)
                 .orElseGet(() -> buildingRepository.save(
                         Building.builder()
                                 .tenantId(tenantId)
-                                .name(buildingName)
+                                .buildingNo(buildingNo)
                                 .build()));
 
-        // 查找或创建单元
-        Unit unit = unitRepository.findByBuildingIdAndName(building.getId(), unitName)
+        // 查找或创建单元（按数值单元号）
+        Unit unit = unitRepository.findByBuildingIdAndUnitNo(building.getId(), unitNo)
                 .orElseGet(() -> unitRepository.save(
                         Unit.builder()
                                 .buildingId(building.getId())
-                                .name(unitName)
+                                .unitNo(unitNo)
                                 .build()));
 
         // 查找或创建房间

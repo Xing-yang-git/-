@@ -18,8 +18,8 @@ public final class BuildingsColumn {
     public static final String COL_ID = "id";
     /** 所属小区 ID，外键 → tenants.id */
     public static final String COL_TENANT_ID = "tenant_id";
-    /** 楼栋名称（如 "1栋"、"A栋"） */
-    public static final String COL_NAME = "name";
+    /** 楼栋号（数值，如 3；展示时拼 "栋" 后缀） */
+    public static final String COL_BUILDING_NO = "building_no";
     /** 创建时间 */
     public static final String COL_CREATED_AT = "created_at";
 }

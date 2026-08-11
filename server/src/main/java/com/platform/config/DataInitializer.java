@@ -154,7 +154,7 @@ public class DataInitializer implements CommandLineRunner {
         for (int b = 1; b <= 8; b++) {
             Building building = Building.builder()
                     .tenantId(tenantId)
-                    .name(b + "栋")
+                    .buildingNo(b)
                     .build();
             building = buildingRepository.save(building);
             Long buildingId = building.getId();
@@ -162,7 +162,7 @@ public class DataInitializer implements CommandLineRunner {
             for (int u = 1; u <= 3; u++) {
                 Unit unit = Unit.builder()
                         .buildingId(buildingId)
-                        .name(u + "单元")
+                        .unitNo(u)
                         .build();
                 unit = unitRepository.save(unit);
                 Long unitId = unit.getId();
@@ -190,7 +190,7 @@ public class DataInitializer implements CommandLineRunner {
         for (int b = 1; b <= 3; b++) {
             Building building = Building.builder()
                     .tenantId(t2Id)
-                    .name(b + "栋")
+                    .buildingNo(b)
                     .build();
             building = buildingRepository.save(building);
             Long buildingId = building.getId();
@@ -198,7 +198,7 @@ public class DataInitializer implements CommandLineRunner {
             for (int u = 1; u <= 2; u++) {
                 Unit unit = Unit.builder()
                         .buildingId(buildingId)
-                        .name(u + "单元")
+                        .unitNo(u)
                         .build();
                 unit = unitRepository.save(unit);
                 Long unitId = unit.getId();

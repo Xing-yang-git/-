@@ -18,8 +18,8 @@ public final class UnitsColumn {
     public static final String COL_ID = "id";
     /** 所属楼栋 ID，外键 → buildings.id */
     public static final String COL_BUILDING_ID = "building_id";
-    /** 单元名称（如 "1单元"、"2单元"） */
-    public static final String COL_NAME = "name";
+    /** 单元号（数值，如 2；展示时拼 "单元" 后缀） */
+    public static final String COL_UNIT_NO = "unit_no";
     /** 创建时间 */
     public static final String COL_CREATED_AT = "created_at";
 }

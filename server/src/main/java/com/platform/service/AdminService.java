@@ -654,16 +654,28 @@ public class AdminService {
      */
     /**
      * 获取内容列表，支持按状态页签、类型、楼栋、单元、关键词筛选，按 createdAt 降序分页。
+     *
+     * @param adminId           管理员 ID
+     * @param statusTab         状态页签（normal/offline/yellow 等）
+     * @param type              内容类型（idle/help）
+     * @param buildingNo        楼栋号筛选（数值，可为 null）
+     * @param unitNo            单元号筛选（数值，可为 null）
+     * @param search            关键词
+     * @param moderationStatus  审核状态
+     * @param moderatedBy       审核员
+     * @param page              页码（从 0 开始）
+     * @param size              每页条数
+     * @return 分页内容列表
      */
-    public PageDTO<ContentItemDTO> getContentList(Long adminId, String statusTab, String type, String building,
-                                                   String unit, String search,
+    public PageDTO<ContentItemDTO> getContentList(Long adminId, String statusTab, String type, Integer buildingNo,
+                                                   Integer unitNo, String search,
                                                    String moderationStatus, String moderatedBy,
                                                    int page, int size) {
         requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
 
         // 解析楼栋筛选条件（无匹配用户时直接返回空页）
-        List<Long> buildingUserIds = resolveBuildingFilter(building, unit);
+        List<Long> buildingUserIds = resolveBuildingFilter(buildingNo, unitNo);
         if (buildingUserIds != null && buildingUserIds.isEmpty()) {
             return buildEmptyPage(page, size);
         }
@@ -741,11 +753,11 @@ public class AdminService {
      *
      * @return null = 不需要筛选；空列表 = 筛选条件无匹配（应返回空结果）；非空列表 = 匹配的用户 ID
      */
-    private List<Long> resolveBuildingFilter(String building, String unit) {
-        if (building == null || building.isEmpty()) {
+    private List<Long> resolveBuildingFilter(Integer buildingNo, Integer unitNo) {
+        if (buildingNo == null) {
             return null;
         }
-        return resolveBuildingUserIds(building, unit);
+        return resolveBuildingUserIds(buildingNo, unitNo);
     }
 
     /**
@@ -2587,7 +2599,7 @@ public class AdminService {
         return buildings.stream().map(b -> {
             Map<String, Object> map = new HashMap<>();
             map.put("id", b.getId());
-            map.put("name", b.getName());
+            map.put("buildingNo", b.getBuildingNo());
             return map;
         }).collect(Collectors.toList());
     }
@@ -2619,23 +2631,23 @@ public class AdminService {
                 .orElseThrow(() -> new RuntimeException("小区不存在"));
 
         List<Building> buildings = (tenantId != null ? buildingRepository.findByTenantId(tenantId) : buildingRepository.findAll());
-        // 按楼栋编号排序
-        buildings.sort(Comparator.comparingInt(b -> extractNumber(b.getName())));
+        // 按楼栋号排序（数值直接排，不再从字符串抽数字）
+        buildings.sort(Comparator.comparingInt(Building::getBuildingNo));
 
         List<Map<String, Object>> buildingList = new ArrayList<>();
         for (Building building : buildings) {
             Map<String, Object> bMap = new HashMap<>();
             bMap.put("id", building.getId());
-            bMap.put("name", building.getName());
+            bMap.put("buildingNo", building.getBuildingNo());
 
             List<Unit> units = unitRepository.findByBuildingId(building.getId());
-            units.sort(Comparator.comparingInt(u -> extractNumber(u.getName())));
+            units.sort(Comparator.comparingInt(Unit::getUnitNo));
 
             List<Map<String, Object>> unitList = new ArrayList<>();
             for (Unit unit : units) {
                 Map<String, Object> uMap = new HashMap<>();
                 uMap.put("id", unit.getId());
-                uMap.put("name", unit.getName());
+                uMap.put("unitNo", unit.getUnitNo());
                 unitList.add(uMap);
             }
             bMap.put("units", unitList);
@@ -2904,8 +2916,8 @@ public class AdminService {
     /**
      * 按条件搜索住户。
      *
-     * @param building 楼栋名称筛选（模糊匹配）
-     * @param unit     单元名称筛选（模糊匹配）
+     * @param buildingNo 楼栋号筛选（数值精确匹配）
+     * @param unitNo     单元号筛选（数值精确匹配）
      * @param room     房间号筛选（模糊匹配）
      * @param userType "业主" | "租客" | null
      * @param keyword  姓名或手机号关键词
@@ -2913,7 +2925,7 @@ public class AdminService {
      * @param size     每页条数
      * @return 分页住户 DTO 列表
      */
-    public PageDTO<ResidentDTO> searchResidents(Long adminId, String building, String unit, String room,
+    public PageDTO<ResidentDTO> searchResidents(Long adminId, Integer buildingNo, Integer unitNo, String room,
                                                  String userType, String keyword,
                                                  int page, int size) {
         requireNotSuperAdmin(findAdmin(adminId));
@@ -2925,7 +2937,7 @@ public class AdminService {
             default       -> userType;
         };
         PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<User> userPage = userRepository.findResidents(tenantId, building, unit, room, dbUserType, keyword, pageRequest);
+        Page<User> userPage = userRepository.findResidents(tenantId, buildingNo, unitNo, room, dbUserType, keyword, pageRequest);
 
         List<ResidentDTO> dtos = userPage.getContent().stream()
                 .map(u -> ResidentDTO.builder()
@@ -3437,22 +3449,25 @@ public class AdminService {
     // ==================== 私有辅助方法：楼栋解析 ====================
 
     /**
-     * 将楼栋名称解析为居住在该楼栋的用户 ID 列表。
+     * 将楼栋号解析为居住在该楼栋的用户 ID 列表（按数值匹配，不再用名称 contains）。
      */
-    private List<Long> resolveBuildingUserIds(String buildingName, String unitName) {
+    private List<Long> resolveBuildingUserIds(Integer buildingNo, Integer unitNo) {
+        if (buildingNo == null) {
+            return new ArrayList<>();
+        }
         List<Building> allBuildings = buildingRepository.findAll();
         Building targetBuilding = allBuildings.stream()
-                .filter(b -> b.getName() != null && b.getName().contains(buildingName))
+                .filter(b -> b.getBuildingNo() != null && b.getBuildingNo().equals(buildingNo))
                 .findFirst().orElse(null);
         if (targetBuilding == null) {
             return new ArrayList<>();
         }
 
         List<Unit> units = unitRepository.findByBuildingId(targetBuilding.getId());
-        // 若指定了单元则过滤：直接字符串匹配（单元名使用阿拉伯数字："1单元"/"2单元"）
-        if (unitName != null && !unitName.isEmpty()) {
+        // 若指定了单元则按数值单元号过滤
+        if (unitNo != null) {
             units = units.stream()
-                    .filter(u -> u.getName() != null && u.getName().contains(unitName))
+                    .filter(u -> u.getUnitNo() != null && u.getUnitNo().equals(unitNo))
                     .collect(Collectors.toList());
         }
 
@@ -3534,15 +3549,16 @@ public class AdminService {
     }
 
     /**
-     * 从用户的房间关联链中提取楼栋名称。
+     * 从用户的房间关联链提取楼栋展示名（数值楼栋号拼 "x栋"）。
      */
     private String getBuildingName(User user) {
         if (user == null) return null;
         try {
             if (user.getRoom() != null
                     && user.getRoom().getUnit() != null
-                    && user.getRoom().getUnit().getBuilding() != null) {
-                return user.getRoom().getUnit().getBuilding().getName();
+                    && user.getRoom().getUnit().getBuilding() != null
+                    && user.getRoom().getUnit().getBuilding().getBuildingNo() != null) {
+                return user.getRoom().getUnit().getBuilding().getBuildingNo() + "栋";
             }
         } catch (Exception e) {
             log.debug("解析楼栋名称失败", e);
@@ -3561,18 +3577,6 @@ public class AdminService {
         return sb.toString();
     }
 
-    /**
-     * 从形如 "3栋"、"2单元"、"1502号" 的字符串中提取前面的数字。
-     */
-    private int extractNumber(String s) {
-        if (s == null) return 0;
-        String num = s.replaceAll("[^0-9]", "");
-        try {
-            return num.isEmpty() ? 0 : Integer.parseInt(num);
-        } catch (NumberFormatException e) {
-            return 0;
-        }
-    }
 
     /**
      * 手机号脱敏，仅显示前 3 位和后 4 位。

@@ -74,8 +74,8 @@ public class AdminController {
     @GetMapping("/content")
     public Result<?> contentList(@RequestParam(required = false) String status,
                                   @RequestParam(required = false) String type,
-                                  @RequestParam(required = false) String building,
-                                  @RequestParam(required = false) String unit,
+                                  @RequestParam(required = false) Integer building_no,
+                                  @RequestParam(required = false) Integer unit_no,
                                   @RequestParam(required = false) String search,
                                   @RequestParam(required = false) String moderationStatus,
                                   @RequestParam(required = false) String moderatedBy,
@@ -83,7 +83,7 @@ public class AdminController {
                                   @RequestParam(defaultValue = "10") int size,
                                   Authentication auth) {
         Long adminId = Long.valueOf(auth.getName());
-        return Result.ok(adminService.getContentList(adminId, status, type, building, unit, search,
+        return Result.ok(adminService.getContentList(adminId, status, type, building_no, unit_no, search,
                 moderationStatus, moderatedBy, page, size));
     }
 
@@ -177,8 +177,8 @@ public class AdminController {
 
     // ===== 住户检索 =====
     @GetMapping("/residents/search")
-    public Result<?> searchResidents(@RequestParam(required = false) String building,
-                                      @RequestParam(required = false) String unit,
+    public Result<?> searchResidents(@RequestParam(required = false) Integer building_no,
+                                      @RequestParam(required = false) Integer unit_no,
                                       @RequestParam(required = false) String room,
                                       @RequestParam(required = false) String userType,
                                       @RequestParam(required = false) String keyword,
@@ -186,7 +186,7 @@ public class AdminController {
                                       @RequestParam(defaultValue = "50") int size,
                                       Authentication auth) {
         Long adminId = Long.valueOf(auth.getName());
-        return Result.ok(adminService.searchResidents(adminId, building, unit, room, userType, keyword, page, size));
+        return Result.ok(adminService.searchResidents(adminId, building_no, unit_no, room, userType, keyword, page, size));
     }
 
     // ===== 物业代发 =====

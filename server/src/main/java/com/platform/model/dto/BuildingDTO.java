@@ -19,12 +19,12 @@ public class BuildingDTO {
     /** 所属小区 ID */
     private Long tenantId;
 
-    /** 楼栋名称（如 "3栋"） */
-    private String name;
+    /** 楼栋号（数值，如 3；前端展示时拼 "3栋"） */
+    private Integer buildingNo;
 
     /** 从 Entity 转换 */
     public static BuildingDTO from(Building entity) {
         if (entity == null) return null;
-        return new BuildingDTO(entity.getId(), entity.getTenantId(), entity.getName());
+        return new BuildingDTO(entity.getId(), entity.getTenantId(), entity.getBuildingNo());
     }
 }
