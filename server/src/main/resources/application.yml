@@ -28,7 +28,7 @@ spring:
   datasource:
     url: jdbc:postgresql://localhost:5433/community_platform
     username: postgres
-    password: ${DB_PASSWORD:123456}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -80,9 +80,8 @@ wechat:
 
 # JWT 配置
 jwt:
-  # 优先从 JWT_SECRET 环境变量注入；未设置时回退到本地开发默认值。
-  # 生产环境必须通过环境变量提供至少 256 位的随机密钥并定期轮换。
-  secret: ${JWT_SECRET:dev-secret-change-me-in-production}
+  # 由 JWT_SECRET 环境变量注入（密钥不提交仓库）；生产必须提供至少 256 位随机密钥并定期轮换。
+  secret: ${JWT_SECRET}
   expiration: 604800000 # 7天
 
 # 文件上传路径
