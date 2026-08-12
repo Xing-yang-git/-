@@ -30,8 +30,8 @@ graph TB
     end
 
     subgraph 数据层
-        PG[("PostgreSQL<br/>pgvector 向量库")]
-        REDIS[("Redis<br/>热会话 / 限流")]
+        PG[("PostgreSQL<br/>pgvector 向量库 / 长期记忆归档")]
+        REDIS[("Redis<br/>热会话（短期记忆）/ 限流")]
     end
 
     subgraph 外部AI
@@ -50,7 +50,9 @@ graph TB
     RAG --> PG
     RAG --> RERANK
     KB -->|向量入库| PG
-    AGENT <--> REDIS
+    AGENT <-->|热会话读写| REDIS
+    REDIS -->|会话归档 / 记忆压缩| PG
+    AGENT -->|长期记忆检索注入| PG
     EMB -.-> PG
 ```
 
