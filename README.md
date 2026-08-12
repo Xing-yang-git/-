@@ -1,5 +1,7 @@
 # 一城暖邻 · 社区互助平台
 
+> 本项目为**个人学习演示项目**，代码仅供浏览参考，禁止未经许可复制、二次分发、商用。
+
 > 邻里互助闲置物品平台 — 微信小程序 C端 + Vue 3 PC 物业管理后台 + Spring Boot 后端（含 AI 助手「小邻」）
 
 ## 演示视频
@@ -155,6 +157,11 @@ psql -U postgres -c "CREATE DATABASE community_platform;"
 ### 2. 后端 (Spring Boot)
 
 ```bash
+# 设置数据库密码（密钥不提交仓库，本地启动前导出）
+export DB_PASSWORD="你的数据库密码"
+# 设置 JWT 密钥（生产至少 256 位随机串）
+export JWT_SECRET="你的-jwt-密钥"
+
 cd server
 mvn spring-boot:run
 # 启动在 http://localhost:8080
