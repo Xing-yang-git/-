@@ -67,3 +67,4 @@ miniprogram/project.private.config.json
 
 # rerank-service 本地预下载的 Python wheel（torch 2.7.1+cu126 等，793MB，主机下载注入构建用）
 rerank-service/wheels/
+test-automation/

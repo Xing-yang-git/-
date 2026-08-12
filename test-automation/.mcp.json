@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "miniprogram-e2e": {
-      "command": "node",
-      "args": ["index.js"],
-      "cwd": "d:/notegenWordFile/prototype/community-platform/test-automation/mcp-server"
-    }
-  }
-}

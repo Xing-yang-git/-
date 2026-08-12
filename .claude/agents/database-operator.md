@@ -42,9 +42,9 @@ You are invoked by the main session when:
 | Host | `localhost:5432` |
 | Database | `community_platform` |
 | User | `postgres` |
-| Password | `123456` |
+| Password | `$DB_PASSWORD`（环境变量注入，不提交仓库） |
 | psql path | `/d/PostgreSQL/17/bin/psql.exe` |
-| Connection command | `PGPASSWORD=123456 /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "..."` |
+| Connection command | `PGPASSWORD=$DB_PASSWORD /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "..."` |
 
 ### Entity → Table Mapping
 
@@ -101,12 +101,12 @@ The main session should tell you which entities were modified. Based on that:
 Query `information_schema.columns` for each target table:
 
 ```bash
-PGPASSWORD=123456 /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "SELECT column_name, data_type, character_maximum_length, is_nullable, column_default FROM information_schema.columns WHERE table_name = '<table>' ORDER BY ordinal_position;"
+PGPASSWORD=$DB_PASSWORD /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "SELECT column_name, data_type, character_maximum_length, is_nullable, column_default FROM information_schema.columns WHERE table_name = '<table>' ORDER BY ordinal_position;"
 ```
 
 Also verify tables exist:
 ```bash
-PGPASSWORD=123456 /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;"
+PGPASSWORD=$DB_PASSWORD /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;"
 ```
 
 **Important:** Query one table at a time to avoid encoding issues with multi-statement scripts.
@@ -128,7 +128,7 @@ Compare against the actual schema from Step 3. Build a diff list.
 Generate idempotent DDL for each discrepancy. **Execute statements one at a time** (multi-line scripts with comments can fail on encoding):
 
 ```bash
-PGPASSWORD=123456 /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "ALTER TABLE <table> ADD COLUMN IF NOT EXISTS <column> <type> <constraints>;"
+PGPASSWORD=$DB_PASSWORD /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "ALTER TABLE <table> ADD COLUMN IF NOT EXISTS <column> <type> <constraints>;"
 ```
 
 **Execution order** (respect dependencies):
@@ -172,7 +172,7 @@ Return a structured summary:
 Fast, immediate feedback. Use for most operations.
 
 ```bash
-PGPASSWORD=123456 /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "<single SQL statement>"
+PGPASSWORD=$DB_PASSWORD /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "<single SQL statement>"
 ```
 
 **If psql is blocked** by security classifiers (common with inline passwords), switch to Path B.
@@ -221,35 +221,35 @@ After updating `SchemaMigration.java`:
 
 ### Check if a table exists
 ```bash
-PGPASSWORD=123456 /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name='<table>');"
+PGPASSWORD=$DB_PASSWORD /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name='<table>');"
 ```
 
 ### Check if a column exists
 ```bash
-PGPASSWORD=123456 /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='<table>' AND column_name='<column>');"
+PGPASSWORD=$DB_PASSWORD /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='<table>' AND column_name='<column>');"
 ```
 
 ### Get full column info for a table
 ```bash
-PGPASSWORD=123456 /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "SELECT column_name, data_type, character_maximum_length, is_nullable, column_default FROM information_schema.columns WHERE table_name='<table>' ORDER BY ordinal_position;"
+PGPASSWORD=$DB_PASSWORD /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "SELECT column_name, data_type, character_maximum_length, is_nullable, column_default FROM information_schema.columns WHERE table_name='<table>' ORDER BY ordinal_position;"
 ```
 
 ### Add a nullable column
 ```bash
-PGPASSWORD=123456 /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "ALTER TABLE <table> ADD COLUMN IF NOT EXISTS <column> <type>;"
+PGPASSWORD=$DB_PASSWORD /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "ALTER TABLE <table> ADD COLUMN IF NOT EXISTS <column> <type>;"
 ```
 
 ### Add a NOT NULL column with default
 ```bash
-PGPASSWORD=123456 /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "ALTER TABLE <table> ADD COLUMN IF NOT EXISTS <column> <type> NOT NULL DEFAULT <value>;"
+PGPASSWORD=$DB_PASSWORD /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "ALTER TABLE <table> ADD COLUMN IF NOT EXISTS <column> <type> NOT NULL DEFAULT <value>;"
 ```
 
 ### Change column type
 ```bash
-PGPASSWORD=123456 /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "ALTER TABLE <table> ALTER COLUMN <column> TYPE <new_type> USING (<column>::<new_type>);"
+PGPASSWORD=$DB_PASSWORD /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "ALTER TABLE <table> ALTER COLUMN <column> TYPE <new_type> USING (<column>::<new_type>);"
 ```
 
 ### Set NOT NULL on existing column
 ```bash
-PGPASSWORD=123456 /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "ALTER TABLE <table> ALTER COLUMN <column> SET NOT NULL;"
+PGPASSWORD=$DB_PASSWORD /d/PostgreSQL/17/bin/psql.exe -U postgres -d community_platform -c "ALTER TABLE <table> ALTER COLUMN <column> SET NOT NULL;"
 ```
