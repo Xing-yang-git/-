@@ -38,9 +38,10 @@ graph TB
         LLM["DeepSeek<br/>文本生成"]
         EMB["智谱 embedding-3<br/>语义向量"]
         RERANK["本地 rerank<br/>bge-reranker-v2-m3"]
+        AUDIT["智谱 GLM<br/>内容审核（文本+图片）"]
     end
 
-    C -->|REST/SSE| AUTH
+    C -->|SSE 流式对话| AUTH
     B -->|REST| AUTH
     C <-->|WebSocket| WS
     B <-->|WebSocket| WS
@@ -53,6 +54,8 @@ graph TB
     AGENT <-->|热会话读写| REDIS
     REDIS -->|会话归档 / 记忆压缩| PG
     AGENT -->|长期记忆检索注入| PG
+    C -->|发布内容| AUDIT
+    AUDIT -->|自动上线 / 驳回| C
     EMB -.-> PG
 ```
 
